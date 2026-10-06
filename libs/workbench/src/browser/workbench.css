@@ -441,6 +441,204 @@ body {
   display: flex;
   flex-wrap: wrap;
   gap: 8px;
+  align-items: center;
+}
+
+.oi-settings-hint {
+  margin: 0 0 10px;
+  color: var(--muted);
+  font-size: 13px;
+}
+
+.oi-settings-rows {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  margin-top: 12px;
+}
+
+.oi-settings-row {
+  display: flex;
+  gap: 12px;
+  align-items: baseline;
+  font-size: 13px;
+}
+
+.oi-settings-label {
+  flex: none;
+  min-width: 72px;
+  color: var(--muted);
+}
+
+.oi-settings-code {
+  overflow-wrap: anywhere;
+  font-family: var(--font-mono);
+  font-size: 12.5px;
+}
+
+.oi-search-progress {
+  color: var(--muted);
+  font-size: 13px;
+}
+
+.oi-chip-list {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 4px;
+}
+
+.oi-chip {
+  padding: 2px 8px;
+  border: 1px solid var(--border);
+  border-radius: 999px;
+  background: var(--btn-bg);
+  font-family: var(--font-mono);
+  font-size: 12px;
+}
+
+.oi-select {
+  height: 32px;
+  padding: 0 8px;
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  background: var(--btn-bg);
+  color: var(--text);
+  font-family: inherit;
+  font-size: 13px;
+}
+
+.oi-select:focus-visible {
+  outline: 2px solid var(--glow-ring);
+  outline-offset: 1px;
+}
+
+.oi-python-list {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  margin-top: 12px;
+}
+
+.oi-radio-row {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  width: 100%;
+  padding: 8px 12px;
+  border: 1px solid var(--border);
+  border-radius: 10px;
+  background: var(--btn-bg);
+  color: var(--muted);
+  font: inherit;
+  font-size: 13px;
+  text-align: left;
+  cursor: pointer;
+  transition:
+    box-shadow 0.22s ease,
+    border-color 0.2s,
+    color 0.2s;
+}
+
+.oi-radio-row:hover {
+  box-shadow: var(--glow-shadow);
+}
+
+.oi-radio-row:focus-visible {
+  outline: 2px solid var(--glow-ring);
+  outline-offset: 1px;
+}
+
+.oi-radio-row-active {
+  border-color: var(--link);
+  color: var(--text);
+}
+
+.oi-radio-icon {
+  flex: none;
+  color: var(--muted);
+}
+
+.oi-radio-row-active .oi-radio-icon {
+  color: var(--success);
+}
+
+.oi-python-version {
+  flex: none;
+  font-weight: 600;
+}
+
+.oi-python-path {
+  flex: 1;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  font-family: var(--font-mono);
+  font-size: 12px;
+}
+
+.oi-radio-badge {
+  flex: none;
+  padding: 2px 8px;
+  border-radius: 999px;
+  background: var(--link);
+  color: var(--bg);
+  font-size: 11px;
+}
+
+.oi-pip-form {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 12px;
+  align-items: flex-end;
+  margin-top: 4px;
+}
+
+.oi-field {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  font-size: 13px;
+}
+
+.oi-input {
+  height: 32px;
+  min-width: 180px;
+  padding: 0 10px;
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  background: var(--btn-bg);
+  color: var(--text);
+  font-family: inherit;
+  font-size: 13px;
+}
+
+.oi-input:focus-visible {
+  outline: 2px solid var(--glow-ring);
+  outline-offset: 1px;
+}
+
+.oi-checkbox-row {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  height: 32px;
+  color: var(--text);
+  font-size: 13px;
+  cursor: pointer;
+}
+
+.oi-log {
+  max-height: 180px;
+  margin: 12px 0 0;
+  padding: 10px 12px;
+  overflow: auto;
+  border: 1px solid var(--border);
+  border-radius: 10px;
+  background: var(--code-bg);
+  color: var(--text);
+  font-family: var(--font-mono);
+  font-size: 12px;
+  white-space: pre-wrap;
 }
 
 /* 问题面板：控制台风格底部面板（行 | 列 | 原因） */

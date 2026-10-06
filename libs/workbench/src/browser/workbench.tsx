@@ -659,6 +659,8 @@ function Workbench({ services, initialTheme, onDirtyStateChange }: IWorkbenchPro
               onOpenFile={() => void openFileRef.current()}
               onOpenFolder={() => void openFolderRef.current()}
               onSave={() => void saveRef.current()}
+              toolchainService={services.toolchainService}
+              pythonService={services.pythonService}
             />
           ) : null}
           {view === 'editor' && tabs.length === 0 ? (

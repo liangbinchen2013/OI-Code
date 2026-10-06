@@ -48,6 +48,36 @@ async function openFile(
   await expect(page.locator('.oi-tab-active .oi-tab-name')).toHaveText(basename(filePath));
 }
 
+test('设置页自动搜索 g++ 与 Python 并展示版本与支持标准', async () => {
+  const app = await launchApp();
+  try {
+    const page = await app.firstWindow();
+    await waitReady(page);
+    await page.locator('.oi-sidebar-settings').click();
+    await expect(page.locator('.oi-settings')).toBeVisible();
+
+    if (hasCommand('g++')) {
+      await page.locator('.oi-cpp-search').click();
+      const cppSection = page.locator('.oi-settings-section', { hasText: 'C++ 编译器' });
+      await expect(cppSection.locator('.oi-settings-code')).toContainText('g++', {
+        timeout: 60_000,
+      });
+      await expect(cppSection.locator('.oi-chip-list')).toContainText('c++17');
+      await expect(cppSection.locator('select#oi-cpp-standard')).toBeVisible();
+    }
+
+    if (hasCommand('python')) {
+      await page.locator('.oi-python-search').click();
+      await expect(page.locator('.oi-python-list')).toContainText('Python 3', {
+        timeout: 60_000,
+      });
+      await expect(page.locator('.oi-radio-row-active')).toBeVisible();
+    }
+  } finally {
+    await app.close();
+  }
+});
+
 test('编译 C++ 成功产出可执行文件，编译并运行可启动程序', async () => {
   test.skip(!hasCommand('g++'), '未安装 g++');
   const directory = await mkdtemp(join(tmpdir(), 'oi-e2e-cpp-'));
