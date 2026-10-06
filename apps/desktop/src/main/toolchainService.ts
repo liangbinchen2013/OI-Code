@@ -136,6 +136,8 @@ function commonGppCandidates(): string[] {
  * 编译走同目录临时源文件，不覆盖用户文件；可执行文件与源文件同目录同名。
  */
 export class ToolchainService implements IToolchainService {
+  private _autoSearch: Promise<void> | undefined;
+
   constructor(
     @ILogService private readonly _logService: ILogService,
     @IConfigService private readonly _configService: IConfigService,
@@ -193,8 +195,8 @@ export class ToolchainService implements IToolchainService {
   }
 
   async compile(request: ICompileRequest): Promise<ICompileResult> {
-    const status = await this.getStatus();
-    if (!status.found || status.compilerPath === undefined) {
+    const compilerPath = await this._ensureCompiler();
+    if (compilerPath === undefined) {
       return {
         ok: false,
         durationMs: 0,
@@ -205,6 +207,7 @@ export class ToolchainService implements IToolchainService {
     if (request.uri.scheme !== 'file') {
       return { ok: false, durationMs: 0, diagnostics: [], message: '仅支持编译本地文件' };
     }
+    const status = await this.getStatus();
 
     const sourcePath = request.uri.fsPath;
     const directory = dirname(sourcePath);
@@ -218,7 +221,7 @@ export class ToolchainService implements IToolchainService {
     try {
       await writeFile(temporarySource, request.content, 'utf8');
       const result = await runProcess(
-        status.compilerPath,
+        compilerPath,
         [
           `-std=${standard}`,
           '-O2',
@@ -231,7 +234,7 @@ export class ToolchainService implements IToolchainService {
         {
           cwd: directory,
           timeoutMs: COMPILE_TIMEOUT_MS,
-          env: this._compilerEnvironment(status.compilerPath),
+          env: this._compilerEnvironment(compilerPath),
         },
       );
       const diagnostics = parseCppDiagnostics(`${result.stdout}${result.stderr}`, {
@@ -267,18 +270,19 @@ export class ToolchainService implements IToolchainService {
   }
 
   async check(uri: URI, content: string): Promise<readonly ICodeDiagnostic[]> {
-    const status = await this.getStatus();
-    if (!status.found || status.compilerPath === undefined || uri.scheme !== 'file') {
+    const compilerPath = await this._ensureCompiler();
+    if (compilerPath === undefined || uri.scheme !== 'file') {
       return [];
     }
+    const status = await this.getStatus();
     const standard = status.defaultStandard ?? 'c++17';
     const result = await runProcess(
-      status.compilerPath,
+      compilerPath,
       [`-std=${standard}`, '-Wall', '-fdiagnostics-color=never', '-fsyntax-only', '-x', 'c++', '-'],
       {
         stdin: content,
         timeoutMs: CHECK_TIMEOUT_MS,
-        env: this._compilerEnvironment(status.compilerPath),
+        env: this._compilerEnvironment(compilerPath),
       },
     );
     if (result.errorMessage !== undefined) {
@@ -316,6 +320,29 @@ export class ToolchainService implements IToolchainService {
       displayName: basename(executablePath),
       ...(status.compilerPath === undefined ? {} : { pathPrepend: [dirname(status.compilerPath)] }),
     });
+  }
+
+  /**
+   * 取编译器路径；未配置时自动搜索一次（搜索无果也不重复尝试，设置页显式搜索仍可重试）。
+   */
+  private async _ensureCompiler(): Promise<string | undefined> {
+    const status = await this.getStatus();
+    if (status.found && status.compilerPath !== undefined) {
+      return status.compilerPath;
+    }
+    this._autoSearch ??= this._runAutoSearch();
+    await this._autoSearch;
+    const refreshed = await this.getStatus();
+    return refreshed.found ? refreshed.compilerPath : undefined;
+  }
+
+  private async _runAutoSearch(): Promise<void> {
+    try {
+      await this.search();
+    } catch (error) {
+      this._autoSearch = undefined;
+      this._logService.warn(`自动搜索 g++ 失败：${toError(error).message}`);
+    }
   }
 
   private async _findCompiler(

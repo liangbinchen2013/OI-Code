@@ -148,6 +148,8 @@ export function parseSyntaxCheckOutput(output: string): ISyntaxErrorPayload | un
  * pip 安装（版本约束 + 清华源 + 流式输出）与语法检查（编译真实源码，不执行）。
  */
 export class PythonService implements IPythonService {
+  private _autoSearch: Promise<void> | undefined;
+
   constructor(
     @ILogService private readonly _logService: ILogService,
     @IConfigService private readonly _configService: IConfigService,
@@ -210,7 +212,7 @@ export class PythonService implements IPythonService {
     if (validationError !== undefined) {
       return { ok: false, exitCode: -1, message: validationError };
     }
-    const interpreterPath = await this._resolveInterpreterPath(request.interpreterPath);
+    const interpreterPath = await this._ensureInterpreter(request.interpreterPath);
     if (interpreterPath === undefined) {
       return { ok: false, exitCode: -1, message: '未找到 Python 解释器，请先在设置中搜索' };
     }
@@ -236,7 +238,7 @@ export class PythonService implements IPythonService {
   }
 
   async run(uri: URI): Promise<IRunResult> {
-    const interpreterPath = await this._resolveInterpreterPath();
+    const interpreterPath = await this._ensureInterpreter();
     if (interpreterPath === undefined) {
       return { launched: false, message: '未找到 Python 解释器，请先在设置中搜索' };
     }
@@ -253,7 +255,7 @@ export class PythonService implements IPythonService {
   }
 
   async check(uri: URI, content: string): Promise<readonly ICodeDiagnostic[]> {
-    const interpreterPath = await this._resolveInterpreterPath();
+    const interpreterPath = await this._ensureInterpreter();
     if (interpreterPath === undefined || uri.scheme !== 'file') {
       return [];
     }
@@ -306,6 +308,28 @@ export class PythonService implements IPythonService {
       }
       return [];
     });
+  }
+
+  /**
+   * 取解释器路径；未配置时自动搜索一次（搜索无果也不重复尝试，设置页显式搜索仍可重试）。
+   */
+  private async _ensureInterpreter(preferred?: string): Promise<string | undefined> {
+    const resolved = await this._resolveInterpreterPath(preferred);
+    if (resolved !== undefined) {
+      return resolved;
+    }
+    this._autoSearch ??= this._runAutoSearch();
+    await this._autoSearch;
+    return this._resolveInterpreterPath(preferred);
+  }
+
+  private async _runAutoSearch(): Promise<void> {
+    try {
+      await this.search();
+    } catch (error) {
+      this._autoSearch = undefined;
+      this._logService.warn(`自动搜索 Python 解释器失败：${toError(error).message}`);
+    }
   }
 
   private async _resolveInterpreterPath(preferred?: string): Promise<string | undefined> {
