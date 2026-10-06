@@ -1,0 +1,44 @@
+import { BrowserWindow, dialog, type MessageBoxOptions, type OpenDialogOptions } from 'electron';
+import { URI } from '@oi/base';
+import type { IFileDialogService, IOpenFileDialogOptions } from '@oi/platform';
+
+/**
+ * Electron 原生对话框实现（Code 层装配）：对话框是获得文件访问授权的唯一入口。
+ */
+export class FileDialogService implements IFileDialogService {
+  async showOpenFile(options?: IOpenFileDialogOptions): Promise<URI | undefined> {
+    const window = BrowserWindow.getFocusedWindow() ?? BrowserWindow.getAllWindows()[0];
+    const dialogOptions: OpenDialogOptions = {
+      ...(options?.title === undefined ? {} : { title: options.title }),
+      filters: (options?.filters ?? []).map((filter) => ({
+        name: filter.name,
+        extensions: [...filter.extensions],
+      })),
+      properties: ['openFile'],
+    };
+    const result = window
+      ? await dialog.showOpenDialog(window, dialogOptions)
+      : await dialog.showOpenDialog(dialogOptions);
+    if (result.canceled || result.filePaths.length === 0) {
+      return undefined;
+    }
+    const selected = result.filePaths[0];
+    return selected === undefined ? undefined : URI.file(selected);
+  }
+
+  async confirmDiscardChanges(fileName?: string): Promise<boolean> {
+    const window = BrowserWindow.getFocusedWindow() ?? BrowserWindow.getAllWindows()[0];
+    const options: MessageBoxOptions = {
+      type: 'warning',
+      buttons: ['放弃修改', '返回编辑'],
+      defaultId: 1,
+      cancelId: 1,
+      title: '未保存的修改',
+      message: `“${fileName ?? '当前文件'}”有未保存的修改，确定放弃吗？`,
+    };
+    const result = window
+      ? await dialog.showMessageBox(window, options)
+      : await dialog.showMessageBox(options);
+    return result.response === 0;
+  }
+}
