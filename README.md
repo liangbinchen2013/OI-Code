@@ -48,57 +48,81 @@
 
 ---
 
-## 二、项目级依赖（待 `package.json` 声明）
+## 二、项目级依赖（已安装 ✅ 2026-10-06）
 
-> ⚠️ 当前 `package.json` 为空壳（**0 依赖**），以下按 `AGENTS.md` §1 技术栈预估，建仓阶段一次性安装。
+> `package.json` / `pnpm-lock.yaml` 已生成，`pnpm install` 完成（429 包），工具链全部验证通过。
 
-### 1. 安装命令（按类分批）
+### 1. 已安装清单与版本
 
-```bash
-# 语言与规范
-pnpm add -D typescript eslint eslint-config-prettier prettier husky lint-staged
+| 类别 | 依赖 | 版本 |
+|------|------|------|
+| 语言/规范 | `typescript` | 7.0.2 |
+| | `eslint` / `eslint-config-prettier` | 10.12.0 / 10.1.8 |
+| | `prettier` | 3.9.9 |
+| | `husky` / `lint-staged` | 9.1.7 / 17.6.0 |
+| Monorepo/构建 | `nx` `@nx/js` `@nx/eslint` `@nx/vite` | 23.2.1 |
+| | `vite` / `esbuild` | 8.3.2 / 0.28.2 |
+| 桌面 | `electron` | 44.5.1（二进制已下载） |
+| 编辑器/UI | `monaco-editor` | 0.57.0 |
+| | `react` / `react-dom` | 19.3.0 |
+| | `@types/react` / `@types/react-dom` / `@types/node` | 19.3.0 / 19.3.0 / 26.6.4 |
+| 测试 | `vitest` / `@vitest/coverage-v8` | **4.1.11**（见下方"已知问题"） |
+| | `@playwright/test` | 1.63.0 + Chromium 153.0.8010.12（已安装并实测启动成功） |
 
-# Monorepo 与构建
-pnpm add -D nx @nx/js @nx/electron @nx/eslint @nx/vite vite esbuild
+### 2. 未安装 / 待决
 
-# 测试
-pnpm add -D vitest @vitest/coverage-v8 @playwright/test
+| ☐ | 依赖 | 说明 |
+|---|------|------|
+| ☐ | `@nx/electron` | **npm 返回 404，该包不存在**（`nx`/`@nx/js` 均为 23.2.1 正常）。备选社区插件 `nx-electron@22.0.0`，是否采用**待人类决策**（AGENTS.md §1 技术栈不可擅自替换） |
+| ☐ | `eslint.config.js` / `tsconfig.json` / `nx.json` / `.husky/` | 配置文件尚未创建，`pnpm lint` 等脚本在阶段 1 建仓时补齐 |
 
-# 桌面与编辑器/UI（运行时依赖）
-pnpm add electron monaco-editor react react-dom
-pnpm add -D @types/react @types/react-dom @types/node
+### 3. 关键配置
 
-# E2E 浏览器二进制（当前 %LOCALAPPDATA%\ms-playwright 未安装）
-npx playwright install chromium
-```
-
-### 2. 依赖分类速查
-
-| 类别 | 依赖 |
-|------|------|
-| 语言/规范 | `typescript` `eslint` `eslint-config-prettier` `prettier` `husky` `lint-staged` |
-| Monorepo/构建 | `nx` `@nx/js` `@nx/electron` `@nx/eslint` `@nx/vite` `vite` `esbuild` |
-| 桌面 | `electron` |
-| 编辑器/UI | `monaco-editor` `react` `react-dom` `@types/react` `@types/react-dom` `@types/node` |
-| 测试 | `vitest` `@vitest/coverage-v8` `@playwright/test` + `npx playwright install chromium` |
-| 分层校验 | 自研脚本 `npm run valid-layers-check`（无需外部包） |
-
----
-
-## 三、安装后自检
-
-```bash
-pnpm -v                    # 应输出 12.9.1+
-node -v                    # 应 ≥ v20
-pnpm install               # 安装项目依赖
-pnpm lint                  # ESLint + Prettier
-npm run valid-layers-check # 分层校验（必须通过）
-nx affected:test           # 受影响项目单元测试
-```
+- **构建脚本白名单**：`pnpm-workspace.yaml` 中 `allowBuilds: {electron, esbuild, nx}`。
+  pnpm 11+ 已废弃 `package.json` 的 `pnpm.onlyBuiltDependencies`，改用 `allowBuilds`，否则安装报 `ERR_PNPM_IGNORED_BUILDS`。
+- **peer 约束**：`@nx/vitest@23` 要求 `vitest ^3 || ^4`，故 vitest 固定在 4.x（5.x 会产生 peer 冲突）。
 
 ---
 
-## 四、常用命令
+## 三、网络镜像与已知问题（本机环境）
+
+本机 GitHub / Playwright CDN 直连不可用，二进制下载需走镜像：
+
+| 场景 | 解决方式 |
+|------|----------|
+| Electron 二进制（GitHub 下载 `fetch failed`） | `$env:ELECTRON_MIRROR='https://npmmirror.com/mirrors/electron/'` 后执行 `node node_modules/electron/install.js` |
+| Playwright 浏览器下载器超时 | 根因：Playwright 自定义 DNS **IPv6 优先** + Node happy-eyeballs 组合在本机挂起（已二分复现：IPv4 优先则正常）。绕过方式：用 `curl` 从 `https://cdn.npmmirror.com/binaries/playwright` 手动下载 zip，解压到 `%LOCALAPPDATA%\ms-playwright\<name>-<rev>\` 并创建空文件 `INSTALLATION_COMPLETE` |
+| `registry.npmmirror.com/-/binary/playwright` 不可用 | 返回 302 且 Playwright 跟随后仍超时；改用 **`cdn.npmmirror.com/binaries/playwright`**（206 直连 ≈928KB/s） |
+| pnpm 安装报 `ERR_PNPM_IGNORED_BUILDS` | 见 §2.3 `allowBuilds` 配置 |
+
+> 升级 Playwright 后需重新执行上述手动安装（revision 变化）。
+
+---
+
+## 四、安装后自检
+
+```bash
+pnpm -v                    # 12.9.1
+node -v                    # ≥ v20（本机 v24.19.0）
+pnpm install               # 幂等安装（须无 ERR_PNPM_IGNORED_BUILDS）
+
+# 工具链验证（2026-10-06 实测通过）
+pnpm exec nx --version     # 23.2.1
+pnpm exec tsc --version    # 7.0.2
+pnpm exec eslint --version # 10.12.0
+pnpm exec vitest --version # 4.1.11
+pnpm exec esbuild --version# 0.28.2
+pnpm exec playwright --version  # 1.63.0（Chromium 153 实测 launch OK）
+
+# 阶段 1 建仓后补齐（当前尚无配置文件/脚本）
+pnpm lint
+npm run valid-layers-check
+nx affected:test
+```
+
+---
+
+## 五、常用命令
 
 ```bash
 nx run desktop:serve         # 开发模式启动
