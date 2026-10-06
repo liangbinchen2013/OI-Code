@@ -7,6 +7,7 @@ import {
   IFileService,
   ILogService,
   IRunnerService,
+  IToolchainService,
   InstantiationService,
   LogService,
   ServiceCollection,
@@ -16,6 +17,7 @@ import { JsonConfigService, NodeFileService } from '@oi/platform/node';
 import { FileDialogService } from './fileDialogService';
 import { MainProcess } from './mainProcess';
 import { RunnerService } from './runnerService';
+import { ToolchainService } from './toolchainService';
 
 function main(): void {
   const userDataPath = process.env['OI_CODE_USER_DATA'];
@@ -38,6 +40,7 @@ function main(): void {
     IRunnerService,
     new SyncDescriptor(RunnerService, [join(app.getPath('userData'), 'runner')]),
   );
+  services.set(IToolchainService, new SyncDescriptor(ToolchainService));
   services.set(IFileService, new NodeFileService());
   services.set(IFileDialogService, new FileDialogService());
   const instantiationService = new InstantiationService(services);

@@ -42,17 +42,27 @@ export interface IPipOutputChunk {
 
 /**
  * Python 工具链契约：解释器搜索、pip 安装（可走清华源）、运行与实时语法检查。
+ * 进度/输出事件只存在于渲染进程代理（{@link IPythonServiceClient}）。
  */
 export interface IPythonService {
   getStatus(): Promise<IPythonStatus>;
-  /** 全量搜索解释器，进度经 {@link onDidSearchProgress} 上报。 */
-  search(): Promise<IPythonStatus>;
+  /** 全量搜索解释器；主进程实现可经回调上报进度。 */
+  search(onProgress?: (progress: ISearchProgress) => void): Promise<IPythonStatus>;
   setDefaultInterpreter(path: string): Promise<void>;
-  /** 执行 pip 安装，实时输出经 {@link onDidPipOutput} 流式上报。 */
-  pipInstall(request: IPipInstallRequest): Promise<IPipInstallResult>;
+  /** 执行 pip 安装；主进程实现可经回调流式上报输出。 */
+  pipInstall(
+    request: IPipInstallRequest,
+    onOutput?: (chunk: IPipOutputChunk) => void,
+  ): Promise<IPipInstallResult>;
   run(uri: URI): Promise<IRunResult>;
   /** 实时语法检查：仅做语法编译，不执行用户代码。 */
   check(uri: URI, content: string): Promise<readonly ICodeDiagnostic[]>;
+}
+
+/**
+ * 渲染进程侧的 Python 工具链服务：暴露搜索进度与 pip 流式输出事件。
+ */
+export interface IPythonServiceClient extends IPythonService {
   readonly onDidSearchProgress: Event<ISearchProgress>;
   readonly onDidPipOutput: Event<IPipOutputChunk>;
 }

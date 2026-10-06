@@ -13,31 +13,12 @@ import {
 } from '@oi/platform';
 import { CONFIG_KEYS } from './configKeys';
 import { OI_RUNNER_SOURCE } from './oiRunnerSource';
-import { runProcess } from './processRunner';
+import { runProcess, withPrependedPath } from './processRunner';
 
 export const OI_RUNNER_EXE_NAME = 'oi-runner.exe';
 
 const RUNNER_SOURCE_FILE_NAME = 'oi-runner.cpp';
 const RUNNER_COMPILE_TIMEOUT_MS = 120_000;
-
-/**
- * 将目录前置到 PATH 环境变量（大小写不敏感地识别 Windows 的 `Path`）。
- */
-export function withPrependedPath(
-  environment: NodeJS.ProcessEnv,
-  prepend: readonly string[],
-  separator: string,
-): NodeJS.ProcessEnv {
-  const result: NodeJS.ProcessEnv = { ...environment };
-  if (prepend.length === 0) {
-    return result;
-  }
-  const existingKey = Object.keys(result).find((key) => key.toLowerCase() === 'path');
-  const existingValue = existingKey === undefined ? undefined : result[existingKey];
-  const segments = [...prepend, ...(existingValue ? [existingValue] : [])];
-  result[existingKey ?? 'PATH'] = segments.join(separator);
-  return result;
-}
 
 /**
  * 运行器实现：用检测到的 g++ 编译一次控制台包装器并缓存；

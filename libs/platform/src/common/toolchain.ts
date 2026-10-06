@@ -41,17 +41,25 @@ export interface ICompileResult {
 
 /**
  * C++ 工具链契约：搜索 g++、探测标准、编译、运行与实时语法检查。
+ * 进度事件只存在于渲染进程代理（{@link IToolchainServiceClient}）；
+ * 主进程实现通过回调上报，不实现事件成员。
  */
 export interface IToolchainService {
   getStatus(): Promise<IToolchainStatus>;
-  /** 全量搜索编译器并探测标准，进度经 {@link onDidSearchProgress} 上报。 */
-  search(): Promise<IToolchainStatus>;
+  /** 全量搜索编译器并探测标准；主进程实现可经回调上报进度。 */
+  search(onProgress?: (progress: ISearchProgress) => void): Promise<IToolchainStatus>;
   setDefaultStandard(standard: string): Promise<void>;
   compile(request: ICompileRequest): Promise<ICompileResult>;
   /** 运行已编译的可执行文件（源文件同目录同名 .exe）。 */
   run(uri: URI): Promise<IRunResult>;
   /** 实时语法检查：不落盘、不链接，仅产出诊断。 */
   check(uri: URI, content: string): Promise<readonly ICodeDiagnostic[]>;
+}
+
+/**
+ * 渲染进程侧的 C++ 工具链服务：在 {@link IToolchainService} 之上暴露进度事件。
+ */
+export interface IToolchainServiceClient extends IToolchainService {
   readonly onDidSearchProgress: Event<ISearchProgress>;
 }
 

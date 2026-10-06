@@ -10,7 +10,7 @@ import type {
   IPipInstallRequest,
   IPipInstallResult,
   IPipOutputChunk,
-  IPythonService,
+  IPythonServiceClient,
   IPythonStatus,
 } from './python';
 import type { IRunResult } from './runner';
@@ -41,7 +41,7 @@ function parsePipOutput(params: unknown): IPipOutputChunk | undefined {
 /**
  * {@link IPythonService} 的 JSON-RPC 客户端代理。
  */
-export class PythonServiceClient implements IPythonService, IDisposable {
+export class PythonServiceClient implements IPythonServiceClient, IDisposable {
   private readonly _disposables = new DisposableStore();
   private readonly _onDidSearchProgress = new Emitter<ISearchProgress>();
   private readonly _onDidPipOutput = new Emitter<IPipOutputChunk>();

@@ -23,6 +23,25 @@ export interface IProcessRunResult {
 }
 
 /**
+ * 将目录前置到 PATH 环境变量（大小写不敏感地识别 Windows 的 `Path`）。
+ */
+export function withPrependedPath(
+  environment: NodeJS.ProcessEnv,
+  prepend: readonly string[],
+  separator: string,
+): NodeJS.ProcessEnv {
+  const result: NodeJS.ProcessEnv = { ...environment };
+  if (prepend.length === 0) {
+    return result;
+  }
+  const existingKey = Object.keys(result).find((key) => key.toLowerCase() === 'path');
+  const existingValue = existingKey === undefined ? undefined : result[existingKey];
+  const segments = [...prepend, ...(existingValue ? [existingValue] : [])];
+  result[existingKey ?? 'PATH'] = segments.join(separator);
+  return result;
+}
+
+/**
  * 运行外部进程并收集输出：命令与参数分离、不经 shell，Windows 下隐藏窗口。
  * 超时或调用方进程退出时强杀整个进程树（taskkill），避免残留。
  */

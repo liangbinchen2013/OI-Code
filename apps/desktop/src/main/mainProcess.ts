@@ -8,10 +8,14 @@ import {
   IFileDialogService,
   IFileService,
   ILogService,
+  IToolchainService,
   JSON_RPC_ERROR_CODES,
   RpcChannel,
   RpcError,
+  TOOLCHAIN_RPC_METHODS,
+  TOOLCHAIN_RPC_NOTIFICATIONS,
   WINDOW_RPC_NOTIFICATIONS,
+  serializeDiagnostic,
   type IMessageTransport,
   type IOpenFileDialogOptions,
   type ISaveFileDialogOptions,
@@ -102,6 +106,33 @@ function parseDirtyParam(params: unknown): boolean | undefined {
   return typeof dirty === 'boolean' ? dirty : undefined;
 }
 
+const CPP_STANDARD_PATTERN = /^c\+\+\d{2,4}$/;
+
+function parseStandardParam(params: unknown): string {
+  if (typeof params !== 'object' || params === null || !('standard' in params)) {
+    throw new RpcError(JSON_RPC_ERROR_CODES.invalidParams, '缺少 standard 参数');
+  }
+  const { standard } = params as { standard: unknown };
+  if (typeof standard !== 'string' || !CPP_STANDARD_PATTERN.test(standard)) {
+    throw new RpcError(JSON_RPC_ERROR_CODES.invalidParams, 'standard 参数非法');
+  }
+  return standard;
+}
+
+function parseOptionalStandardParam(params: unknown): string | undefined {
+  if (typeof params !== 'object' || params === null || !('standard' in params)) {
+    return undefined;
+  }
+  const { standard } = params as { standard: unknown };
+  if (standard === undefined) {
+    return undefined;
+  }
+  if (typeof standard !== 'string' || !CPP_STANDARD_PATTERN.test(standard)) {
+    throw new RpcError(JSON_RPC_ERROR_CODES.invalidParams, 'standard 参数非法');
+  }
+  return standard;
+}
+
 /**
  * 主进程：窗口生命周期、IPC 服务端与文件访问授权。
  */
@@ -115,6 +146,7 @@ export class MainProcess implements IDisposable {
     @ILogService private readonly _logService: ILogService,
     @IFileService private readonly _fileService: IFileService,
     @IFileDialogService private readonly _fileDialogService: IFileDialogService,
+    @IToolchainService private readonly _toolchainService: IToolchainService,
   ) {}
 
   start(): void {
@@ -247,6 +279,36 @@ export class MainProcess implements IDisposable {
         this._closeConfirmedWindows.delete(window.id);
       }
     });
+
+    channel.registerMethod(TOOLCHAIN_RPC_METHODS.getStatus, () =>
+      this._toolchainService.getStatus(),
+    );
+    channel.registerMethod(TOOLCHAIN_RPC_METHODS.search, () =>
+      this._toolchainService.search((progress) => {
+        channel.notify(TOOLCHAIN_RPC_NOTIFICATIONS.searchProgress, progress);
+      }),
+    );
+    channel.registerMethod(TOOLCHAIN_RPC_METHODS.setDefaultStandard, async (params) => {
+      await this._toolchainService.setDefaultStandard(parseStandardParam(params));
+    });
+    channel.registerMethod(TOOLCHAIN_RPC_METHODS.compile, async (params) => {
+      const uri = this._authorizedUri(params);
+      const standard = parseOptionalStandardParam(params);
+      const result = await this._toolchainService.compile({
+        uri,
+        content: parseContentParam(params),
+        ...(standard === undefined ? {} : { standard }),
+      });
+      return { ...result, diagnostics: result.diagnostics.map(serializeDiagnostic) };
+    });
+    channel.registerMethod(TOOLCHAIN_RPC_METHODS.check, async (params) => {
+      const uri = this._authorizedUri(params);
+      const diagnostics = await this._toolchainService.check(uri, parseContentParam(params));
+      return diagnostics.map(serializeDiagnostic);
+    });
+    channel.registerMethod(TOOLCHAIN_RPC_METHODS.run, (params) =>
+      this._toolchainService.run(this._authorizedUri(params)),
+    );
   }
 
   private _authorizedUri(params: unknown): URI {

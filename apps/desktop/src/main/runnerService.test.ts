@@ -7,7 +7,8 @@ import type { IConfigService } from '@oi/platform';
 import { LogLevel, LogService, type ILogger } from '@oi/platform';
 import { CONFIG_KEYS } from './configKeys';
 import { OI_RUNNER_SOURCE } from './oiRunnerSource';
-import { OI_RUNNER_EXE_NAME, RunnerService, withPrependedPath } from './runnerService';
+import { withPrependedPath } from './processRunner';
+import { OI_RUNNER_EXE_NAME, RunnerService } from './runnerService';
 
 class MemoryConfigService implements IConfigService {
   private readonly _values = new Map<string, unknown>();

@@ -11,7 +11,7 @@ import type {
   ICompileRequest,
   ICompileResult,
   ISearchProgress,
-  IToolchainService,
+  IToolchainServiceClient,
   IToolchainStatus,
 } from './toolchain';
 
@@ -37,7 +37,7 @@ function parseSearchProgress(params: unknown): ISearchProgress | undefined {
 /**
  * {@link IToolchainService} 的 JSON-RPC 客户端代理。
  */
-export class ToolchainServiceClient implements IToolchainService, IDisposable {
+export class ToolchainServiceClient implements IToolchainServiceClient, IDisposable {
   private readonly _disposables = new DisposableStore();
   private readonly _onDidSearchProgress = new Emitter<ISearchProgress>();
 
