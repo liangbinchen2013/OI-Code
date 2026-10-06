@@ -1,3 +1,5 @@
+export * from './common/dialog';
+export * from './common/fs';
 export * from './common/instantiation';
 export * from './common/instantiationService';
 export * from './common/ipc/channel';

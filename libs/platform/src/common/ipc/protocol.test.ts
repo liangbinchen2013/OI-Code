@@ -1,8 +1,12 @@
 import { describe, expect, it } from 'vitest';
 import {
+  APP_RPC_ERROR_CODES,
+  DIALOG_RPC_METHODS,
+  FILE_RPC_METHODS,
   JSON_RPC_ERROR_CODES,
   JSON_RPC_VERSION,
   RpcError,
+  WINDOW_RPC_NOTIFICATIONS,
   isJsonRpcNotification,
   isJsonRpcRequest,
   isJsonRpcResponse,
@@ -41,5 +45,17 @@ describe('JSON-RPC 协议校验', () => {
     expect(error.name).toBe('RpcError');
     expect(error.code).toBe(-32603);
     expect(error.data).toEqual({ detail: 1 });
+  });
+
+  it('RPC 方法名全局唯一且应用错误码在保留区间内', () => {
+    const methodNames = [
+      ...Object.values(FILE_RPC_METHODS),
+      ...Object.values(DIALOG_RPC_METHODS),
+      ...Object.values(WINDOW_RPC_NOTIFICATIONS),
+    ];
+
+    expect(new Set(methodNames).size).toBe(methodNames.length);
+    expect(APP_RPC_ERROR_CODES.accessDenied).toBeGreaterThanOrEqual(-32099);
+    expect(APP_RPC_ERROR_CODES.accessDenied).toBeLessThanOrEqual(-32000);
   });
 });

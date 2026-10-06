@@ -11,6 +11,37 @@ export const JSON_RPC_ERROR_CODES = {
   internalError: -32603,
 } as const;
 
+/**
+ * OI-Code 应用层 JSON-RPC 错误码（-32000..-32099 为 JSON-RPC 协议保留给应用的范围）。
+ */
+export const APP_RPC_ERROR_CODES = {
+  accessDenied: -32001,
+} as const;
+
+/**
+ * 文件服务的 RPC 方法名。
+ */
+export const FILE_RPC_METHODS = {
+  readFile: 'fs.readFile',
+  writeFile: 'fs.writeFile',
+  exists: 'fs.exists',
+} as const;
+
+/**
+ * 对话框服务的 RPC 方法名。
+ */
+export const DIALOG_RPC_METHODS = {
+  showOpenFile: 'dialog.showOpenFile',
+  confirmDiscardChanges: 'dialog.confirmDiscardChanges',
+} as const;
+
+/**
+ * 主进程需要感知的窗口状态通知方法名（通知无响应）。
+ */
+export const WINDOW_RPC_NOTIFICATIONS = {
+  setDirtyState: 'window.setDirtyState',
+} as const;
+
 export type JsonRpcId = number | string;
 
 export interface JsonRpcRequest {
