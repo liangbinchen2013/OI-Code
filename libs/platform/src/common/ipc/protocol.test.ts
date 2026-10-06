@@ -5,7 +5,11 @@ import {
   FILE_RPC_METHODS,
   JSON_RPC_ERROR_CODES,
   JSON_RPC_VERSION,
+  PYTHON_RPC_METHODS,
+  PYTHON_RPC_NOTIFICATIONS,
   RpcError,
+  TOOLCHAIN_RPC_METHODS,
+  TOOLCHAIN_RPC_NOTIFICATIONS,
   WINDOW_RPC_NOTIFICATIONS,
   isJsonRpcNotification,
   isJsonRpcRequest,
@@ -52,6 +56,10 @@ describe('JSON-RPC 协议校验', () => {
       ...Object.values(FILE_RPC_METHODS),
       ...Object.values(DIALOG_RPC_METHODS),
       ...Object.values(WINDOW_RPC_NOTIFICATIONS),
+      ...Object.values(TOOLCHAIN_RPC_METHODS),
+      ...Object.values(TOOLCHAIN_RPC_NOTIFICATIONS),
+      ...Object.values(PYTHON_RPC_METHODS),
+      ...Object.values(PYTHON_RPC_NOTIFICATIONS),
     ];
 
     expect(new Set(methodNames).size).toBe(methodNames.length);

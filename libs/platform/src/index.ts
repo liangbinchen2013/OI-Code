@@ -1,3 +1,5 @@
+export * from './common/config';
+export * from './common/diagnostics';
 export * from './common/dialog';
 export * from './common/fileDialogServiceClient';
 export * from './common/fileServiceClient';
@@ -8,3 +10,8 @@ export * from './common/ipc/channel';
 export * from './common/ipc/preload';
 export * from './common/ipc/protocol';
 export * from './common/log';
+export * from './common/python';
+export * from './common/pythonServiceClient';
+export * from './common/runner';
+export * from './common/toolchain';
+export * from './common/toolchainServiceClient';

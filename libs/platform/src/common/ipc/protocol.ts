@@ -45,6 +45,45 @@ export const WINDOW_RPC_NOTIFICATIONS = {
   setDirtyState: 'window.setDirtyState',
 } as const;
 
+/**
+ * C++ 工具链服务的 RPC 方法名。
+ */
+export const TOOLCHAIN_RPC_METHODS = {
+  getStatus: 'toolchain.getStatus',
+  search: 'toolchain.search',
+  setDefaultStandard: 'toolchain.setDefaultStandard',
+  compile: 'toolchain.compile',
+  run: 'toolchain.run',
+  check: 'toolchain.check',
+} as const;
+
+/**
+ * C++ 工具链的服务端通知方法名。
+ */
+export const TOOLCHAIN_RPC_NOTIFICATIONS = {
+  searchProgress: 'toolchain.searchProgress',
+} as const;
+
+/**
+ * Python 工具链服务的 RPC 方法名。
+ */
+export const PYTHON_RPC_METHODS = {
+  getStatus: 'python.getStatus',
+  search: 'python.search',
+  setDefaultInterpreter: 'python.setDefaultInterpreter',
+  pipInstall: 'python.pipInstall',
+  run: 'python.run',
+  check: 'python.check',
+} as const;
+
+/**
+ * Python 工具链的服务端通知方法名。
+ */
+export const PYTHON_RPC_NOTIFICATIONS = {
+  searchProgress: 'python.searchProgress',
+  pipOutput: 'python.pipOutput',
+} as const;
+
 export type JsonRpcId = number | string;
 
 export interface JsonRpcRequest {
