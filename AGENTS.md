@@ -245,6 +245,7 @@ nx affected:test             # 受影响项目单元测试
 ```bash
 nx run desktop:serve         # 开发模式启动
 nx run desktop:build         # 生产构建
+nx run desktop:package       # Windows 便携打包（release/oi-code-win32-x64/OI-Code.exe）
 nx affected:test             # 仅测试受影响项目
 nx run-many -t test --all    # 全量单测
 nx run desktop:e2e           # E2E 测试
