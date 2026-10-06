@@ -25,6 +25,10 @@ export interface ILogger extends IDisposable {
  * 统一日志契约：禁止 `console.*`，一律经此接口。
  */
 export interface ILogService extends IDisposable {
+  /**
+   * 注册日志落点；返回的句柄释放时会移除并释放该落点。
+   */
+  addLogger(logger: ILogger): IDisposable;
   getLevel(): LogLevel;
   setLevel(level: LogLevel): void;
   trace(message: string, ...args: unknown[]): void;
