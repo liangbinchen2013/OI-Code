@@ -103,4 +103,26 @@ describe.skipIf(!hasGpp())('ToolchainService（真实 g++ 集成）', () => {
       await rm(directory, { recursive: true, force: true });
     }
   }, 120_000);
+
+  it('自定义编译选项参与编译与实时检查', async () => {
+    const directory = await mkdtemp(join(tmpdir(), 'oi-flags-'));
+    const service = new ToolchainService(new LogService(), new MemoryConfigService(), runnerStub);
+    try {
+      await service.search();
+      await service.setCustomFlags('-DOI_CODE_FLAG');
+      const uri = URI.file(join(directory, 'Flag.cpp'));
+      const content =
+        '#ifndef OI_CODE_FLAG\n#error missing flag\n#endif\nint main() { return 0; }\n';
+
+      const result = await service.compile({ uri, content });
+      expect(result.ok).toBe(true);
+      await expect(service.check(uri, content)).resolves.toEqual([]);
+
+      await service.setCustomFlags('');
+      const diagnostics = await service.check(uri, content);
+      expect(diagnostics.length).toBeGreaterThan(0);
+    } finally {
+      await rm(directory, { recursive: true, force: true });
+    }
+  }, 120_000);
 });

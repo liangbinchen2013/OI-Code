@@ -137,6 +137,19 @@ function parseOptionalStandardParam(params: unknown): string | undefined {
   return standard;
 }
 
+const MAX_CUSTOM_FLAGS_LENGTH = 2000;
+
+function parseFlagsParam(params: unknown): string {
+  if (typeof params !== 'object' || params === null || !('flags' in params)) {
+    throw new RpcError(JSON_RPC_ERROR_CODES.invalidParams, '缺少 flags 参数');
+  }
+  const { flags } = params as { flags?: unknown };
+  if (typeof flags !== 'string' || flags.length > MAX_CUSTOM_FLAGS_LENGTH || /[\r\n]/.test(flags)) {
+    throw new RpcError(JSON_RPC_ERROR_CODES.invalidParams, 'flags 参数非法');
+  }
+  return flags;
+}
+
 function parseInterpreterPathParam(params: unknown): string {
   if (typeof params !== 'object' || params === null || !('path' in params)) {
     throw new RpcError(JSON_RPC_ERROR_CODES.invalidParams, '缺少 path 参数');
@@ -329,6 +342,9 @@ export class MainProcess implements IDisposable {
     );
     channel.registerMethod(TOOLCHAIN_RPC_METHODS.setDefaultStandard, async (params) => {
       await this._toolchainService.setDefaultStandard(parseStandardParam(params));
+    });
+    channel.registerMethod(TOOLCHAIN_RPC_METHODS.setCustomFlags, async (params) => {
+      await this._toolchainService.setCustomFlags(parseFlagsParam(params));
     });
     channel.registerMethod(TOOLCHAIN_RPC_METHODS.compile, async (params) => {
       const uri = this._authorizedUri(params);

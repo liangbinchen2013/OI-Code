@@ -3,8 +3,25 @@ import {
   compareVersions,
   executablePathFor,
   generateStandardCandidates,
+  parseCompileFlags,
   parseGppVersion,
 } from './toolchainService';
+
+describe('parseCompileFlags', () => {
+  it('按空白切分并保留引号内片段', () => {
+    expect(parseCompileFlags('-std=c++11 -Wall -O2')).toEqual(['-std=c++11', '-Wall', '-O2']);
+    expect(parseCompileFlags('  -I "C:/my includes" -DFOO=\'a b\'  ')).toEqual([
+      '-I',
+      'C:/my includes',
+      '-DFOO=a b',
+    ]);
+  });
+
+  it('空串与纯空白返回空列表', () => {
+    expect(parseCompileFlags('')).toEqual([]);
+    expect(parseCompileFlags('   \t ')).toEqual([]);
+  });
+});
 
 describe('generateStandardCandidates', () => {
   it('包含历史标准并按年份递增延伸到未来', () => {

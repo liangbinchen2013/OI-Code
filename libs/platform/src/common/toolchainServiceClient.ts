@@ -69,6 +69,10 @@ export class ToolchainServiceClient implements IToolchainServiceClient, IDisposa
     await this._channel.call(TOOLCHAIN_RPC_METHODS.setDefaultStandard, { standard });
   }
 
+  async setCustomFlags(flags: string): Promise<void> {
+    await this._channel.call(TOOLCHAIN_RPC_METHODS.setCustomFlags, { flags });
+  }
+
   async compile(request: ICompileRequest): Promise<ICompileResult> {
     const wire = await this._channel.call<ICompileResultWire>(TOOLCHAIN_RPC_METHODS.compile, {
       uri: request.uri.toString(),

@@ -18,7 +18,7 @@ import type {
   IToolchainServiceClient,
   IToolchainStatus,
 } from '@oi/platform';
-import { useCallback, useEffect, useState } from 'react';
+import { useCallback, useEffect, useRef, useState } from 'react';
 import { WORKBENCH_STRINGS } from './strings';
 
 export interface ISettingsViewProps {
@@ -51,6 +51,9 @@ export function SettingsView({
   const [cppStatus, setCppStatus] = useState<IToolchainStatus | undefined>(undefined);
   const [cppSearching, setCppSearching] = useState(false);
   const [cppProgress, setCppProgress] = useState('');
+  const [cppFlags, setCppFlags] = useState('');
+  const [flagsSaved, setFlagsSaved] = useState(false);
+  const flagsInitializedRef = useRef(false);
   const [pythonStatus, setPythonStatus] = useState<IPythonStatus | undefined>(undefined);
   const [pythonSearching, setPythonSearching] = useState(false);
   const [pythonProgress, setPythonProgress] = useState('');
@@ -113,6 +116,26 @@ export function SettingsView({
     },
     [toolchainService],
   );
+
+  // 首次拿到状态时回填自定义编译选项，之后不覆盖用户编辑
+  useEffect(() => {
+    if (!flagsInitializedRef.current && cppStatus !== undefined) {
+      flagsInitializedRef.current = true;
+      setCppFlags(cppStatus.customFlags ?? '');
+    }
+  }, [cppStatus]);
+
+  const saveCppFlags = useCallback(async (): Promise<void> => {
+    try {
+      await toolchainService.setCustomFlags(cppFlags);
+      setCppStatus((previous) =>
+        previous === undefined ? previous : { ...previous, customFlags: cppFlags.trim() },
+      );
+      setFlagsSaved(true);
+    } catch (error) {
+      onUnexpectedError(error);
+    }
+  }, [cppFlags, toolchainService]);
 
   const searchPython = useCallback(async (): Promise<void> => {
     setPythonSearching(true);
@@ -285,6 +308,36 @@ export function SettingsView({
                   ))}
                 </select>
               </div>
+              <div className="oi-settings-row oi-settings-flags">
+                <label className="oi-settings-label" htmlFor="oi-cpp-flags">
+                  {WORKBENCH_STRINGS.settingsCppFlags}
+                </label>
+                <input
+                  id="oi-cpp-flags"
+                  className="oi-input oi-flags-input"
+                  type="text"
+                  value={cppFlags}
+                  placeholder={WORKBENCH_STRINGS.settingsCppFlagsPlaceholder}
+                  onChange={(event) => {
+                    setCppFlags(event.target.value);
+                    setFlagsSaved(false);
+                  }}
+                  disabled={cppSearching}
+                />
+                <button
+                  type="button"
+                  className="oi-btn oi-btn-secondary oi-flags-save"
+                  onClick={() => void saveCppFlags()}
+                  disabled={cppSearching}
+                >
+                  <span>{WORKBENCH_STRINGS.settingsSave}</span>
+                </button>
+              </div>
+              {flagsSaved ? (
+                <p className="oi-settings-hint oi-flags-saved">
+                  {WORKBENCH_STRINGS.settingsFlagsSaved}
+                </p>
+              ) : null}
             </div>
           ) : (
             <p className="oi-settings-hint oi-cpp-not-found">

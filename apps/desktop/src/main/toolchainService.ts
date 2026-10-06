@@ -24,6 +24,7 @@ const CHECK_TIMEOUT_MS = 10_000;
 const COMPILE_TIMEOUT_MS = 60_000;
 const MAX_DIAGNOSTICS = 100;
 const PROBE_SOURCE = 'int main() { return 0; }\n';
+const MAX_CUSTOM_FLAGS_LENGTH = 2000;
 
 const BASE_STANDARDS = ['c++98', 'c++03', 'c++11', 'c++14', 'c++17', 'c++20', 'c++23'];
 const FIRST_FUTURE_STANDARD_YEAR = 26;
@@ -68,6 +69,41 @@ export function compareVersions(left: string, right: string): number {
     }
   }
   return 0;
+}
+
+/**
+ * 解析自定义编译选项：空格分隔，支持单/双引号包裹含空格的片段。
+ */
+export function parseCompileFlags(input: string): string[] {
+  const flags: string[] = [];
+  let current = '';
+  let quote: '"' | "'" | undefined;
+  for (const character of input) {
+    if (quote !== undefined) {
+      if (character === quote) {
+        quote = undefined;
+      } else {
+        current += character;
+      }
+      continue;
+    }
+    if (character === '"' || character === "'") {
+      quote = character;
+      continue;
+    }
+    if (/\s/.test(character)) {
+      if (current.length > 0) {
+        flags.push(current);
+        current = '';
+      }
+      continue;
+    }
+    current += character;
+  }
+  if (current.length > 0) {
+    flags.push(current);
+  }
+  return flags;
 }
 
 function comparePathKeys(left: string, right: string): boolean {
@@ -155,12 +191,14 @@ export class ToolchainService implements IToolchainService {
       ? cachedStandards.filter((value): value is string => typeof value === 'string')
       : [];
     const defaultStandard = await this._configService.get(CONFIG_KEYS.cppStandard);
+    const customFlags = await this._configService.get(CONFIG_KEYS.cppCustomFlags);
     return {
       found: true,
       compilerPath,
       ...(typeof compilerVersion === 'string' ? { compilerVersion } : {}),
       supportedStandards,
       ...(typeof defaultStandard === 'string' ? { defaultStandard } : {}),
+      ...(typeof customFlags === 'string' && customFlags.length > 0 ? { customFlags } : {}),
     };
   }
 
@@ -194,6 +232,16 @@ export class ToolchainService implements IToolchainService {
     await this._configService.set(CONFIG_KEYS.cppStandard, standard);
   }
 
+  async setCustomFlags(flags: string): Promise<void> {
+    if (flags.length > MAX_CUSTOM_FLAGS_LENGTH) {
+      throw new Error(`自定义编译选项过长（上限 ${MAX_CUSTOM_FLAGS_LENGTH} 字符）`);
+    }
+    if (/[\r\n]/.test(flags)) {
+      throw new Error('自定义编译选项不能包含换行');
+    }
+    await this._configService.set(CONFIG_KEYS.cppCustomFlags, flags.trim());
+  }
+
   async compile(request: ICompileRequest): Promise<ICompileResult> {
     const compilerPath = await this._ensureCompiler();
     if (compilerPath === undefined) {
@@ -216,6 +264,7 @@ export class ToolchainService implements IToolchainService {
     const temporarySource = join(directory, `${base}.oi-code-tmp.cpp`);
     const executablePath = executablePathFor(sourcePath);
     const standard = request.standard ?? status.defaultStandard ?? 'c++17';
+    const customFlags = parseCompileFlags(status.customFlags ?? '');
     const startedAt = Date.now();
 
     try {
@@ -227,6 +276,7 @@ export class ToolchainService implements IToolchainService {
           '-O2',
           '-Wall',
           '-fdiagnostics-color=never',
+          ...customFlags,
           '-o',
           executablePath,
           temporarySource,
@@ -276,10 +326,21 @@ export class ToolchainService implements IToolchainService {
     }
     const status = await this.getStatus();
     const standard = status.defaultStandard ?? 'c++17';
+    const customFlags = parseCompileFlags(status.customFlags ?? '');
     const result = await runProcess(
       compilerPath,
-      [`-std=${standard}`, '-Wall', '-fdiagnostics-color=never', '-fsyntax-only', '-x', 'c++', '-'],
+      [
+        `-std=${standard}`,
+        '-Wall',
+        '-fdiagnostics-color=never',
+        ...customFlags,
+        '-fsyntax-only',
+        '-x',
+        'c++',
+        '-',
+      ],
       {
+        cwd: dirname(uri.fsPath),
         stdin: content,
         timeoutMs: CHECK_TIMEOUT_MS,
         env: this._compilerEnvironment(compilerPath),

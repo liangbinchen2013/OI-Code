@@ -21,6 +21,8 @@ export interface IToolchainStatus {
   readonly compilerVersion?: string;
   readonly supportedStandards: readonly string[];
   readonly defaultStandard?: string;
+  /** 用户自定义编译选项原文（空格分隔，支持引号）。 */
+  readonly customFlags?: string;
 }
 
 export interface ICompileRequest {
@@ -49,6 +51,8 @@ export interface IToolchainService {
   /** 全量搜索编译器并探测标准；主进程实现可经回调上报进度。 */
   search(onProgress?: (progress: ISearchProgress) => void): Promise<IToolchainStatus>;
   setDefaultStandard(standard: string): Promise<void>;
+  /** 保存自定义编译选项（空串表示清除）；参与编译与实时检查。 */
+  setCustomFlags(flags: string): Promise<void>;
   compile(request: ICompileRequest): Promise<ICompileResult>;
   /** 运行已编译的可执行文件（源文件同目录同名 .exe）。 */
   run(uri: URI): Promise<IRunResult>;

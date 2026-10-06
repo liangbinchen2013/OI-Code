@@ -52,6 +52,7 @@ export const TOOLCHAIN_RPC_METHODS = {
   getStatus: 'toolchain.getStatus',
   search: 'toolchain.search',
   setDefaultStandard: 'toolchain.setDefaultStandard',
+  setCustomFlags: 'toolchain.setCustomFlags',
   compile: 'toolchain.compile',
   run: 'toolchain.run',
   check: 'toolchain.check',
