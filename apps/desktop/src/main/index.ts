@@ -1,16 +1,21 @@
+import { join } from 'node:path';
 import { app } from 'electron';
 import { setUnexpectedErrorHandler, toError } from '@oi/base';
 import {
+  IConfigService,
   IFileDialogService,
   IFileService,
   ILogService,
+  IRunnerService,
   InstantiationService,
   LogService,
   ServiceCollection,
+  SyncDescriptor,
 } from '@oi/platform';
-import { NodeFileService } from '@oi/platform/node';
+import { JsonConfigService, NodeFileService } from '@oi/platform/node';
 import { FileDialogService } from './fileDialogService';
 import { MainProcess } from './mainProcess';
+import { RunnerService } from './runnerService';
 
 function main(): void {
   const userDataPath = process.env['OI_CODE_USER_DATA'];
@@ -25,6 +30,14 @@ function main(): void {
 
   const services = new ServiceCollection();
   services.set(ILogService, logService);
+  services.set(
+    IConfigService,
+    new SyncDescriptor(JsonConfigService, [join(app.getPath('userData'), 'oi-code-config.json')]),
+  );
+  services.set(
+    IRunnerService,
+    new SyncDescriptor(RunnerService, [join(app.getPath('userData'), 'runner')]),
+  );
   services.set(IFileService, new NodeFileService());
   services.set(IFileDialogService, new FileDialogService());
   const instantiationService = new InstantiationService(services);
