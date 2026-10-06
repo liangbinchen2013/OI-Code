@@ -1,13 +1,5 @@
 import { join } from 'node:path';
-import {
-  BrowserWindow,
-  Menu,
-  app,
-  dialog,
-  ipcMain,
-  type IpcMainEvent,
-  type MenuItemConstructorOptions,
-} from 'electron';
+import { BrowserWindow, Menu, app, dialog, ipcMain, type IpcMainEvent } from 'electron';
 import { DisposableStore, type IDisposable, URI, onUnexpectedError, toDisposable } from '@oi/base';
 import {
   APP_RPC_ERROR_CODES,
@@ -20,9 +12,9 @@ import {
   RpcChannel,
   RpcError,
   WINDOW_RPC_NOTIFICATIONS,
-  WORKBENCH_COMMANDS,
   type IMessageTransport,
   type IOpenFileDialogOptions,
+  type ISaveFileDialogOptions,
 } from '@oi/platform';
 import { FileLogger } from '@oi/platform/node';
 import { RPC_CHANNEL_NAME } from '../common/ipc';
@@ -79,6 +71,21 @@ function parseOpenOptions(params: unknown): IOpenFileDialogOptions | undefined {
   };
 }
 
+function parseSaveOptions(params: unknown): ISaveFileDialogOptions | undefined {
+  if (typeof params !== 'object' || params === null || !('options' in params)) {
+    return undefined;
+  }
+  const { options } = params as { options: unknown };
+  if (typeof options !== 'object' || options === null) {
+    return undefined;
+  }
+  const { title, defaultPath } = options as { title?: unknown; defaultPath?: unknown };
+  return {
+    ...(typeof title === 'string' ? { title } : {}),
+    ...(typeof defaultPath === 'string' ? { defaultPath } : {}),
+  };
+}
+
 function parseFileNameParam(params: unknown): string | undefined {
   if (typeof params !== 'object' || params === null || !('fileName' in params)) {
     return undefined;
@@ -101,7 +108,6 @@ function parseDirtyParam(params: unknown): boolean | undefined {
 export class MainProcess implements IDisposable {
   private readonly _disposables = new DisposableStore();
   private readonly _fileAccess = new FileAccessGuard();
-  private readonly _channels = new Map<number, RpcChannel>();
   private readonly _dirtyWindows = new Map<number, boolean>();
   private readonly _closeConfirmedWindows = new Set<number>();
 
@@ -127,7 +133,8 @@ export class MainProcess implements IDisposable {
         this._disposables.add(
           this._logService.addLogger(new FileLogger(join(app.getPath('logs'), 'oi-code.log'))),
         );
-        this._installApplicationMenu();
+        // 移除原生菜单栏：界面完全由应用内 UI 承载（Electron 默认会挂菜单）
+        Menu.setApplicationMenu(null);
         this._openWindow();
       },
       (error: unknown) => {
@@ -167,14 +174,6 @@ export class MainProcess implements IDisposable {
 
     const channel = new RpcChannel(this._createTransport(window));
     this._disposables.add(channel);
-    this._channels.set(window.id, channel);
-    this._disposables.add(
-      toDisposable(() => {
-        if (this._channels.get(window.id) === channel) {
-          this._channels.delete(window.id);
-        }
-      }),
-    );
     this._registerMethods(channel, window);
 
     const devServerUrl = process.env['OI_CODE_DEV_SERVER_URL'];
@@ -183,79 +182,6 @@ export class MainProcess implements IDisposable {
     } else {
       void window.loadFile(join(__dirname, 'renderer', 'index.html'));
     }
-  }
-
-  private _installApplicationMenu(): void {
-    Menu.setApplicationMenu(Menu.buildFromTemplate(this._createMenuTemplate()));
-  }
-
-  /**
-   * 中文应用菜单：文件 / 编辑 / 视图 / 窗口。
-   * 打开、保存、切换主题经命令通知转发给渲染进程执行。
-   */
-  private _createMenuTemplate(): MenuItemConstructorOptions[] {
-    const sendCommand = (command: string): void => {
-      const window = BrowserWindow.getFocusedWindow() ?? BrowserWindow.getAllWindows()[0];
-      const channel = window === undefined ? undefined : this._channels.get(window.id);
-      channel?.notify(WINDOW_RPC_NOTIFICATIONS.executeCommand, { command });
-    };
-    const template: MenuItemConstructorOptions[] = [
-      {
-        label: '文件',
-        submenu: [
-          {
-            label: '打开文件…',
-            accelerator: 'CmdOrCtrl+O',
-            click: () => sendCommand(WORKBENCH_COMMANDS.openFile),
-          },
-          {
-            label: '保存',
-            accelerator: 'CmdOrCtrl+S',
-            click: () => sendCommand(WORKBENCH_COMMANDS.save),
-          },
-          { type: 'separator' },
-          { label: '退出', role: 'quit' },
-        ],
-      },
-      {
-        label: '编辑',
-        submenu: [
-          { label: '撤销', role: 'undo' },
-          { label: '重做', role: 'redo' },
-          { type: 'separator' },
-          { label: '剪切', role: 'cut' },
-          { label: '复制', role: 'copy' },
-          { label: '粘贴', role: 'paste' },
-          { label: '全选', role: 'selectAll' },
-        ],
-      },
-      {
-        label: '视图',
-        submenu: [
-          { label: '切换主题', click: () => sendCommand(WORKBENCH_COMMANDS.toggleTheme) },
-          { type: 'separator' },
-          { label: '重新加载', role: 'reload' },
-          { label: '开发者工具', role: 'toggleDevTools' },
-          { type: 'separator' },
-          { label: '重置缩放', role: 'resetZoom' },
-          { label: '放大', role: 'zoomIn' },
-          { label: '缩小', role: 'zoomOut' },
-          { type: 'separator' },
-          { label: '全屏', role: 'togglefullscreen' },
-        ],
-      },
-      {
-        label: '窗口',
-        submenu: [
-          { label: '最小化', role: 'minimize' },
-          { label: '关闭窗口', role: 'close' },
-        ],
-      },
-    ];
-    if (process.platform === 'darwin') {
-      template.unshift({ label: 'OI-Code', role: 'appMenu' });
-    }
-    return template;
   }
 
   private _registerMethods(channel: RpcChannel, window: BrowserWindow): void {
@@ -271,14 +197,39 @@ export class MainProcess implements IDisposable {
     channel.registerMethod(FILE_RPC_METHODS.exists, (params) =>
       this._fileService.exists(this._authorizedUri(params)),
     );
+    channel.registerMethod(FILE_RPC_METHODS.readDirectory, async (params) => {
+      const entries = await this._fileService.readDirectory(this._authorizedUri(params));
+      // URI 转为字符串后才能安全穿越 IPC 结构化克隆
+      return entries.map((entry) => ({
+        name: entry.name,
+        kind: entry.kind,
+        uri: entry.uri.toString(),
+      }));
+    });
 
+    // 对话框是唯一授权入口：选中即加入白名单
     channel.registerMethod(DIALOG_RPC_METHODS.showOpenFile, async (params) => {
       const uri = await this._fileDialogService.showOpenFile(parseOpenOptions(params));
       if (!uri) {
         return undefined;
       }
-      // 对话框是唯一授权入口：选中即加入白名单
-      this._fileAccess.allow(uri.fsPath);
+      this._fileAccess.allowPath(uri.fsPath);
+      return uri.toString();
+    });
+    channel.registerMethod(DIALOG_RPC_METHODS.showOpenFolder, async (params) => {
+      const uri = await this._fileDialogService.showOpenFolder(parseOpenOptions(params));
+      if (!uri) {
+        return undefined;
+      }
+      this._fileAccess.allowDirectory(uri.fsPath);
+      return uri.toString();
+    });
+    channel.registerMethod(DIALOG_RPC_METHODS.showSaveFile, async (params) => {
+      const uri = await this._fileDialogService.showSaveFile(parseSaveOptions(params));
+      if (!uri) {
+        return undefined;
+      }
+      this._fileAccess.allowPath(uri.fsPath);
       return uri.toString();
     });
     channel.registerMethod(DIALOG_RPC_METHODS.confirmDiscardChanges, (params) =>

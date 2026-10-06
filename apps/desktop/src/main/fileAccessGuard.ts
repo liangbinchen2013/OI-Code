@@ -1,22 +1,36 @@
 import { resolve } from 'node:path';
 
 function normalizePath(path: string): string {
-  const unified = resolve(path).replace(/\\/g, '/');
+  const unified = resolve(path).replace(/\\/g, '/').replace(/\/+$/, '');
   return process.platform === 'win32' ? unified.toLowerCase() : unified;
 }
 
 /**
- * 文件访问白名单：只有用户经系统对话框主动选择过的路径才允许读写，
- * 防止渲染进程（或注入脚本）读写任意文件。
+ * 文件访问白名单：只有用户经系统对话框主动选择的文件/文件夹才允许访问。
+ * 授权文件夹后，其整个子树自动纳入白名单；路径比较按平台规范化。
  */
 export class FileAccessGuard {
-  private readonly _allowed = new Set<string>();
+  private readonly _allowedPaths = new Set<string>();
+  private readonly _allowedRoots = new Set<string>();
 
-  allow(fsPath: string): void {
-    this._allowed.add(normalizePath(fsPath));
+  allowPath(fsPath: string): void {
+    this._allowedPaths.add(normalizePath(fsPath));
+  }
+
+  allowDirectory(fsPath: string): void {
+    this._allowedRoots.add(normalizePath(fsPath));
   }
 
   isAllowed(fsPath: string): boolean {
-    return this._allowed.has(normalizePath(fsPath));
+    const normalized = normalizePath(fsPath);
+    if (this._allowedPaths.has(normalized)) {
+      return true;
+    }
+    for (const root of this._allowedRoots) {
+      if (normalized === root || normalized.startsWith(`${root}/`)) {
+        return true;
+      }
+    }
+    return false;
   }
 }

@@ -1,6 +1,16 @@
-import { BrowserWindow, dialog, type MessageBoxOptions, type OpenDialogOptions } from 'electron';
+import {
+  BrowserWindow,
+  dialog,
+  type MessageBoxOptions,
+  type OpenDialogOptions,
+  type SaveDialogOptions,
+} from 'electron';
 import { URI } from '@oi/base';
-import type { IFileDialogService, IOpenFileDialogOptions } from '@oi/platform';
+import type {
+  IFileDialogService,
+  IOpenFileDialogOptions,
+  ISaveFileDialogOptions,
+} from '@oi/platform';
 
 /**
  * Electron 原生对话框实现（Code 层装配）：对话框是获得文件访问授权的唯一入口。
@@ -24,6 +34,37 @@ export class FileDialogService implements IFileDialogService {
     }
     const selected = result.filePaths[0];
     return selected === undefined ? undefined : URI.file(selected);
+  }
+
+  async showOpenFolder(options?: IOpenFileDialogOptions): Promise<URI | undefined> {
+    const window = BrowserWindow.getFocusedWindow() ?? BrowserWindow.getAllWindows()[0];
+    const dialogOptions: OpenDialogOptions = {
+      ...(options?.title === undefined ? {} : { title: options.title }),
+      properties: ['openDirectory'],
+    };
+    const result = window
+      ? await dialog.showOpenDialog(window, dialogOptions)
+      : await dialog.showOpenDialog(dialogOptions);
+    if (result.canceled || result.filePaths.length === 0) {
+      return undefined;
+    }
+    const selected = result.filePaths[0];
+    return selected === undefined ? undefined : URI.file(selected);
+  }
+
+  async showSaveFile(options?: ISaveFileDialogOptions): Promise<URI | undefined> {
+    const window = BrowserWindow.getFocusedWindow() ?? BrowserWindow.getAllWindows()[0];
+    const dialogOptions: SaveDialogOptions = {
+      ...(options?.title === undefined ? {} : { title: options.title }),
+      ...(options?.defaultPath === undefined ? {} : { defaultPath: options.defaultPath }),
+    };
+    const result = window
+      ? await dialog.showSaveDialog(window, dialogOptions)
+      : await dialog.showSaveDialog(dialogOptions);
+    if (result.canceled || result.filePath === undefined || result.filePath.length === 0) {
+      return undefined;
+    }
+    return URI.file(result.filePath);
   }
 
   async confirmDiscardChanges(fileName?: string): Promise<boolean> {
