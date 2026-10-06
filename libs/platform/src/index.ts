@@ -1,4 +1,6 @@
 export * from './common/dialog';
+export * from './common/fileDialogServiceClient';
+export * from './common/fileServiceClient';
 export * from './common/fs';
 export * from './common/instantiation';
 export * from './common/instantiationService';
