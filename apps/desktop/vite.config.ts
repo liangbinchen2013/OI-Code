@@ -6,7 +6,7 @@ import { defineConfig, type Plugin } from 'vite';
 const appRoot = dirname(fileURLToPath(import.meta.url));
 
 const PRODUCTION_CSP =
-  "default-src 'self'; script-src 'self'; style-src 'self' 'unsafe-inline'; img-src 'self' data:; font-src 'self' data:";
+  "default-src 'self'; script-src 'self'; style-src 'self' 'unsafe-inline'; img-src 'self' data:; font-src 'self' data:; worker-src 'self' blob:";
 
 // 开发模式的 React 插件会注入内联脚本，严格 CSP 只对构建产物生效
 function productionCspPlugin(): Plugin {
