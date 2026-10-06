@@ -39,10 +39,12 @@
 
 | ☐ | 依赖 | 用途 | 安装命令 |
 |---|------|------|----------|
-| ☐ | `make` | 通用 make 命令（已有 ninja / mingw32-make 可替代） | `C:\msys64\usr\bin\pacman.exe -S make` |
-| ☐ | VS Code · Nx Console | Nx 任务可视化 | `code --install-extension nrwl.angular-console` |
+| ☐ | 无 | — | 当前无必需待装项 |
 
-已装 VS Code 扩展：`dbaeumer.vscode-eslint`、`esbenp.prettier-vscode`、cpptools、Python。
+已装 VS Code 扩展：`dbaeumer.vscode-eslint`、`esbenp.prettier-vscode`、`nrwl.angular-console`（Nx Console）、cpptools、Python。
+
+**`make`**：ucrt64 仓库的 `mingw-w64-ucrt-x86_64-make` 只提供 `mingw32-make.exe`，原生 `make.exe` 仅在 msys 环境（`C:\msys64\usr\bin`，不在 PATH）。
+已在 PATH 内创建 shim `C:\msys64\ucrt64\bin\make.cmd` → 转发到 `C:\msys64\usr\bin\make.exe`，实测 `make --version` = GNU Make 4.4.1；`ninja` / `mingw32-make` 不受影响。
 
 不适用、**无需安装**：`valgrind`、`perf`（Windows 平台不可用）。
 
@@ -61,6 +63,7 @@
 | | `prettier` | 3.9.9 |
 | | `husky` / `lint-staged` | 9.1.7 / 17.6.0 |
 | Monorepo/构建 | `nx` `@nx/js` `@nx/eslint` `@nx/vite` | 23.2.1 |
+| | `nx-electron` | 22.0.0（社区 Electron 插件，替代 404 的 `@nx/electron`） |
 | | `vite` / `esbuild` | 8.3.2 / 0.28.2 |
 | 桌面 | `electron` | 44.5.1（二进制已下载） |
 | 编辑器/UI | `monaco-editor` | 0.57.0 |
@@ -73,12 +76,15 @@
 
 | ☐ | 依赖 | 说明 |
 |---|------|------|
-| ☐ | `@nx/electron` | **npm 返回 404，该包不存在**（`nx`/`@nx/js` 均为 23.2.1 正常）。备选社区插件 `nx-electron@22.0.0`，是否采用**待人类决策**（AGENTS.md §1 技术栈不可擅自替换） |
 | ☐ | `eslint.config.js` / `tsconfig.json` / `nx.json` / `.husky/` | 配置文件尚未创建，`pnpm lint` 等脚本在阶段 1 建仓时补齐 |
+
+> **`@nx/electron` 决策记录**：官方包 npm 404 → 经人类确认采用社区插件 `nx-electron@22.0.0`。
+> 该包 peer 要求 `@nx/devkit|@nx/workspace ^22`，pnpm 自动装入嵌套 `nx@22.7.12`，故当前 **存在 2 个 nx 版本**（根 23.2.1 / 嵌套 22.7.12）。
+> `pnpm peers check` 无冲突；若后续 executor 报兼容问题，可将根 `nx` 降至 22.x 对齐。
 
 ### 3. 关键配置
 
-- **构建脚本白名单**：`pnpm-workspace.yaml` 中 `allowBuilds: {electron, esbuild, nx}`。
+- **构建脚本白名单**：`pnpm-workspace.yaml` 中 `allowBuilds: {electron, electron-winstaller, esbuild, nx}`。
   pnpm 11+ 已废弃 `package.json` 的 `pnpm.onlyBuiltDependencies`，改用 `allowBuilds`，否则安装报 `ERR_PNPM_IGNORED_BUILDS`。
 - **peer 约束**：`@nx/vitest@23` 要求 `vitest ^3 || ^4`，故 vitest 固定在 4.x（5.x 会产生 peer 冲突）。
 

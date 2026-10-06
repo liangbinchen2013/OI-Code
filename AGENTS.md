@@ -235,6 +235,8 @@ nx affected:test             # 受影响项目单元测试
 
 ## 9. 常用命令
 
+> 以下命令在阶段 1（Monorepo 脚手架）完成后方可执行；当前仅依赖安装类命令（`pnpm install` 等）可用。
+
 ```bash
 nx run desktop:serve         # 开发模式启动
 nx run desktop:build         # 生产构建
