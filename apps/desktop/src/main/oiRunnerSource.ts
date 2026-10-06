@@ -195,7 +195,6 @@ int wmain(int argc, wchar_t** argv) {
 
     ensureConsole();
     SetConsoleTitleW((displayName + L" - OI-Code").c_str());
-    printLine(L"正在运行 " + displayName + L" ...");
 
     std::wstring commandLine = quoteArgument(executable);
     for (int index = 3; index < argc; ++index) {
