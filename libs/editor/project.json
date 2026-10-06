@@ -1,0 +1,14 @@
+{
+  "$schema": "../../node_modules/nx/schemas/project-schema.json",
+  "name": "editor",
+  "sourceRoot": "libs/editor/src",
+  "projectType": "library",
+  "targets": {
+    "typecheck": {
+      "executor": "nx:run-commands",
+      "options": {
+        "command": "tsc -p {projectRoot}/tsconfig.json --noEmit"
+      }
+    }
+  }
+}

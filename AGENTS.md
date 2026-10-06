@@ -34,6 +34,7 @@ Code → Workbench → Editor → Platform → Base
 - **Editor**：仅依赖 Base + Platform。Monaco 集成、语言服务。
 - **Workbench**：仅依赖 Base + Platform + Editor。UI、贡献点、扩展宿主。
 - **Code**：唯一入口层。Electron 主进程、CLI、Server。
+- **Extensions**（`libs/extensions/*`）：仅依赖 Base + Platform。扩展在 Extension Host 运行；编辑器、工作台能力须经 Platform 层契约暴露后方可使用。
 
 **禁止反向依赖。** 任何 import 越层，`npm run valid-layers-check` 必须报错。
 
@@ -68,6 +69,7 @@ libs/workbench/     # UI 组件 + 功能贡献
 libs/extensions/    # 内置扩展（cpp / python / oi-tools / markdown-latex）
 apps/desktop/       # Electron 入口
 tools/generators/   # 代码生成器
+tools/scripts/      # 仓库级校验与构建脚本
 .agents/            # 子代理：定义文件 *.md + 同名目录的说明文档 <name>/README.md
 ```
 
