@@ -22,11 +22,14 @@ import type {
   IToolchainServiceClient,
 } from '@oi/platform';
 import { useCallback, useEffect, useRef, useState } from 'react';
+import type { PointerEvent as ReactPointerEvent } from 'react';
 import { createRoot } from 'react-dom/client';
+import { ActivityBar, type ActivityView } from './activityBar';
 import { EditorPane, type IEditorPaneHandle } from './editorPane';
+import { clampSidebarWidth, persistSidebarWidth, readStoredSidebarWidth } from './layout';
 import { ProblemsPanel, type IProblemItem } from './problemsPanel';
 import { SettingsView } from './settingsView';
-import { Sidebar } from './sidebar';
+import { ExplorerPanel } from './sidebar';
 import { WORKBENCH_STRINGS } from './strings';
 import { TabBar } from './tabBar';
 import { applyTheme, persistTheme, readStoredTheme, resolveInitialTheme } from './theme';
@@ -51,7 +54,6 @@ export interface IWorkbenchOptions {
   readonly onDirtyStateChange?: (dirty: boolean) => void;
 }
 
-type WorkbenchView = 'editor' | 'settings';
 type WorkbenchStatus =
   | 'idle'
   | 'saving'
@@ -132,7 +134,9 @@ function Workbench({ services, initialTheme, onDirtyStateChange }: IWorkbenchPro
   const [activeTabId, setActiveTabId] = useState<string | undefined>(undefined);
   const [rootUri, setRootUri] = useState<URI | undefined>(undefined);
   const [treeVersion, setTreeVersion] = useState(0);
-  const [view, setView] = useState<WorkbenchView>('editor');
+  const [activityView, setActivityView] = useState<ActivityView>('explorer');
+  const [sidebarWidth, setSidebarWidth] = useState(() => readStoredSidebarWidth());
+  const sidebarWidthRef = useRef(sidebarWidth);
   const [theme, setTheme] = useState<ThemeKind>(initialTheme);
   const [status, setStatus] = useState<WorkbenchStatus>('idle');
   const [statusDetail, setStatusDetail] = useState<string | undefined>(undefined);
@@ -164,6 +168,10 @@ function Workbench({ services, initialTheme, onDirtyStateChange }: IWorkbenchPro
   useEffect(() => {
     activeTabIdRef.current = activeTabId;
   }, [activeTabId]);
+
+  useEffect(() => {
+    sidebarWidthRef.current = sidebarWidth;
+  }, [sidebarWidth]);
 
   useEffect(() => {
     applyTheme(theme);
@@ -217,7 +225,6 @@ function Workbench({ services, initialTheme, onDirtyStateChange }: IWorkbenchPro
     if (tab) {
       editorPaneRef.current?.setActiveDocument(tab.uri);
     }
-    setView('editor');
   }, []);
 
   const openUri = useCallback(
@@ -240,7 +247,6 @@ function Workbench({ services, initialTheme, onDirtyStateChange }: IWorkbenchPro
         };
         setTabs((previous) => [...previous, tab]);
         setActiveTabId(tab.id);
-        setView('editor');
         setStatus('idle');
         scheduleCheckRef.current(tab, 0);
       } catch (error) {
@@ -267,7 +273,6 @@ function Workbench({ services, initialTheme, onDirtyStateChange }: IWorkbenchPro
     if (uri) {
       setRootUri(uri);
       setTreeVersion((version) => version + 1);
-      setView('editor');
     }
   }, [services.fileDialogService]);
 
@@ -279,7 +284,6 @@ function Workbench({ services, initialTheme, onDirtyStateChange }: IWorkbenchPro
     const tab: ITabState = { id: uri.toString(), uri, name, untitled: true, dirty: false };
     setTabs((previous) => [...previous, tab]);
     setActiveTabId(tab.id);
-    setView('editor');
   }, []);
 
   const closeTab = useCallback(
@@ -729,6 +733,31 @@ function Workbench({ services, initialTheme, onDirtyStateChange }: IWorkbenchPro
   const activeTab = tabs.find((tab) => tab.id === activeTabId);
   const statusPresentation = status === 'idle' ? undefined : STATUS_PRESENTATION[status];
 
+  const beginResize = useCallback(
+    (event: ReactPointerEvent<HTMLDivElement>): void => {
+      event.preventDefault();
+      const startX = event.clientX;
+      const startWidth = sidebarWidthRef.current;
+      const onMove = (moveEvent: PointerEvent): void => {
+        setSidebarWidth(clampSidebarWidth(startWidth + moveEvent.clientX - startX));
+      };
+      const removeMove = toDisposable(() => window.removeEventListener('pointermove', onMove));
+      const removeUp = toDisposable(() => window.removeEventListener('pointerup', onUp));
+      const onUp = (): void => {
+        removeMove.dispose();
+        removeUp.dispose();
+        store.delete(removeMove);
+        store.delete(removeUp);
+        persistSidebarWidth(sidebarWidthRef.current);
+      };
+      window.addEventListener('pointermove', onMove);
+      window.addEventListener('pointerup', onUp);
+      store.add(removeMove);
+      store.add(removeUp);
+    },
+    [store],
+  );
+
   return (
     <div className="oi-workbench">
       <TabBar
@@ -747,15 +776,37 @@ function Workbench({ services, initialTheme, onDirtyStateChange }: IWorkbenchPro
         onToggleProblems={() => setProblemsOpen((open) => !open)}
       />
       <div className="oi-body">
-        <Sidebar
-          rootUri={rootUri}
-          treeVersion={treeVersion}
-          fileService={services.fileService}
-          settingsActive={view === 'settings'}
-          onOpenFile={(uri) => void openUri(uri)}
-          onOpenFolder={() => void openFolderRef.current()}
-          onRefresh={() => setTreeVersion((version) => version + 1)}
-          onOpenSettings={() => setView('settings')}
+        <ActivityBar activeView={activityView} onSelect={setActivityView} />
+        <div className="oi-sidebar" style={{ width: sidebarWidth }}>
+          <div className="oi-sidebar-panels">
+            <ExplorerPanel
+              rootUri={rootUri}
+              treeVersion={treeVersion}
+              fileService={services.fileService}
+              hidden={activityView !== 'explorer'}
+              onOpenFile={(uri) => void openUri(uri)}
+              onOpenFolder={() => void openFolderRef.current()}
+              onRefresh={() => setTreeVersion((version) => version + 1)}
+            />
+            <SettingsView
+              theme={theme}
+              canSave={activeTab !== undefined}
+              hidden={activityView !== 'settings'}
+              onToggleTheme={toggleTheme}
+              onOpenFile={() => void openFileRef.current()}
+              onOpenFolder={() => void openFolderRef.current()}
+              onSave={() => void saveRef.current()}
+              toolchainService={services.toolchainService}
+              pythonService={services.pythonService}
+            />
+          </div>
+        </div>
+        <div
+          className="oi-resize-handle"
+          role="separator"
+          aria-orientation="vertical"
+          aria-label={WORKBENCH_STRINGS.resizeSidebar}
+          onPointerDown={beginResize}
         />
         <main className="oi-main">
           <EditorPane
@@ -764,19 +815,7 @@ function Workbench({ services, initialTheme, onDirtyStateChange }: IWorkbenchPro
             onDidChangeContent={handleContentChange}
             onSaveRequested={() => void saveRef.current()}
           />
-          {view === 'settings' ? (
-            <SettingsView
-              theme={theme}
-              canSave={activeTab !== undefined}
-              onToggleTheme={toggleTheme}
-              onOpenFile={() => void openFileRef.current()}
-              onOpenFolder={() => void openFolderRef.current()}
-              onSave={() => void saveRef.current()}
-              toolchainService={services.toolchainService}
-              pythonService={services.pythonService}
-            />
-          ) : null}
-          {view === 'editor' && tabs.length === 0 ? (
+          {tabs.length === 0 ? (
             <div className="oi-empty-state">
               <h1 className="oi-empty-title">{WORKBENCH_STRINGS.emptyTitle}</h1>
               <p className="oi-empty-hint">{WORKBENCH_STRINGS.emptyHint}</p>
@@ -800,7 +839,7 @@ function Workbench({ services, initialTheme, onDirtyStateChange }: IWorkbenchPro
               </div>
             </div>
           ) : null}
-          {view === 'editor' && problemsOpen ? (
+          {problemsOpen ? (
             <ProblemsPanel
               problems={problems}
               onSelect={(problem) => void gotoProblem(problem)}

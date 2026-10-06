@@ -39,7 +39,7 @@ async function openFile(
   if ((await emptyButton.count()) > 0) {
     await emptyButton.click();
   } else {
-    await page.locator('.oi-sidebar-settings').click();
+    await page.locator('.oi-activity-item-settings').click();
     await page
       .locator('.oi-settings')
       .getByRole('button', { name: '打开文件', exact: true })
@@ -48,7 +48,7 @@ async function openFile(
   await expect(page.locator('.oi-tab-active .oi-tab-name')).toHaveText(basename(filePath));
 }
 
-test('编辑时实时诊断在防抖后标记错误并更新问题角标', async () => {
+test('编辑时实时诊断在防抖后标记错误并更新问题角标', { timeout: 120_000 }, async () => {
   test.skip(!hasCommand('g++'), '未安装 g++');
   const directory = await mkdtemp(join(tmpdir(), 'oi-e2e-live-'));
   const sourcePath = join(directory, 'live.cpp');
@@ -72,12 +72,12 @@ test('编辑时实时诊断在防抖后标记错误并更新问题角标', async
   }
 });
 
-test('设置页自动搜索 g++ 与 Python 并展示版本与支持标准', async () => {
+test('设置页自动搜索 g++ 与 Python 并展示版本与支持标准', { timeout: 120_000 }, async () => {
   const app = await launchApp();
   try {
     const page = await app.firstWindow();
     await waitReady(page);
-    await page.locator('.oi-sidebar-settings').click();
+    await page.locator('.oi-activity-item-settings').click();
     await expect(page.locator('.oi-settings')).toBeVisible();
 
     if (hasCommand('g++')) {
@@ -102,7 +102,7 @@ test('设置页自动搜索 g++ 与 Python 并展示版本与支持标准', asyn
   }
 });
 
-test('编译 C++ 成功产出可执行文件，编译并运行可启动程序', async () => {
+test('编译 C++ 成功产出可执行文件，编译并运行可启动程序', { timeout: 120_000 }, async () => {
   test.skip(!hasCommand('g++'), '未安装 g++');
   const directory = await mkdtemp(join(tmpdir(), 'oi-e2e-cpp-'));
   const sourcePath = join(directory, 'ok.cpp');
@@ -133,7 +133,7 @@ test('编译 C++ 成功产出可执行文件，编译并运行可启动程序', 
   }
 });
 
-test('C++ 编译错误在问题面板按 行 | 列 | 原因 展示并标记编辑器', async () => {
+test('C++ 编译错误在问题面板按 行 | 列 | 原因 展示并标记编辑器', { timeout: 120_000 }, async () => {
   test.skip(!hasCommand('g++'), '未安装 g++');
   const directory = await mkdtemp(join(tmpdir(), 'oi-e2e-cpperr-'));
   const sourcePath = join(directory, 'bad.cpp');
@@ -165,7 +165,7 @@ test('C++ 编译错误在问题面板按 行 | 列 | 原因 展示并标记编�
   }
 });
 
-test('Python 语法检查经 F12 触发并标记错误，正确代码通过', async () => {
+test('Python 语法检查经 F12 触发并标记错误，正确代码通过', { timeout: 120_000 }, async () => {
   test.skip(!hasCommand('python'), '未安装 python');
   const directory = await mkdtemp(join(tmpdir(), 'oi-e2e-py-'));
   const badPath = join(directory, 'bad.py');

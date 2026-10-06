@@ -2,13 +2,7 @@ import { onUnexpectedError } from '@oi/base';
 import type { URI } from '@oi/base';
 import type { IFileService, IFileSystemEntry } from '@oi/platform';
 import { FontAwesomeIcon } from '@fortawesome/react-fontawesome';
-import {
-  faFileLines,
-  faFolder,
-  faFolderOpen,
-  faGear,
-  faRotate,
-} from '@fortawesome/free-solid-svg-icons';
+import { faFileLines, faFolder, faFolderOpen, faRotate } from '@fortawesome/free-solid-svg-icons';
 import { useCallback, useEffect, useState } from 'react';
 import { WORKBENCH_STRINGS } from './strings';
 
@@ -75,30 +69,28 @@ function TreeNode({ entry, depth, fileService, onOpenFile }: ITreeNodeProps) {
   );
 }
 
-export interface ISidebarProps {
+export interface IExplorerPanelProps {
   readonly rootUri: URI | undefined;
   readonly treeVersion: number;
   readonly fileService: IFileService;
-  readonly settingsActive: boolean;
+  readonly hidden?: boolean;
   readonly onOpenFile: (uri: URI) => void;
   readonly onOpenFolder: () => void;
   readonly onRefresh: () => void;
-  readonly onOpenSettings: () => void;
 }
 
 /**
- * 左侧资源管理器：目录树 + 打开文件夹 + 底部设置入口。
+ * 资源管理器面板：目录树 + 打开文件夹 + 刷新（属于侧边栏二级视图）。
  */
-export function Sidebar({
+export function ExplorerPanel({
   rootUri,
   treeVersion,
   fileService,
-  settingsActive,
+  hidden,
   onOpenFile,
   onOpenFolder,
   onRefresh,
-  onOpenSettings,
-}: ISidebarProps) {
+}: IExplorerPanelProps) {
   const [rootEntries, setRootEntries] = useState<readonly IFileSystemEntry[]>([]);
   const [rootExpanded, setRootExpanded] = useState(true);
 
@@ -126,7 +118,11 @@ export function Sidebar({
   const rootName = rootUri?.path.split('/').pop();
 
   return (
-    <aside className="oi-sidebar">
+    <section
+      className="oi-panel oi-explorer"
+      hidden={hidden}
+      aria-label={WORKBENCH_STRINGS.explorer}
+    >
       <div className="oi-sidebar-header">
         <span className="oi-sidebar-title">{WORKBENCH_STRINGS.explorer}</span>
         <span className="oi-sidebar-actions">
@@ -181,16 +177,6 @@ export function Sidebar({
           </>
         )}
       </div>
-      <div className="oi-sidebar-footer">
-        <button
-          type="button"
-          className={`oi-sidebar-settings${settingsActive ? ' oi-sidebar-settings-active' : ''}`}
-          onClick={onOpenSettings}
-        >
-          <FontAwesomeIcon icon={faGear} aria-hidden="true" />
-          <span>{WORKBENCH_STRINGS.settings}</span>
-        </button>
-      </div>
-    </aside>
+    </section>
   );
 }

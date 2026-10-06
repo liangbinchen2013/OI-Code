@@ -230,13 +230,103 @@ body {
   min-height: 0;
 }
 
+/* 活动栏：侧边栏一级导航（双层侧边栏的第一层） */
+.oi-activitybar {
+  display: flex;
+  flex: none;
+  flex-direction: column;
+  width: 48px;
+  padding: 6px 0;
+  border-right: 1px solid var(--border);
+  background: var(--card-bg);
+}
+
+.oi-activitybar-top {
+  display: flex;
+  flex: 1;
+  flex-direction: column;
+  gap: 2px;
+}
+
+.oi-activity-item {
+  position: relative;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 48px;
+  height: 44px;
+  border: 0;
+  border-left: 2px solid transparent;
+  background: transparent;
+  color: var(--muted);
+  font-size: 18px;
+  cursor: pointer;
+  transition:
+    color 0.2s,
+    background 0.2s;
+}
+
+.oi-activity-item::after {
+  content: '';
+  position: absolute;
+  inset: -2px;
+}
+
+.oi-activity-item:hover {
+  color: var(--text);
+  background: var(--btn-hover);
+}
+
+.oi-activity-item:focus-visible {
+  outline: 2px solid var(--glow-ring);
+  outline-offset: -2px;
+}
+
+.oi-activity-item-active {
+  border-left-color: var(--link);
+  color: var(--link);
+}
+
+/* 侧边栏：宽度可拖拽（inline style），内部承载二级面板 */
 .oi-sidebar {
   display: flex;
   flex: none;
   flex-direction: column;
-  width: 232px;
+  min-width: 0;
   border-right: 1px solid var(--border);
   background: var(--card-bg);
+}
+
+.oi-sidebar-panels {
+  display: flex;
+  flex: 1;
+  min-height: 0;
+}
+
+.oi-panel {
+  display: flex;
+  flex: 1;
+  flex-direction: column;
+  min-height: 0;
+}
+
+.oi-sidebar-panels > [hidden] {
+  display: none !important;
+}
+
+/* 拖拽手柄：拖拽中全窗口覆盖光标由 body 类承担 */
+.oi-resize-handle {
+  flex: none;
+  width: 5px;
+  margin-right: -3px;
+  cursor: col-resize;
+  background: transparent;
+  transition: background 0.15s;
+}
+
+.oi-resize-handle:hover,
+.oi-resize-handle:active {
+  background: var(--glow-soft);
 }
 
 .oi-sidebar-header {
@@ -402,32 +492,32 @@ body {
   }
 }
 
-/* 设置页：居中内容卡片（UI_DESIGN §3 内容页） */
+/* 设置面板：侧边栏竖排内容（不再是主区覆盖页） */
 .oi-settings {
-  position: absolute;
-  inset: 0;
+  flex: 1;
+  min-height: 0;
   overflow: auto;
-  padding: 32px 24px;
-  background: var(--bg);
+  padding: 12px;
 }
 
 .oi-settings-card {
-  max-width: 920px;
-  margin: 0 auto;
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
 }
 
 .oi-settings-title {
-  margin: 0 0 24px;
-  font-size: 25px;
+  margin: 0;
+  font-size: 18px;
   font-weight: 700;
 }
 
 .oi-settings-section {
-  margin-bottom: 20px;
-  padding: 16px;
+  margin-bottom: 0;
+  padding: 12px;
   border: 1px solid var(--card-border);
   border-radius: var(--radius-card);
-  background: var(--card-bg);
+  background: var(--bg);
 }
 
 .oi-settings-section-title {
@@ -459,7 +549,8 @@ body {
 
 .oi-settings-row {
   display: flex;
-  gap: 12px;
+  flex-wrap: wrap;
+  gap: 8px 12px;
   align-items: baseline;
   font-size: 13px;
 }
@@ -479,6 +570,20 @@ body {
 .oi-search-progress {
   color: var(--muted);
   font-size: 13px;
+}
+
+.oi-settings-flags {
+  align-items: center;
+}
+
+.oi-flags-input {
+  flex: 1;
+  min-width: 0;
+}
+
+.oi-flags-save {
+  flex: none;
+  height: 32px;
 }
 
 .oi-chip-list {
@@ -587,9 +692,9 @@ body {
 
 .oi-pip-form {
   display: flex;
-  flex-wrap: wrap;
-  gap: 12px;
-  align-items: flex-end;
+  flex-direction: column;
+  gap: 10px;
+  align-items: stretch;
   margin-top: 4px;
 }
 
@@ -602,7 +707,8 @@ body {
 
 .oi-input {
   height: 32px;
-  min-width: 180px;
+  width: 100%;
+  min-width: 0;
   padding: 0 10px;
   border: 1px solid var(--border);
   border-radius: 8px;

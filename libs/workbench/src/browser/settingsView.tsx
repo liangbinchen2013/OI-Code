@@ -24,6 +24,7 @@ import { WORKBENCH_STRINGS } from './strings';
 export interface ISettingsViewProps {
   readonly theme: ThemeKind;
   readonly canSave: boolean;
+  readonly hidden?: boolean;
   readonly onToggleTheme: () => void;
   readonly onOpenFile: () => void;
   readonly onOpenFolder: () => void;
@@ -41,6 +42,7 @@ const PIP_LOG_LIMIT = 200;
 export function SettingsView({
   theme,
   canSave,
+  hidden,
   onToggleTheme,
   onOpenFile,
   onOpenFolder,
@@ -189,7 +191,7 @@ export function SettingsView({
   );
 
   return (
-    <div className="oi-settings">
+    <div className="oi-settings" hidden={hidden}>
       <div className="oi-settings-card">
         <h1 className="oi-settings-title">{WORKBENCH_STRINGS.settings}</h1>
 

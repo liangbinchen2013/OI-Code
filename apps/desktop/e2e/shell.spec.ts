@@ -23,7 +23,7 @@ test('主题切换生效并在刷新后保持', async () => {
     const before = await page.locator('html').getAttribute('data-theme');
     const expected = before === 'dark' ? 'light' : 'dark';
 
-    await page.locator('.oi-sidebar-settings').click();
+    await page.locator('.oi-activity-item-settings').click();
     await expect(page.locator('.oi-settings')).toBeVisible();
     await page.locator('.oi-theme-toggle').click();
     await expect(page.locator('html')).toHaveAttribute('data-theme', expected);

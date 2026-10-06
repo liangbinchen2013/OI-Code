@@ -76,4 +76,5 @@ export const WORKBENCH_STRINGS = {
   settingsPipInstall: '安装',
   settingsPipInstalling: '安装中…',
   settingsPipLog: '安装输出',
+  resizeSidebar: '调整侧边栏宽度',
 } as const;

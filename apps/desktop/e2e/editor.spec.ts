@@ -56,7 +56,7 @@ test('打开 C++ 文件、高亮、编辑并保存', async () => {
 
     // 同一会话再开 Python 文件（经设置页入口），全量语言注册后直接命中高亮
     await mockOpenFileDialog(app, pythonPath);
-    await page.locator('.oi-sidebar-settings').click();
+    await page.locator('.oi-activity-item-settings').click();
     await page
       .locator('.oi-settings')
       .getByRole('button', { name: '打开文件', exact: true })
