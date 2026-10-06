@@ -7,6 +7,7 @@ import {
   JSON_RPC_VERSION,
   RpcError,
   WINDOW_RPC_NOTIFICATIONS,
+  WORKBENCH_COMMANDS,
   isJsonRpcNotification,
   isJsonRpcRequest,
   isJsonRpcResponse,
@@ -52,6 +53,7 @@ describe('JSON-RPC 协议校验', () => {
       ...Object.values(FILE_RPC_METHODS),
       ...Object.values(DIALOG_RPC_METHODS),
       ...Object.values(WINDOW_RPC_NOTIFICATIONS),
+      ...Object.values(WORKBENCH_COMMANDS),
     ];
 
     expect(new Set(methodNames).size).toBe(methodNames.length);
