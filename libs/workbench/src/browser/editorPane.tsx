@@ -1,7 +1,7 @@
 import { DisposableStore } from '@oi/base';
 import type { URI } from '@oi/base';
 import type { ILanguageService } from '@oi/editor';
-import { createCodeEditor, type ICodeEditorHost } from '@oi/editor/browser';
+import { createCodeEditor, type ICodeEditorHost, type IEditorMarker } from '@oi/editor/browser';
 import { type Ref, useEffect, useImperativeHandle, useRef, useState } from 'react';
 
 /**
@@ -14,6 +14,8 @@ export interface IEditorPaneHandle {
   setActiveDocument(uri: URI | undefined): void;
   getValue(uri: URI): string;
   hasDocument(uri: URI): boolean;
+  setMarkers(uri: URI, markers: readonly IEditorMarker[]): void;
+  revealPosition(uri: URI, line: number, column: number): void;
 }
 
 export interface IEditorPaneProps {
@@ -87,6 +89,12 @@ export function EditorPane({
       },
       getValue: (uri: URI): string => editor?.getValue(uri) ?? '',
       hasDocument: (uri: URI): boolean => editor?.hasDocument(uri) ?? false,
+      setMarkers: (uri: URI, markers: readonly IEditorMarker[]): void => {
+        editor?.setMarkers(uri, markers);
+      },
+      revealPosition: (uri: URI, line: number, column: number): void => {
+        editor?.revealPosition(uri, line, column);
+      },
     }),
     [editor],
   );

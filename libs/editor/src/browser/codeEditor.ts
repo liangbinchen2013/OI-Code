@@ -13,6 +13,51 @@ import {
 const EDITOR_FONT_SIZE = 14;
 const EDITOR_TAB_SIZE = 4;
 
+/** 诊断标记归属者，供 Monaco marker 管理与清理。 */
+const MARKER_OWNER = 'oi-code';
+
+export type EditorMarkerSeverity = 'error' | 'warning' | 'info';
+
+/**
+ * 编辑器诊断标记：line/column 从 1 起；line 为 0 时收敛到第 1 行。
+ */
+export interface IEditorMarker {
+  readonly severity: EditorMarkerSeverity;
+  readonly message: string;
+  readonly line: number;
+  readonly column: number;
+  readonly endLine?: number;
+  readonly endColumn?: number;
+}
+
+function toMonacoSeverity(severity: EditorMarkerSeverity): monaco.MarkerSeverity {
+  if (severity === 'error') {
+    return monaco.MarkerSeverity.Error;
+  }
+  if (severity === 'warning') {
+    return monaco.MarkerSeverity.Warning;
+  }
+  return monaco.MarkerSeverity.Info;
+}
+
+function toMonacoMarker(marker: IEditorMarker): monaco.editor.IMarkerData {
+  const line = Math.max(1, marker.line);
+  const column = Math.max(1, marker.column);
+  const endLine = Math.max(line, marker.endLine ?? line);
+  const endColumn =
+    endLine === line
+      ? Math.max(column, marker.endColumn ?? column)
+      : Math.max(1, marker.endColumn ?? 1);
+  return {
+    severity: toMonacoSeverity(marker.severity),
+    message: marker.message,
+    startLineNumber: line,
+    startColumn: column,
+    endLineNumber: endLine,
+    endColumn,
+  };
+}
+
 export interface ICreateCodeEditorOptions {
   readonly container: HTMLElement;
   readonly languageService: ILanguageService;
@@ -35,6 +80,10 @@ export interface ICodeEditorHost extends IDisposable {
   setActiveDocument(uri: URI | undefined): void;
   getValue(uri: URI): string;
   hasDocument(uri: URI): boolean;
+  /** 设置文档诊断标记；重复调用整体替换。 */
+  setMarkers(uri: URI, markers: readonly IEditorMarker[]): void;
+  /** 滚动并聚焦到指定位置（1 起始）；文档已打开时生效。 */
+  revealPosition(uri: URI, line: number, column: number): void;
   /** 绑定 Ctrl+S 保存命令，返回句柄用于解绑。 */
   addSaveCommand(handler: () => void): IDisposable;
   focus(): void;
@@ -140,6 +189,31 @@ class CodeEditorHost implements ICodeEditorHost {
 
   hasDocument(uri: URI): boolean {
     return this._documents.has(uri.toString());
+  }
+
+  setMarkers(uri: URI, markers: readonly IEditorMarker[]): void {
+    const document = this._documents.get(uri.toString());
+    if (!document) {
+      return;
+    }
+    monaco.editor.setModelMarkers(document.model, MARKER_OWNER, markers.map(toMonacoMarker));
+  }
+
+  revealPosition(uri: URI, line: number, column: number): void {
+    const document = this._documents.get(uri.toString());
+    if (!document) {
+      return;
+    }
+    if (this._editor.getModel() !== document.model) {
+      this._editor.setModel(document.model);
+    }
+    const position = {
+      lineNumber: Math.max(1, line),
+      column: Math.max(1, column),
+    };
+    this._editor.setPosition(position);
+    this._editor.revealPositionInCenter(position);
+    this._editor.focus();
   }
 
   addSaveCommand(handler: () => void): IDisposable {
