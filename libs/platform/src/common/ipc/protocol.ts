@@ -25,6 +25,7 @@ export const FILE_RPC_METHODS = {
   readFile: 'fs.readFile',
   writeFile: 'fs.writeFile',
   exists: 'fs.exists',
+  readDirectory: 'fs.readDirectory',
 } as const;
 
 /**
@@ -32,6 +33,8 @@ export const FILE_RPC_METHODS = {
  */
 export const DIALOG_RPC_METHODS = {
   showOpenFile: 'dialog.showOpenFile',
+  showOpenFolder: 'dialog.showOpenFolder',
+  showSaveFile: 'dialog.showSaveFile',
   confirmDiscardChanges: 'dialog.confirmDiscardChanges',
 } as const;
 
@@ -40,16 +43,6 @@ export const DIALOG_RPC_METHODS = {
  */
 export const WINDOW_RPC_NOTIFICATIONS = {
   setDirtyState: 'window.setDirtyState',
-  executeCommand: 'window.executeCommand',
-} as const;
-
-/**
- * 可经 {@link WINDOW_RPC_NOTIFICATIONS.executeCommand} 执行的工作台命令。
- */
-export const WORKBENCH_COMMANDS = {
-  openFile: 'file.open',
-  save: 'file.save',
-  toggleTheme: 'theme.toggle',
 } as const;
 
 export type JsonRpcId = number | string;

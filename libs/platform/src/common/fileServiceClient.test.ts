@@ -35,6 +35,16 @@ function registerNodeFileHandlers(server: RpcChannel, fileService: NodeFileServi
     const { uri } = params as { uri: string };
     return fileService.exists(URI.parse(uri));
   });
+  server.registerMethod(FILE_RPC_METHODS.readDirectory, async (params) => {
+    const { uri } = params as { uri: string };
+    const entries = await fileService.readDirectory(URI.parse(uri));
+    // 与主进程一致：URI 转为字符串后才能安全穿越 IPC 结构化克隆
+    return entries.map((entry) => ({
+      name: entry.name,
+      kind: entry.kind,
+      uri: entry.uri.toString(),
+    }));
+  });
 }
 
 describe('FileServiceClient', () => {
@@ -65,6 +75,18 @@ describe('FileServiceClient', () => {
     await expect(client.readFile(uri)).resolves.toBe('#include <iostream>\n');
     await expect(fsReadFile(uri.fsPath, 'utf8')).resolves.toBe('#include <iostream>\n');
     await expect(client.exists(uri)).resolves.toBe(true);
+  });
+
+  it('经 RPC 读取目录并还原为 URI', async () => {
+    const nested = URI.file(join(directory, 'main.cpp'));
+    await client.writeFile(nested, '');
+
+    const entries = await client.readDirectory(URI.file(directory));
+
+    expect(entries).toHaveLength(1);
+    expect(entries[0]?.name).toBe('main.cpp');
+    expect(entries[0]?.kind).toBe('file');
+    expect(entries[0]?.uri.toString()).toBe(nested.toString());
   });
 
   it('远端错误以 RpcError 拒绝且保留原因', async () => {

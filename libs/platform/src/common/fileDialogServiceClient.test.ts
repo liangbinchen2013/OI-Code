@@ -55,6 +55,30 @@ describe('FileDialogServiceClient', () => {
     server.dispose();
   });
 
+  it('showOpenFolder / showSaveFile 解析 URI 结果并透传选项', async () => {
+    const [left, right] = createPipe();
+    const channel = new RpcChannel(left);
+    const client = new FileDialogServiceClient(channel);
+    const server = new RpcChannel(right);
+    let received: unknown;
+    server.registerMethod(DIALOG_RPC_METHODS.showOpenFolder, () =>
+      URI.file('C:/problems').toString(),
+    );
+    server.registerMethod(DIALOG_RPC_METHODS.showSaveFile, (params) => {
+      received = params;
+      return URI.file('C:/problems/new.cpp').toString();
+    });
+
+    expect((await client.showOpenFolder())?.fsPath).toBe('C:/problems');
+    const saved = await client.showSaveFile({ defaultPath: '未命名-1' });
+
+    expect(saved?.fsPath).toBe('C:/problems/new.cpp');
+    expect(received).toEqual({ options: { defaultPath: '未命名-1' } });
+
+    channel.dispose();
+    server.dispose();
+  });
+
   it('confirmDiscardChanges 透传文件名并返回确认结果', async () => {
     const [left, right] = createPipe();
     const client = new FileDialogServiceClient(new RpcChannel(left));

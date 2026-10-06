@@ -1,5 +1,5 @@
-import type { URI } from '@oi/base';
-import type { IFileService } from './fs';
+import { URI } from '@oi/base';
+import type { IFileService, IFileSystemEntry } from './fs';
 import type { IChannel } from './ipc/channel';
 import { FILE_RPC_METHODS } from './ipc/protocol';
 
@@ -9,6 +9,12 @@ interface FileUriParams {
 
 interface WriteFileParams extends FileUriParams {
   readonly content: string;
+}
+
+interface DirectoryEntryWire {
+  readonly name: string;
+  readonly kind: 'file' | 'directory';
+  readonly uri: string;
 }
 
 /**
@@ -31,5 +37,18 @@ export class FileServiceClient implements IFileService {
   exists(uri: URI): Promise<boolean> {
     const params: FileUriParams = { uri: uri.toString() };
     return this._channel.call<boolean>(FILE_RPC_METHODS.exists, params);
+  }
+
+  async readDirectory(uri: URI): Promise<IFileSystemEntry[]> {
+    const params: FileUriParams = { uri: uri.toString() };
+    const entries = await this._channel.call<DirectoryEntryWire[]>(
+      FILE_RPC_METHODS.readDirectory,
+      params,
+    );
+    return entries.map((entry) => ({
+      name: entry.name,
+      kind: entry.kind,
+      uri: URI.parse(entry.uri),
+    }));
   }
 }
