@@ -52,41 +52,55 @@
 
 ## 二、项目级依赖（已安装 ✅ 2026-10-06）
 
-> `package.json` / `pnpm-lock.yaml` 已生成，`pnpm install` 完成（429 包），工具链全部验证通过。
+> `package.json` / `pnpm-lock.yaml` 已生成，`pnpm install` 完成，工具链全部验证通过（阶段 1 已建仓，2026-10-06）。
 
 ### 1. 已安装清单与版本
 
 | 类别 | 依赖 | 版本 |
 |------|------|------|
-| 语言/规范 | `typescript` | 7.0.2 |
+| 语言/规范 | `typescript` | 6.0.3（阶段 1 由 7.0.2 降级，原因见 §2.2） |
+| | `typescript-eslint` / `@eslint/js` | 8.71.1 / 10.0.1 |
 | | `eslint` / `eslint-config-prettier` | 10.12.0 / 10.1.8 |
 | | `prettier` | 3.9.9 |
 | | `husky` / `lint-staged` | 9.1.7 / 17.6.0 |
-| Monorepo/构建 | `nx` `@nx/js` `@nx/eslint` `@nx/vite` | 23.2.1 |
+| Monorepo/构建 | `nx` `@nx/js` `@nx/eslint` `@nx/vite` `@nx/vitest` | 23.2.1 |
 | | `nx-electron` | 22.0.0（社区 Electron 插件，替代 404 的 `@nx/electron`） |
 | | `vite` / `esbuild` | 8.3.2 / 0.28.2 |
 | 桌面 | `electron` | 44.5.1（二进制已下载） |
 | 编辑器/UI | `monaco-editor` | 0.57.0 |
 | | `react` / `react-dom` | 19.3.0 |
+| | `@vitejs/plugin-react` | 6.1.2 |
 | | `@fortawesome/*`（svg-core + solid/brands/regular + react-fontawesome） | 7.3.1 / 3.5.0，**项目唯一图标库，见 `ICON_GUIDE.md`** |
 | | `@types/react` / `@types/react-dom` / `@types/node` | 19.3.0 / 19.3.0 / 26.6.4 |
 | 测试 | `vitest` / `@vitest/coverage-v8` | **4.1.11**（见下方"已知问题"） |
 | | `@playwright/test` | 1.63.0 + Chromium 153.0.8010.12（已安装并实测启动成功） |
 
-### 2. 未安装 / 待决
+### 2. 阶段 1 已补齐（2026-10-06）
 
-| ☐ | 依赖 | 说明 |
-|---|------|------|
-| ☐ | `eslint.config.js` / `tsconfig.json` / `nx.json` / `.husky/` | 配置文件尚未创建，`pnpm lint` 等脚本在阶段 1 建仓时补齐 |
+原"未安装 / 待决"项已全部落地：
+
+| 依赖 / 配置 | 说明 |
+|-------------|------|
+| `typescript-eslint` 8.71.1 + `@eslint/js` 10.0.1 | TS 源码 lint；配套 `typescript` 降级至 6.0.3 |
+| `@vitejs/plugin-react` 6.1.2 | React 渲染层构建（peer `vite ^8` 已满足） |
+| `@nx/vitest` 23.2.1 | Nx 推断 `test` 目标（`testMode: run`） |
+| `nx.json` / `tsconfig.base.json` / `eslint.config.mjs` / `.prettierrc.json` / `.husky/` / `tools/scripts/` | 工作区配置、提交钩子与校验、构建脚本 |
+
+> **TypeScript 降级决策**：TS 7.0.2 为原生编译器（不提供 JS API），`typescript-eslint` 无法在其上运行；
+> 经人类确认降级至 6.0.3，构建链（Vite/esbuild）不受影响。
 
 > **`@nx/electron` 决策记录**：官方包 npm 404 → 经人类确认采用社区插件 `nx-electron@22.0.0`。
 > 该包 peer 要求 `@nx/devkit|@nx/workspace ^22`，pnpm 自动装入嵌套 `nx@22.7.12`，故当前 **存在 2 个 nx 版本**（根 23.2.1 / 嵌套 22.7.12）。
-> `pnpm peers check` 无冲突；若后续 executor 报兼容问题，可将根 `nx` 降至 22.x 对齐。
+> 构建链实际采用 **Vite（dev）+ esbuild（prod）**（AGENTS.md §1）；`nx-electron` 仅保留用于后续打包。
 
 ### 3. 关键配置
 
 - **构建脚本白名单**：`pnpm-workspace.yaml` 中 `allowBuilds: {electron, electron-winstaller, esbuild, nx}`。
   pnpm 11+ 已废弃 `package.json` 的 `pnpm.onlyBuiltDependencies`，改用 `allowBuilds`，否则安装报 `ERR_PNPM_IGNORED_BUILDS`。
+- **工作区**：`packages` 覆盖 `apps/*`、`libs/*`、`libs/extensions/*`；跨层引用使用 `workspace:*` 依赖 + 包 `exports`
+  直连 TS 源码（内部包模式），依赖方向由 `npm run valid-layers-check` 校验。
+- **供应链策略**：pnpm 12 对新发布包要求列入 `minimumReleaseAgeExclude`（安装时自动写入），否则不满足最小发布时长策略。
+- **Nx daemon**：`nx.json` 设 `useDaemonProcess: false`（本机 daemon 首次启动会挂起，属环境问题）。
 - **peer 约束**：`@nx/vitest@23` 要求 `vitest ^3 || ^4`，故 vitest 固定在 4.x（5.x 会产生 peer 冲突）。
 
 ---
@@ -115,16 +129,16 @@ pnpm install               # 幂等安装（须无 ERR_PNPM_IGNORED_BUILDS）
 
 # 工具链验证（2026-10-06 实测通过）
 pnpm exec nx --version     # 23.2.1
-pnpm exec tsc --version    # 7.0.2
+pnpm exec tsc --version    # 6.0.3
 pnpm exec eslint --version # 10.12.0
 pnpm exec vitest --version # 4.1.11
 pnpm exec esbuild --version# 0.28.2
 pnpm exec playwright --version  # 1.63.0（Chromium 153 实测 launch OK）
 
-# 阶段 1 建仓后补齐（当前尚无配置文件/脚本）
-pnpm lint
-npm run valid-layers-check
-nx affected:test
+# 阶段 1 起可用（2026-10-06 实测通过）
+pnpm lint                    # ESLint + Prettier
+npm run valid-layers-check   # 分层校验
+nx affected:test             # 受影响项目单元测试
 ```
 
 ---
