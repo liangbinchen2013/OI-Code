@@ -8,8 +8,11 @@ import {
   IFileDialogService,
   IFileService,
   ILogService,
+  IPythonService,
   IToolchainService,
   JSON_RPC_ERROR_CODES,
+  PYTHON_RPC_METHODS,
+  PYTHON_RPC_NOTIFICATIONS,
   RpcChannel,
   RpcError,
   TOOLCHAIN_RPC_METHODS,
@@ -18,6 +21,7 @@ import {
   serializeDiagnostic,
   type IMessageTransport,
   type IOpenFileDialogOptions,
+  type IPipInstallRequest,
   type ISaveFileDialogOptions,
 } from '@oi/platform';
 import { FileLogger } from '@oi/platform/node';
@@ -133,6 +137,40 @@ function parseOptionalStandardParam(params: unknown): string | undefined {
   return standard;
 }
 
+function parseInterpreterPathParam(params: unknown): string {
+  if (typeof params !== 'object' || params === null || !('path' in params)) {
+    throw new RpcError(JSON_RPC_ERROR_CODES.invalidParams, '缺少 path 参数');
+  }
+  const { path } = params as { path: unknown };
+  if (typeof path !== 'string' || path.length === 0) {
+    throw new RpcError(JSON_RPC_ERROR_CODES.invalidParams, 'path 参数非法');
+  }
+  return path;
+}
+
+function parsePipRequestParam(params: unknown): IPipInstallRequest {
+  if (typeof params !== 'object' || params === null) {
+    throw new RpcError(JSON_RPC_ERROR_CODES.invalidParams, '缺少 pip 安装参数');
+  }
+  const { packageName, version, useTsinghuaMirror, interpreterPath } = params as {
+    packageName?: unknown;
+    version?: unknown;
+    useTsinghuaMirror?: unknown;
+    interpreterPath?: unknown;
+  };
+  if (typeof packageName !== 'string' || packageName.length === 0) {
+    throw new RpcError(JSON_RPC_ERROR_CODES.invalidParams, 'packageName 参数非法');
+  }
+  return {
+    packageName,
+    ...(typeof version === 'string' && version.length > 0 ? { version } : {}),
+    useTsinghuaMirror: useTsinghuaMirror === true,
+    ...(typeof interpreterPath === 'string' && interpreterPath.length > 0
+      ? { interpreterPath }
+      : {}),
+  };
+}
+
 /**
  * 主进程：窗口生命周期、IPC 服务端与文件访问授权。
  */
@@ -147,6 +185,7 @@ export class MainProcess implements IDisposable {
     @IFileService private readonly _fileService: IFileService,
     @IFileDialogService private readonly _fileDialogService: IFileDialogService,
     @IToolchainService private readonly _toolchainService: IToolchainService,
+    @IPythonService private readonly _pythonService: IPythonService,
   ) {}
 
   start(): void {
@@ -308,6 +347,29 @@ export class MainProcess implements IDisposable {
     });
     channel.registerMethod(TOOLCHAIN_RPC_METHODS.run, (params) =>
       this._toolchainService.run(this._authorizedUri(params)),
+    );
+
+    channel.registerMethod(PYTHON_RPC_METHODS.getStatus, () => this._pythonService.getStatus());
+    channel.registerMethod(PYTHON_RPC_METHODS.search, () =>
+      this._pythonService.search((progress) => {
+        channel.notify(PYTHON_RPC_NOTIFICATIONS.searchProgress, progress);
+      }),
+    );
+    channel.registerMethod(PYTHON_RPC_METHODS.setDefaultInterpreter, async (params) => {
+      await this._pythonService.setDefaultInterpreter(parseInterpreterPathParam(params));
+    });
+    channel.registerMethod(PYTHON_RPC_METHODS.pipInstall, (params) =>
+      this._pythonService.pipInstall(parsePipRequestParam(params), (chunk) => {
+        channel.notify(PYTHON_RPC_NOTIFICATIONS.pipOutput, chunk);
+      }),
+    );
+    channel.registerMethod(PYTHON_RPC_METHODS.check, async (params) => {
+      const uri = this._authorizedUri(params);
+      const diagnostics = await this._pythonService.check(uri, parseContentParam(params));
+      return diagnostics.map(serializeDiagnostic);
+    });
+    channel.registerMethod(PYTHON_RPC_METHODS.run, (params) =>
+      this._pythonService.run(this._authorizedUri(params)),
     );
   }
 
