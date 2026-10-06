@@ -1,4 +1,6 @@
-import { dirname, resolve } from 'node:path';
+import { mkdtemp } from 'node:fs/promises';
+import { tmpdir } from 'node:os';
+import { dirname, join, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { _electron as electron, type ElectronApplication } from '@playwright/test';
 
@@ -8,10 +10,21 @@ export const mainEntry = resolve(specDir, '../../../dist/desktop/main.cjs');
 
 /**
  * 默认启动构建产物；设置 OI_E2E_EXECUTABLE 时改为启动打包后的可执行文件。
+ * 每次启动使用独立 userData，避免测试间共享主题、日志等本地状态。
  */
 export async function launchApp(): Promise<ElectronApplication> {
   const executablePath = process.env['OI_E2E_EXECUTABLE'];
-  return electron.launch(executablePath ? { executablePath } : { args: [mainEntry] });
+  const userDataDir = await mkdtemp(join(tmpdir(), 'oi-code-userdata-'));
+  const env: Record<string, string> = {};
+  for (const [key, value] of Object.entries(process.env)) {
+    if (value !== undefined) {
+      env[key] = value;
+    }
+  }
+  env['OI_CODE_USER_DATA'] = userDataDir;
+  return electron.launch(
+    executablePath === undefined ? { args: [mainEntry], env } : { executablePath, env },
+  );
 }
 
 /**

@@ -1,5 +1,6 @@
 import { onUnexpectedError, setUnexpectedErrorHandler, toDisposable } from '@oi/base';
-import { BUILTIN_LANGUAGES, LanguageService } from '@oi/editor';
+import { LanguageService } from '@oi/editor';
+import { collectMonacoLanguageContributions } from '@oi/editor/browser';
 import {
   FileDialogServiceClient,
   FileServiceClient,
@@ -7,6 +8,7 @@ import {
   LogService,
   RpcChannel,
   WINDOW_RPC_NOTIFICATIONS,
+  WORKBENCH_COMMANDS,
 } from '@oi/platform';
 import { renderWorkbench } from '@oi/workbench';
 
@@ -29,8 +31,12 @@ function connectToMain(): RpcChannel {
 
 function createLanguageService(): LanguageService {
   const languageService = new LanguageService();
-  for (const contribution of BUILTIN_LANGUAGES) {
-    languageService.registerLanguage(contribution);
+  for (const contribution of collectMonacoLanguageContributions()) {
+    try {
+      languageService.registerLanguage(contribution);
+    } catch (error) {
+      logService.warn(`已跳过冲突的语言注册：${contribution.id}`, error);
+    }
   }
   return languageService;
 }
@@ -57,6 +63,25 @@ async function bootstrap(): Promise<void> {
     onDirtyStateChange: (dirty) => {
       channel.notify(WINDOW_RPC_NOTIFICATIONS.setDirtyState, { dirty });
     },
+  });
+  channel.listen(WINDOW_RPC_NOTIFICATIONS.executeCommand, (params) => {
+    const command =
+      typeof params === 'object' && params !== null
+        ? (params as { command?: unknown }).command
+        : undefined;
+    switch (command) {
+      case WORKBENCH_COMMANDS.openFile:
+        workbench.openFile();
+        break;
+      case WORKBENCH_COMMANDS.save:
+        workbench.save();
+        break;
+      case WORKBENCH_COMMANDS.toggleTheme:
+        workbench.toggleTheme();
+        break;
+      default:
+        logService.warn(`已忽略未知工作台命令：${String(command)}`);
+    }
   });
   document.documentElement.dataset.oiCodeReady = 'true';
 

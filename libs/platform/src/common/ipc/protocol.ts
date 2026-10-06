@@ -36,10 +36,20 @@ export const DIALOG_RPC_METHODS = {
 } as const;
 
 /**
- * 主进程需要感知的窗口状态通知方法名（通知无响应）。
+ * 主进程与渲染进程之间的窗口级通知方法名（通知无响应）。
  */
 export const WINDOW_RPC_NOTIFICATIONS = {
   setDirtyState: 'window.setDirtyState',
+  executeCommand: 'window.executeCommand',
+} as const;
+
+/**
+ * 可经 {@link WINDOW_RPC_NOTIFICATIONS.executeCommand} 执行的工作台命令。
+ */
+export const WORKBENCH_COMMANDS = {
+  openFile: 'file.open',
+  save: 'file.save',
+  toggleTheme: 'theme.toggle',
 } as const;
 
 export type JsonRpcId = number | string;

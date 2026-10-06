@@ -4,9 +4,10 @@ import * as monaco from 'monaco-editor/editor/editor.api';
 import type { ILanguageService } from '../common/language';
 import { getFileExtension } from '../common/languageService';
 import {
-  WORKBENCH_THEME_ID,
-  defineWorkbenchTheme,
+  applyWorkbenchTheme,
+  currentThemeKind,
   ensureMonacoEnvironment,
+  themeIdFor,
 } from './monacoEnvironment';
 
 const EDITOR_FONT_SIZE = 14;
@@ -40,12 +41,12 @@ class CodeEditor implements ICodeEditor {
 
   constructor(options: ICreateCodeEditorOptions) {
     ensureMonacoEnvironment();
-    defineWorkbenchTheme();
+    applyWorkbenchTheme(currentThemeKind());
     this._languageService = options.languageService;
     this._editor = monaco.editor.create(options.container, {
       value: '',
       language: 'plaintext',
-      theme: WORKBENCH_THEME_ID,
+      theme: themeIdFor(currentThemeKind()),
       automaticLayout: true,
       minimap: { enabled: false },
       fontSize: EDITOR_FONT_SIZE,
@@ -109,10 +110,15 @@ class CodeEditor implements ICodeEditor {
   }
 
   private _languageIdOf(uri: URI): string {
+    const fileName = uri.path.split('/').pop() ?? '';
+    const byFileName = this._languageService.getLanguageByFileName(fileName);
+    if (byFileName !== undefined) {
+      return byFileName;
+    }
     const extension = getFileExtension(uri.path);
-    const languageId =
+    const byExtension =
       extension === undefined ? undefined : this._languageService.getLanguageByExtension(extension);
-    return languageId ?? 'plaintext';
+    return byExtension ?? 'plaintext';
   }
 }
 

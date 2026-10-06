@@ -7,11 +7,13 @@ import { createDecorator } from '@oi/platform';
 export type LanguageId = string;
 
 /**
- * 语言贡献信息：内置扩展声明语言 id、文件扩展名与显示名。
+ * 语言贡献信息：内置扩展声明语言 id、文件扩展名 / 文件名与显示名。
  */
 export interface ILanguageContribution {
   readonly id: LanguageId;
   readonly extensions: readonly string[];
+  /** 无扩展名的固定文件名（如 Makefile），大小写不敏感匹配。 */
+  readonly filenames?: readonly string[];
   readonly displayName: string;
 }
 
@@ -21,6 +23,7 @@ export interface ILanguageContribution {
 export interface ILanguageService {
   registerLanguage(contribution: ILanguageContribution): IDisposable;
   getLanguageByExtension(extension: string): LanguageId | undefined;
+  getLanguageByFileName(fileName: string): LanguageId | undefined;
 }
 
 export const ILanguageService = createDecorator<ILanguageService>('languageService');

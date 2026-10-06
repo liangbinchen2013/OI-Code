@@ -29,6 +29,8 @@ async function createFixture(
 
 test('打开 C++ 文件、高亮、编辑并保存', async () => {
   const { directory, filePath } = await createFixture('hello.cpp', C_SOURCE);
+  const pythonPath = join(directory, 'solution.py');
+  await writeFile(pythonPath, 'def solve(n):\n    return n * 2\n', 'utf8');
   const app = await launchApp();
   try {
     const page = await app.firstWindow();
@@ -54,6 +56,13 @@ test('打开 C++ 文件、高亮、编辑并保存', async () => {
 
     const saved = await readFile(filePath, 'utf8');
     expect(saved).toContain('// edited by e2e');
+
+    // 同一会话内切换到 Python 文件：全量语言注册后应直接命中高亮
+    await mockOpenFileDialog(app, pythonPath);
+    await page.locator('.oi-topbar').getByRole('button', { name: '打开文件' }).click();
+    await expect(page.locator('.oi-doc-name')).toHaveText('solution.py');
+    await expect(page.locator('.view-lines')).toContainText('def solve');
+    await expect(page.locator('.view-line span[class*="mtk"]').first()).toBeAttached();
   } finally {
     await app.close();
     await rm(directory, { recursive: true, force: true });

@@ -13,6 +13,11 @@ import { FileDialogService } from './fileDialogService';
 import { MainProcess } from './mainProcess';
 
 function main(): void {
+  const userDataPath = process.env['OI_CODE_USER_DATA'];
+  if (userDataPath) {
+    app.setPath('userData', userDataPath);
+  }
+
   const logService = new LogService();
   setUnexpectedErrorHandler((error) => {
     logService.error(toError(error));

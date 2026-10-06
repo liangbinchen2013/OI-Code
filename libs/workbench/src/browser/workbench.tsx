@@ -1,13 +1,16 @@
 import { DisposableStore, onUnexpectedError, toDisposable } from '@oi/base';
 import type { URI } from '@oi/base';
 import type { ILanguageService } from '@oi/editor';
+import type { ThemeKind } from '@oi/editor/browser';
 import { FontAwesomeIcon } from '@fortawesome/react-fontawesome';
 import {
   faCircleCheck,
   faCircleXmark,
+  faFileLines,
   faFloppyDisk,
-  faFolderOpen,
+  faMoon,
   faSpinner,
+  faSun,
 } from '@fortawesome/free-solid-svg-icons';
 import type { IconDefinition } from '@fortawesome/fontawesome-svg-core';
 import type { IFileDialogService, IFileService } from '@oi/platform';
@@ -15,6 +18,7 @@ import { useCallback, useEffect, useRef, useState } from 'react';
 import { createRoot } from 'react-dom/client';
 import { EditorPane, type IEditorPaneHandle } from './editorPane';
 import { WORKBENCH_STRINGS } from './strings';
+import { applyTheme, persistTheme, readStoredTheme, resolveInitialTheme } from './theme';
 import './tokens.css';
 import './workbench.css';
 
@@ -34,18 +38,25 @@ export interface IWorkbenchOptions {
   readonly onDirtyStateChange?: (dirty: boolean) => void;
 }
 
+/**
+ * 工作台命令句柄：供 Code 层（应用菜单 / 全局快捷键）驱动工作台动作。
+ */
+export interface IWorkbenchHandle {
+  openFile(): void;
+  save(): void;
+  toggleTheme(): void;
+}
+
+export interface IWorkbenchInstance extends IWorkbenchHandle {
+  dispose(): void;
+}
+
 type WorkbenchStatus = 'idle' | 'saving' | 'saved' | 'saveFailed' | 'openFailed';
 
 interface IOpenDocument {
   readonly uri: URI;
   readonly name: string;
 }
-
-const OPEN_FILTERS = [
-  { name: 'OI 源码', extensions: ['cpp', 'cc', 'cxx', 'h', 'hpp', 'py'] },
-  { name: 'Markdown', extensions: ['md', 'markdown'] },
-  { name: '全部文件', extensions: ['*'] },
-];
 
 const STATUS_PRESENTATION: Record<
   Exclude<WorkbenchStatus, 'idle'>,
@@ -62,11 +73,17 @@ function fileNameOf(uri: URI): string {
   return name !== undefined && name.length > 0 ? name : uri.path;
 }
 
-function Workbench({ services, onDirtyStateChange }: Omit<IWorkbenchOptions, 'container'>) {
+interface IWorkbenchProps extends Omit<IWorkbenchOptions, 'container'> {
+  readonly initialTheme: ThemeKind;
+  readonly onReady?: (handle: IWorkbenchHandle) => void;
+}
+
+function Workbench({ services, onDirtyStateChange, initialTheme, onReady }: IWorkbenchProps) {
   const [store] = useState(() => new DisposableStore());
   const [doc, setDoc] = useState<IOpenDocument | undefined>(undefined);
   const [dirty, setDirty] = useState(false);
   const [status, setStatus] = useState<WorkbenchStatus>('idle');
+  const [theme, setTheme] = useState<ThemeKind>(initialTheme);
   const editorPaneRef = useRef<IEditorPaneHandle | null>(null);
   const docRef = useRef<IOpenDocument | undefined>(undefined);
   // 关闭确认依赖主进程缓存的脏状态，编辑瞬间同步上报，避免“编辑后立刻关闭”的竞态
@@ -81,8 +98,43 @@ function Workbench({ services, onDirtyStateChange }: Omit<IWorkbenchOptions, 'co
   }, [doc]);
 
   useEffect(() => {
+    applyTheme(theme);
+  }, [theme]);
+
+  // 用户未显式选择过主题时，跟随系统亮暗变化
+  useEffect(() => {
+    const media = window.matchMedia('(prefers-color-scheme: dark)');
+    const listener = (): void => {
+      if (readStoredTheme() === undefined) {
+        setTheme(media.matches ? 'dark' : 'light');
+      }
+    };
+    media.addEventListener('change', listener);
+    store.add(toDisposable(() => media.removeEventListener('change', listener)));
+  }, [store]);
+
+  useEffect(() => {
     return () => store.dispose();
   }, [store]);
+
+  const toggleTheme = useCallback(() => {
+    const next: ThemeKind = theme === 'dark' ? 'light' : 'dark';
+    persistTheme(next);
+    setTheme(next);
+  }, [theme]);
+  const toggleThemeRef = useRef<() => void>(() => undefined);
+
+  useEffect(() => {
+    toggleThemeRef.current = toggleTheme;
+  }, [toggleTheme]);
+
+  useEffect(() => {
+    onReady?.({
+      openFile: () => void openFileRef.current(),
+      save: () => void saveRef.current(),
+      toggleTheme: () => toggleThemeRef.current(),
+    });
+  }, [onReady]);
 
   const setDirtyState = useCallback(
     (value: boolean) => {
@@ -107,7 +159,6 @@ function Workbench({ services, onDirtyStateChange }: Omit<IWorkbenchOptions, 'co
       }
       const uri = await services.fileDialogService.showOpenFile({
         title: WORKBENCH_STRINGS.openFile,
-        filters: OPEN_FILTERS,
       });
       if (!uri) {
         return;
@@ -206,11 +257,24 @@ function Workbench({ services, onDirtyStateChange }: Omit<IWorkbenchOptions, 'co
         <div className="oi-topbar-actions">
           <button
             type="button"
+            className="oi-btn oi-btn-secondary oi-btn-icon oi-theme-toggle"
+            onClick={toggleTheme}
+            title={
+              theme === 'dark' ? WORKBENCH_STRINGS.themeToLight : WORKBENCH_STRINGS.themeToDark
+            }
+            aria-label={
+              theme === 'dark' ? WORKBENCH_STRINGS.themeToLight : WORKBENCH_STRINGS.themeToDark
+            }
+          >
+            <FontAwesomeIcon icon={theme === 'dark' ? faSun : faMoon} aria-hidden="true" />
+          </button>
+          <button
+            type="button"
             className="oi-btn oi-btn-secondary"
             onClick={() => void openFileRef.current()}
             title={WORKBENCH_STRINGS.openFileTooltip}
           >
-            <FontAwesomeIcon icon={faFolderOpen} aria-hidden="true" />
+            <FontAwesomeIcon icon={faFileLines} aria-hidden="true" />
             <span>{WORKBENCH_STRINGS.openFile}</span>
           </button>
           <button
@@ -241,7 +305,7 @@ function Workbench({ services, onDirtyStateChange }: Omit<IWorkbenchOptions, 'co
               className="oi-btn oi-btn-primary"
               onClick={() => void openFileRef.current()}
             >
-              <FontAwesomeIcon icon={faFolderOpen} aria-hidden="true" />
+              <FontAwesomeIcon icon={faFileLines} aria-hidden="true" />
               <span>{WORKBENCH_STRINGS.openFile}</span>
             </button>
           </div>
@@ -262,12 +326,32 @@ function Workbench({ services, onDirtyStateChange }: Omit<IWorkbenchOptions, 'co
 }
 
 /**
- * 在指定容器挂载工作台外壳，返回用于卸载 React 树的释放句柄。
+ * 在指定容器挂载工作台外壳，返回命令句柄与卸载函数。
  */
-export function renderWorkbench(options: IWorkbenchOptions): { dispose(): void } {
+export function renderWorkbench(options: IWorkbenchOptions): IWorkbenchInstance {
+  const initialTheme = resolveInitialTheme();
+  // 首帧渲染前落地主题，避免亮暗闪烁
+  applyTheme(initialTheme);
+  let handle: IWorkbenchHandle = {
+    openFile: () => undefined,
+    save: () => undefined,
+    toggleTheme: () => undefined,
+  };
   const root = createRoot(options.container);
   root.render(
-    <Workbench services={options.services} onDirtyStateChange={options.onDirtyStateChange} />,
+    <Workbench
+      services={options.services}
+      onDirtyStateChange={options.onDirtyStateChange}
+      initialTheme={initialTheme}
+      onReady={(ready) => {
+        handle = ready;
+      }}
+    />,
   );
-  return toDisposable(() => root.unmount());
+  return {
+    openFile: () => handle.openFile(),
+    save: () => handle.save(),
+    toggleTheme: () => handle.toggleTheme(),
+    dispose: () => root.unmount(),
+  };
 }
