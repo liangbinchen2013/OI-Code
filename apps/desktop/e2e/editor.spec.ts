@@ -160,12 +160,19 @@ test('标签页新建、另存为与关闭', async () => {
     await expect(page.locator('html')).toHaveAttribute('data-oi-code-ready', 'true');
 
     await page.locator('.oi-tab-new').click();
-    await expect(page.locator('.oi-tab-active .oi-tab-name')).toHaveText('未命名-1');
+    await expect(page.locator('.oi-menu')).toBeVisible();
+    await page.locator('.oi-menu-item', { hasText: 'C++ 文件' }).click();
+    await expect(page.locator('.oi-tab-active .oi-tab-name')).toHaveText('未命名-1.cpp');
+    await expect(page.locator('.view-lines')).toContainText('bits/stdc++');
 
     await page.locator('.oi-tab-new').click();
+    await page.locator('.oi-menu-item', { hasText: 'Python 文件' }).click();
+    await expect(page.locator('.oi-tab-active .oi-tab-name')).toHaveText('未命名-2.py');
     await expect(page.locator('.oi-tab')).toHaveCount(2);
 
+    await page.locator('.oi-tab', { hasText: '未命名-1.cpp' }).locator('.oi-tab-label').click();
     await page.locator('.monaco-editor').click();
+    await page.locator('.monaco-editor').press('Control+a');
     await page.keyboard.type('hello from e2e');
     await expect(page.locator('.oi-tab-active .oi-dirty-dot')).toBeAttached();
 
@@ -175,7 +182,7 @@ test('标签页新建、另存为与关闭', async () => {
     await expect(page.locator('.oi-tab-active .oi-tab-name')).toHaveText('saved.txt');
     expect(await readFile(saveTarget, 'utf8')).toContain('hello from e2e');
 
-    await page.locator('.oi-tab', { hasText: '未命名-1' }).locator('.oi-tab-close').click();
+    await page.locator('.oi-tab', { hasText: '未命名-2.py' }).locator('.oi-tab-close').click();
     await expect(page.locator('.oi-tab')).toHaveCount(1);
 
     await page.locator('.oi-tab-close').click();

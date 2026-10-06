@@ -32,6 +32,13 @@ import { SettingsView } from './settingsView';
 import { ExplorerPanel } from './sidebar';
 import { WORKBENCH_STRINGS } from './strings';
 import { TabBar } from './tabBar';
+import {
+  BUILT_IN_TEMPLATES,
+  DEFAULT_TEMPLATE,
+  loadCustomTemplates,
+  saveCustomTemplates,
+  type IFileTemplate,
+} from './templates';
 import { applyTheme, persistTheme, readStoredTheme, resolveInitialTheme } from './theme';
 import './tokens.css';
 import './workbench.css';
@@ -136,6 +143,10 @@ function Workbench({ services, initialTheme, onDirtyStateChange }: IWorkbenchPro
   const [treeVersion, setTreeVersion] = useState(0);
   const [activityView, setActivityView] = useState<ActivityView>('explorer');
   const [sidebarWidth, setSidebarWidth] = useState(() => readStoredSidebarWidth());
+  const [customTemplates, setCustomTemplates] = useState<readonly IFileTemplate[]>(() =>
+    loadCustomTemplates(),
+  );
+  const [newMenuOpen, setNewMenuOpen] = useState(false);
   const sidebarWidthRef = useRef(sidebarWidth);
   const [theme, setTheme] = useState<ThemeKind>(initialTheme);
   const [status, setStatus] = useState<WorkbenchStatus>('idle');
@@ -276,14 +287,26 @@ function Workbench({ services, initialTheme, onDirtyStateChange }: IWorkbenchPro
     }
   }, [services.fileDialogService]);
 
-  const newFile = useCallback((): void => {
+  const createFromTemplate = useCallback((template: IFileTemplate): void => {
     const index = nextUntitledRef.current++;
-    const name = `${WORKBENCH_STRINGS.untitledPrefix}-${index}`;
+    const extension = template.extension.trim().replace(/^\./, '');
+    const base = `${WORKBENCH_STRINGS.untitledPrefix}-${index}`;
+    const name = extension.length > 0 ? `${base}.${extension}` : base;
     const uri = URI.from({ scheme: 'untitled', path: `/${name}` });
-    editorPaneRef.current?.openDocument(uri, '');
+    editorPaneRef.current?.openDocument(uri, template.content);
     const tab: ITabState = { id: uri.toString(), uri, name, untitled: true, dirty: false };
     setTabs((previous) => [...previous, tab]);
     setActiveTabId(tab.id);
+    setNewMenuOpen(false);
+  }, []);
+
+  const newDefaultFile = useCallback((): void => {
+    createFromTemplate(DEFAULT_TEMPLATE);
+  }, [createFromTemplate]);
+
+  const updateCustomTemplates = useCallback((next: readonly IFileTemplate[]): void => {
+    setCustomTemplates(next);
+    saveCustomTemplates(next);
   }, []);
 
   const closeTab = useCallback(
@@ -723,12 +746,12 @@ function Workbench({ services, initialTheme, onDirtyStateChange }: IWorkbenchPro
         void openFileRef.current();
       } else if (key === 'n') {
         event.preventDefault();
-        newFile();
+        newDefaultFile();
       }
     };
     window.addEventListener('keydown', onKeyDown);
     store.add(toDisposable(() => window.removeEventListener('keydown', onKeyDown)));
-  }, [newFile, store]);
+  }, [newDefaultFile, store]);
 
   const activeTab = tabs.find((tab) => tab.id === activeTabId);
   const statusPresentation = status === 'idle' ? undefined : STATUS_PRESENTATION[status];
@@ -765,7 +788,6 @@ function Workbench({ services, initialTheme, onDirtyStateChange }: IWorkbenchPro
         activeTabId={activeTabId}
         onActivate={activateTab}
         onClose={(id) => void closeTab(id)}
-        onNew={newFile}
         actionsEnabled={activeTab !== undefined}
         busy={busy !== undefined}
         problemCount={problems.length}
@@ -774,6 +796,11 @@ function Workbench({ services, initialTheme, onDirtyStateChange }: IWorkbenchPro
         onRun={() => void runRef.current()}
         onCompileRun={() => void compileRunRef.current()}
         onToggleProblems={() => setProblemsOpen((open) => !open)}
+        templates={[...BUILT_IN_TEMPLATES, ...customTemplates]}
+        newMenuOpen={newMenuOpen}
+        onToggleNewMenu={() => setNewMenuOpen((open) => !open)}
+        onCloseNewMenu={() => setNewMenuOpen(false)}
+        onCreateFromTemplate={createFromTemplate}
       />
       <div className="oi-body">
         <ActivityBar activeView={activityView} onSelect={setActivityView} />
@@ -798,6 +825,8 @@ function Workbench({ services, initialTheme, onDirtyStateChange }: IWorkbenchPro
               onSave={() => void saveRef.current()}
               toolchainService={services.toolchainService}
               pythonService={services.pythonService}
+              templates={customTemplates}
+              onTemplatesChange={updateCustomTemplates}
             />
           </div>
         </div>

@@ -2,13 +2,18 @@ import type { URI } from '@oi/base';
 import { FontAwesomeIcon } from '@fortawesome/react-fontawesome';
 import {
   faBolt,
+  faCode,
+  faFileCode,
+  faFileLines,
   faHammer,
   faPlay,
   faPlus,
   faTriangleExclamation,
   faXmark,
 } from '@fortawesome/free-solid-svg-icons';
+import type { IconDefinition } from '@fortawesome/fontawesome-svg-core';
 import { WORKBENCH_STRINGS } from './strings';
+import type { IFileTemplate } from './templates';
 
 /**
  * 标签页描述：id 在标签生命周期内稳定，另存为后 uri/name 会更新。
@@ -25,7 +30,6 @@ export interface ITabBarProps {
   readonly activeTabId: string | undefined;
   readonly onActivate: (id: string) => void;
   readonly onClose: (id: string) => void;
-  readonly onNew: () => void;
   /** 有可编译运行的当前文件且无进行中动作时按钮可用。 */
   readonly actionsEnabled: boolean;
   /** 有动作进行中（编译/运行），按钮显示为禁用。 */
@@ -36,17 +40,31 @@ export interface ITabBarProps {
   readonly onRun: () => void;
   readonly onCompileRun: () => void;
   readonly onToggleProblems: () => void;
+  readonly templates: readonly IFileTemplate[];
+  readonly newMenuOpen: boolean;
+  readonly onToggleNewMenu: () => void;
+  readonly onCloseNewMenu: () => void;
+  readonly onCreateFromTemplate: (template: IFileTemplate) => void;
+}
+
+function templateIcon(template: IFileTemplate): IconDefinition {
+  if (template.extension === 'cpp') {
+    return faFileCode;
+  }
+  if (template.extension === 'py') {
+    return faCode;
+  }
+  return faFileLines;
 }
 
 /**
- * 顶部文件栏：标签页 + 新建 + 编译/运行/编译并运行 + 问题面板开关。
+ * 顶部文件栏：标签页 + 新建（模板菜单）+ 编译/运行/编译并运行 + 问题面板开关。
  */
 export function TabBar({
   tabs,
   activeTabId,
   onActivate,
   onClose,
-  onNew,
   actionsEnabled,
   busy,
   problemCount,
@@ -55,6 +73,11 @@ export function TabBar({
   onRun,
   onCompileRun,
   onToggleProblems,
+  templates,
+  newMenuOpen,
+  onToggleNewMenu,
+  onCloseNewMenu,
+  onCreateFromTemplate,
 }: ITabBarProps) {
   const actionDisabled = !actionsEnabled || busy;
 
@@ -88,15 +111,41 @@ export function TabBar({
         ))}
       </div>
       <div className="oi-tabbar-actions">
-        <button
-          type="button"
-          className="oi-btn oi-btn-icon oi-tab-new"
-          onClick={onNew}
-          title={WORKBENCH_STRINGS.newFileTooltip}
-          aria-label={WORKBENCH_STRINGS.newFile}
-        >
-          <FontAwesomeIcon icon={faPlus} aria-hidden="true" />
-        </button>
+        <div className="oi-new-container">
+          <button
+            type="button"
+            className="oi-btn oi-btn-icon oi-tab-new"
+            onClick={onToggleNewMenu}
+            title={WORKBENCH_STRINGS.newFileTooltip}
+            aria-label={WORKBENCH_STRINGS.newFile}
+            aria-expanded={newMenuOpen}
+            aria-haspopup="menu"
+          >
+            <FontAwesomeIcon icon={faPlus} aria-hidden="true" />
+          </button>
+          {newMenuOpen ? (
+            <>
+              <div className="oi-menu-backdrop" onClick={onCloseNewMenu} aria-hidden="true" />
+              <div className="oi-menu" role="menu" aria-label={WORKBENCH_STRINGS.newFileMenuLabel}>
+                {templates.map((template) => (
+                  <button
+                    key={template.id}
+                    type="button"
+                    role="menuitem"
+                    className="oi-menu-item"
+                    onClick={() => onCreateFromTemplate(template)}
+                  >
+                    <FontAwesomeIcon icon={templateIcon(template)} aria-hidden="true" />
+                    <span className="oi-menu-label">{template.name}</span>
+                    {template.extension.length > 0 ? (
+                      <span className="oi-menu-hint">.{template.extension}</span>
+                    ) : null}
+                  </button>
+                ))}
+              </div>
+            </>
+          ) : null}
+        </div>
         <span className="oi-tabbar-separator" aria-hidden="true" />
         <button
           type="button"

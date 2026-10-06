@@ -9,8 +9,11 @@ import {
   faFolderOpen,
   faMagnifyingGlass,
   faMoon,
+  faPen,
+  faPlus,
   faSpinner,
   faSun,
+  faTrashCan,
 } from '@fortawesome/free-solid-svg-icons';
 import type {
   IPythonServiceClient,
@@ -20,6 +23,7 @@ import type {
 } from '@oi/platform';
 import { useCallback, useEffect, useRef, useState } from 'react';
 import { WORKBENCH_STRINGS } from './strings';
+import { createTemplateId, type IFileTemplate } from './templates';
 
 export interface ISettingsViewProps {
   readonly theme: ThemeKind;
@@ -31,6 +35,8 @@ export interface ISettingsViewProps {
   readonly onSave: () => void;
   readonly toolchainService: IToolchainServiceClient;
   readonly pythonService: IPythonServiceClient;
+  readonly templates: readonly IFileTemplate[];
+  readonly onTemplatesChange: (templates: readonly IFileTemplate[]) => void;
 }
 
 const PIP_LOG_LIMIT = 200;
@@ -49,6 +55,8 @@ export function SettingsView({
   onSave,
   toolchainService,
   pythonService,
+  templates,
+  onTemplatesChange,
 }: ISettingsViewProps) {
   const [cppStatus, setCppStatus] = useState<IToolchainStatus | undefined>(undefined);
   const [cppSearching, setCppSearching] = useState(false);
@@ -65,6 +73,7 @@ export function SettingsView({
   const [installing, setInstalling] = useState(false);
   const [pipLog, setPipLog] = useState<string[]>([]);
   const [pipMessage, setPipMessage] = useState<string | undefined>(undefined);
+  const [templateDraft, setTemplateDraft] = useState<IFileTemplate | undefined>(undefined);
 
   useEffect(() => {
     const store = new DisposableStore();
@@ -184,6 +193,30 @@ export function SettingsView({
     }
   }, [packageName, packageVersion, pythonService, useTsinghua]);
 
+  const commitTemplate = useCallback((): void => {
+    if (templateDraft === undefined) {
+      return;
+    }
+    const name = templateDraft.name.trim().length > 0 ? templateDraft.name.trim() : '未命名模板';
+    const extension = templateDraft.extension.trim().replace(/^\.+/, '');
+    const normalized: IFileTemplate = { ...templateDraft, name, extension };
+    const exists = templates.some((template) => template.id === normalized.id);
+    onTemplatesChange(
+      exists
+        ? templates.map((template) => (template.id === normalized.id ? normalized : template))
+        : [...templates, normalized],
+    );
+    setTemplateDraft(undefined);
+  }, [onTemplatesChange, templateDraft, templates]);
+
+  const deleteTemplate = useCallback(
+    (id: string): void => {
+      onTemplatesChange(templates.filter((template) => template.id !== id));
+      setTemplateDraft((draft) => (draft?.id === id ? undefined : draft));
+    },
+    [onTemplatesChange, templates],
+  );
+
   const themeToggleText =
     theme === 'dark' ? WORKBENCH_STRINGS.themeToLight : WORKBENCH_STRINGS.themeToDark;
   const defaultInterpreter = pythonStatus?.interpreters.find(
@@ -241,6 +274,115 @@ export function SettingsView({
               <span>{WORKBENCH_STRINGS.save}</span>
             </button>
           </div>
+        </section>
+
+        <section className="oi-settings-section" aria-label={WORKBENCH_STRINGS.templates}>
+          <h2 className="oi-settings-section-title">{WORKBENCH_STRINGS.templates}</h2>
+          <p className="oi-settings-hint">{WORKBENCH_STRINGS.templatesHint}</p>
+          {templates.length === 0 ? (
+            <p className="oi-settings-hint oi-templates-empty">
+              {WORKBENCH_STRINGS.templatesEmpty}
+            </p>
+          ) : (
+            <div className="oi-template-list">
+              {templates.map((template) => (
+                <div key={template.id} className="oi-template-row">
+                  <span className="oi-template-name">{template.name}</span>
+                  <span className="oi-template-ext">
+                    {template.extension.length > 0 ? `.${template.extension}` : '—'}
+                  </span>
+                  <button
+                    type="button"
+                    className="oi-btn oi-btn-icon oi-btn-secondary oi-template-edit"
+                    onClick={() => setTemplateDraft({ ...template })}
+                    title={`${WORKBENCH_STRINGS.templateEdit}：${template.name}`}
+                    aria-label={`${WORKBENCH_STRINGS.templateEdit}：${template.name}`}
+                  >
+                    <FontAwesomeIcon icon={faPen} aria-hidden="true" />
+                  </button>
+                  <button
+                    type="button"
+                    className="oi-btn oi-btn-icon oi-btn-secondary oi-template-delete"
+                    onClick={() => deleteTemplate(template.id)}
+                    title={`${WORKBENCH_STRINGS.templateDelete}：${template.name}`}
+                    aria-label={`${WORKBENCH_STRINGS.templateDelete}：${template.name}`}
+                  >
+                    <FontAwesomeIcon icon={faTrashCan} aria-hidden="true" />
+                  </button>
+                </div>
+              ))}
+            </div>
+          )}
+          <div className="oi-settings-actions">
+            <button
+              type="button"
+              className="oi-btn oi-btn-secondary oi-template-add"
+              onClick={() =>
+                setTemplateDraft({
+                  id: createTemplateId(),
+                  name: '',
+                  extension: 'cpp',
+                  content: '',
+                })
+              }
+            >
+              <FontAwesomeIcon icon={faPlus} aria-hidden="true" />
+              <span>{WORKBENCH_STRINGS.templateAdd}</span>
+            </button>
+          </div>
+          {templateDraft !== undefined ? (
+            <div className="oi-template-editor">
+              <label className="oi-field">
+                <span className="oi-settings-label">{WORKBENCH_STRINGS.templateName}</span>
+                <input
+                  className="oi-input oi-template-name-input"
+                  type="text"
+                  value={templateDraft.name}
+                  onChange={(event) =>
+                    setTemplateDraft({ ...templateDraft, name: event.target.value })
+                  }
+                />
+              </label>
+              <label className="oi-field">
+                <span className="oi-settings-label">{WORKBENCH_STRINGS.templateExtension}</span>
+                <input
+                  className="oi-input oi-template-ext-input"
+                  type="text"
+                  value={templateDraft.extension}
+                  onChange={(event) =>
+                    setTemplateDraft({ ...templateDraft, extension: event.target.value })
+                  }
+                />
+              </label>
+              <label className="oi-field">
+                <span className="oi-settings-label">{WORKBENCH_STRINGS.templateContent}</span>
+                <textarea
+                  className="oi-input oi-template-content"
+                  rows={6}
+                  value={templateDraft.content}
+                  onChange={(event) =>
+                    setTemplateDraft({ ...templateDraft, content: event.target.value })
+                  }
+                />
+              </label>
+              <div className="oi-settings-actions">
+                <button
+                  type="button"
+                  className="oi-btn oi-btn-primary oi-template-save"
+                  onClick={commitTemplate}
+                >
+                  <span>{WORKBENCH_STRINGS.templateSave}</span>
+                </button>
+                <button
+                  type="button"
+                  className="oi-btn oi-btn-secondary"
+                  onClick={() => setTemplateDraft(undefined)}
+                >
+                  <span>{WORKBENCH_STRINGS.templateCancel}</span>
+                </button>
+              </div>
+            </div>
+          ) : null}
         </section>
 
         <section className="oi-settings-section" aria-label={WORKBENCH_STRINGS.settingsToolchain}>
