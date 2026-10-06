@@ -1,0 +1,33 @@
+{
+  "$schema": "./node_modules/nx/schemas/nx-schema.json",
+  "defaultBase": "main",
+  "namedInputs": {
+    "default": ["{projectRoot}/**/*", "sharedGlobals"],
+    "production": [
+      "default",
+      "!{projectRoot}/**/*.test.ts",
+      "!{projectRoot}/**/*.test.tsx",
+      "!{projectRoot}/vitest.config.ts"
+    ],
+    "sharedGlobals": []
+  },
+  "targetDefaults": {
+    "build": {
+      "dependsOn": ["^build"],
+      "cache": true,
+      "inputs": ["production", "^production"]
+    },
+    "test": {
+      "cache": true,
+      "inputs": ["default", "^production"]
+    },
+    "typecheck": {
+      "cache": true,
+      "inputs": ["default", "^production"]
+    },
+    "e2e": {
+      "cache": false
+    }
+  },
+  "plugins": ["@nx/vitest"]
+}

@@ -1,0 +1,9 @@
+node_modules
+dist
+coverage
+playwright-report
+test-results
+.nx
+pnpm-lock.yaml
+# 文档为人工维护并受 AGENTS.md 6.4 保护，不纳入自动格式化
+*.md

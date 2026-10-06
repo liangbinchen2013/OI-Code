@@ -3,13 +3,28 @@
   "version": "1.0.0",
   "private": true,
   "description": "为 OIer 打造的跨平台一体化 IDE",
-  "main": "index.js",
+  "packageManager": "pnpm@12.9.1",
   "scripts": {
-    "test": "echo \"Error: no test specified\" && exit 1"
+    "prepare": "husky",
+    "lint": "eslint . && prettier --check .",
+    "lint:fix": "eslint . --fix",
+    "format": "prettier --write .",
+    "valid-layers-check": "node tools/scripts/valid-layers-check.mjs",
+    "typecheck": "nx run-many -t typecheck",
+    "test": "nx run-many -t test"
   },
   "keywords": [],
   "author": "",
   "license": "ISC",
+  "lint-staged": {
+    "*.{ts,tsx,js,mjs,cjs}": [
+      "eslint --fix",
+      "prettier --write"
+    ],
+    "*.{json,md,css,html,yml,yaml}": [
+      "prettier --write"
+    ]
+  },
   "dependencies": {
     "@fortawesome/fontawesome-svg-core": "^7.3.1",
     "@fortawesome/free-brands-svg-icons": "^7.3.1",

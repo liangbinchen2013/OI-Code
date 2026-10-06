@@ -1,4 +1,9 @@
 # pnpm 11+ 构建脚本白名单（package.json 的 pnpm 字段已废弃，onlyBuiltDependencies 已被 allowBuilds 取代）
+packages:
+  - 'apps/*'
+  - 'libs/*'
+  - 'libs/extensions/*'
+
 allowBuilds:
   electron: true
   electron-winstaller: true
