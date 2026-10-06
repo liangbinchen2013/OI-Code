@@ -292,6 +292,9 @@ importers:
       '@oi/platform':
         specifier: workspace:*
         version: link:../platform
+      monaco-editor:
+        specifier: ^0.57.0
+        version: 0.57.0
 
   libs/platform:
     dependencies:
