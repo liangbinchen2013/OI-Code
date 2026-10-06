@@ -7,6 +7,8 @@ export const WORKBENCH_STRINGS = {
   openFileTooltip: '打开文件（Ctrl+O）',
   save: '保存',
   saveTooltip: '保存（Ctrl+S）',
+  themeToDark: '切换到暗色',
+  themeToLight: '切换到亮色',
   emptyTitle: '打开一个文件开始刷题',
   emptyHint: '支持 C++、Python 与 Markdown；Ctrl+S 保存，Ctrl+O 打开',
   unsaved: '有未保存的修改',

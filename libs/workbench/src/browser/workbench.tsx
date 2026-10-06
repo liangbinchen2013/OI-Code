@@ -1,13 +1,16 @@
 import { DisposableStore, onUnexpectedError, toDisposable } from '@oi/base';
 import type { URI } from '@oi/base';
 import type { ILanguageService } from '@oi/editor';
+import type { ThemeKind } from '@oi/editor/browser';
 import { FontAwesomeIcon } from '@fortawesome/react-fontawesome';
 import {
   faCircleCheck,
   faCircleXmark,
   faFloppyDisk,
   faFolderOpen,
+  faMoon,
   faSpinner,
+  faSun,
 } from '@fortawesome/free-solid-svg-icons';
 import type { IconDefinition } from '@fortawesome/fontawesome-svg-core';
 import type { IFileDialogService, IFileService } from '@oi/platform';
@@ -15,6 +18,7 @@ import { useCallback, useEffect, useRef, useState } from 'react';
 import { createRoot } from 'react-dom/client';
 import { EditorPane, type IEditorPaneHandle } from './editorPane';
 import { WORKBENCH_STRINGS } from './strings';
+import { applyTheme, persistTheme, readStoredTheme, resolveInitialTheme } from './theme';
 import './tokens.css';
 import './workbench.css';
 
@@ -41,12 +45,6 @@ interface IOpenDocument {
   readonly name: string;
 }
 
-const OPEN_FILTERS = [
-  { name: 'OI 源码', extensions: ['cpp', 'cc', 'cxx', 'h', 'hpp', 'py'] },
-  { name: 'Markdown', extensions: ['md', 'markdown'] },
-  { name: '全部文件', extensions: ['*'] },
-];
-
 const STATUS_PRESENTATION: Record<
   Exclude<WorkbenchStatus, 'idle'>,
   { readonly icon: IconDefinition; readonly text: string }
@@ -62,11 +60,16 @@ function fileNameOf(uri: URI): string {
   return name !== undefined && name.length > 0 ? name : uri.path;
 }
 
-function Workbench({ services, onDirtyStateChange }: Omit<IWorkbenchOptions, 'container'>) {
+interface IWorkbenchProps extends Omit<IWorkbenchOptions, 'container'> {
+  readonly initialTheme: ThemeKind;
+}
+
+function Workbench({ services, onDirtyStateChange, initialTheme }: IWorkbenchProps) {
   const [store] = useState(() => new DisposableStore());
   const [doc, setDoc] = useState<IOpenDocument | undefined>(undefined);
   const [dirty, setDirty] = useState(false);
   const [status, setStatus] = useState<WorkbenchStatus>('idle');
+  const [theme, setTheme] = useState<ThemeKind>(initialTheme);
   const editorPaneRef = useRef<IEditorPaneHandle | null>(null);
   const docRef = useRef<IOpenDocument | undefined>(undefined);
   // 关闭确认依赖主进程缓存的脏状态，编辑瞬间同步上报，避免“编辑后立刻关闭”的竞态
@@ -81,8 +84,30 @@ function Workbench({ services, onDirtyStateChange }: Omit<IWorkbenchOptions, 'co
   }, [doc]);
 
   useEffect(() => {
+    applyTheme(theme);
+  }, [theme]);
+
+  // 用户未显式选择过主题时，跟随系统亮暗变化
+  useEffect(() => {
+    const media = window.matchMedia('(prefers-color-scheme: dark)');
+    const listener = (): void => {
+      if (readStoredTheme() === undefined) {
+        setTheme(media.matches ? 'dark' : 'light');
+      }
+    };
+    media.addEventListener('change', listener);
+    store.add(toDisposable(() => media.removeEventListener('change', listener)));
+  }, [store]);
+
+  useEffect(() => {
     return () => store.dispose();
   }, [store]);
+
+  const toggleTheme = useCallback(() => {
+    const next: ThemeKind = theme === 'dark' ? 'light' : 'dark';
+    persistTheme(next);
+    setTheme(next);
+  }, [theme]);
 
   const setDirtyState = useCallback(
     (value: boolean) => {
@@ -107,7 +132,6 @@ function Workbench({ services, onDirtyStateChange }: Omit<IWorkbenchOptions, 'co
       }
       const uri = await services.fileDialogService.showOpenFile({
         title: WORKBENCH_STRINGS.openFile,
-        filters: OPEN_FILTERS,
       });
       if (!uri) {
         return;
@@ -206,6 +230,19 @@ function Workbench({ services, onDirtyStateChange }: Omit<IWorkbenchOptions, 'co
         <div className="oi-topbar-actions">
           <button
             type="button"
+            className="oi-btn oi-btn-secondary oi-btn-icon oi-theme-toggle"
+            onClick={toggleTheme}
+            title={
+              theme === 'dark' ? WORKBENCH_STRINGS.themeToLight : WORKBENCH_STRINGS.themeToDark
+            }
+            aria-label={
+              theme === 'dark' ? WORKBENCH_STRINGS.themeToLight : WORKBENCH_STRINGS.themeToDark
+            }
+          >
+            <FontAwesomeIcon icon={theme === 'dark' ? faSun : faMoon} aria-hidden="true" />
+          </button>
+          <button
+            type="button"
             className="oi-btn oi-btn-secondary"
             onClick={() => void openFileRef.current()}
             title={WORKBENCH_STRINGS.openFileTooltip}
@@ -265,9 +302,16 @@ function Workbench({ services, onDirtyStateChange }: Omit<IWorkbenchOptions, 'co
  * 在指定容器挂载工作台外壳，返回用于卸载 React 树的释放句柄。
  */
 export function renderWorkbench(options: IWorkbenchOptions): { dispose(): void } {
+  const initialTheme = resolveInitialTheme();
+  // 首帧渲染前落地主题，避免亮暗闪烁
+  applyTheme(initialTheme);
   const root = createRoot(options.container);
   root.render(
-    <Workbench services={options.services} onDirtyStateChange={options.onDirtyStateChange} />,
+    <Workbench
+      services={options.services}
+      onDirtyStateChange={options.onDirtyStateChange}
+      initialTheme={initialTheme}
+    />,
   );
   return toDisposable(() => root.unmount());
 }

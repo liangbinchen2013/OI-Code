@@ -21,7 +21,26 @@ export function ensureMonacoEnvironment(): void {
   environmentReady = true;
 }
 
-export const WORKBENCH_THEME_ID = 'oi-code-light';
+/**
+ * 工作台主题种类；浅色 / 暗色各自对应一个 Monaco 主题 id。
+ */
+export type ThemeKind = 'light' | 'dark';
+
+const THEME_IDS: Record<ThemeKind, string> = {
+  light: 'oi-code-light',
+  dark: 'oi-code-dark',
+};
+
+export function themeIdFor(kind: ThemeKind): string {
+  return THEME_IDS[kind];
+}
+
+/**
+ * 读取 DOM 上当前的主题种类，供编辑器创建时选择主题。
+ */
+export function currentThemeKind(): ThemeKind {
+  return document.documentElement.dataset.theme === 'dark' ? 'dark' : 'light';
+}
 
 /**
  * Monaco 配色 → 工作台设计令牌映射（UI_DESIGN.md §2）。
@@ -66,9 +85,10 @@ function normalizeColor(value: string): string | undefined {
 }
 
 /**
- * 由工作台设计令牌生成 Monaco 浅色主题；令牌缺失时保持 Monaco 默认色。
+ * 由工作台设计令牌生成 Monaco 主题并全局应用。
+ * 调用方需先设置 `document.documentElement.dataset.theme`，颜色从计算样式读取。
  */
-export function defineWorkbenchTheme(): void {
+export function applyWorkbenchTheme(kind: ThemeKind): void {
   const styles = getComputedStyle(document.documentElement);
   const colors: Record<string, string> = {};
   for (const [colorId, tokenName] of Object.entries(MONACO_COLOR_TOKENS)) {
@@ -77,10 +97,11 @@ export function defineWorkbenchTheme(): void {
       colors[colorId] = value;
     }
   }
-  monaco.editor.defineTheme(WORKBENCH_THEME_ID, {
-    base: 'vs',
+  monaco.editor.defineTheme(THEME_IDS[kind], {
+    base: kind === 'dark' ? 'vs-dark' : 'vs',
     inherit: true,
     rules: [],
     colors,
   });
+  monaco.editor.setTheme(THEME_IDS[kind]);
 }
