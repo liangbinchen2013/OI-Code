@@ -27,6 +27,7 @@ import { createRoot } from 'react-dom/client';
 import { ActivityBar, type ActivityView } from './activityBar';
 import { EditorPane, type IEditorPaneHandle } from './editorPane';
 import { clampSidebarWidth, persistSidebarWidth, readStoredSidebarWidth } from './layout';
+import { ToolboxPanel } from './oiToolbox';
 import { ProblemsPanel, type IProblemItem } from './problemsPanel';
 import { SettingsView } from './settingsView';
 import { ExplorerPanel } from './sidebar';
@@ -815,6 +816,7 @@ function Workbench({ services, initialTheme, onDirtyStateChange }: IWorkbenchPro
               onOpenFolder={() => void openFolderRef.current()}
               onRefresh={() => setTreeVersion((version) => version + 1)}
             />
+            <ToolboxPanel hidden={activityView !== 'toolbox'} />
             <SettingsView
               theme={theme}
               canSave={activeTab !== undefined}

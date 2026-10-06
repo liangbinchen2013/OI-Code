@@ -1,12 +1,12 @@
 import type { IconDefinition } from '@fortawesome/fontawesome-svg-core';
 import { FontAwesomeIcon } from '@fortawesome/react-fontawesome';
-import { faFolderTree, faGear } from '@fortawesome/free-solid-svg-icons';
+import { faFolderTree, faGear, faToolbox } from '@fortawesome/free-solid-svg-icons';
 import { WORKBENCH_STRINGS } from './strings';
 
 /**
- * 侧边栏一级视图：资源管理器 / 设置（后续 OI 工具箱等在此扩展）。
+ * 侧边栏一级视图：资源管理器 / OI 工具箱 / 设置。
  */
-export type ActivityView = 'explorer' | 'settings';
+export type ActivityView = 'explorer' | 'toolbox' | 'settings';
 
 export interface IActivityItem {
   readonly view: ActivityView;
@@ -16,6 +16,7 @@ export interface IActivityItem {
 
 const ACTIVITY_ITEMS: readonly IActivityItem[] = [
   { view: 'explorer', icon: faFolderTree, label: WORKBENCH_STRINGS.explorer },
+  { view: 'toolbox', icon: faToolbox, label: WORKBENCH_STRINGS.toolbox },
 ];
 
 export interface IActivityBarProps {

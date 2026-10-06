@@ -376,8 +376,10 @@ body {
   display: none !important;
 }
 
-/* 拖拽手柄：拖拽中全窗口覆盖光标由 body 类承担 */
+/* 拖拽手柄：负外边距压在主区上，需抬高层级否则命中被主区截走 */
 .oi-resize-handle {
+  position: relative;
+  z-index: 2;
   flex: none;
   width: 5px;
   margin-right: -3px;
@@ -864,6 +866,156 @@ body {
   resize: vertical;
   font-family: var(--font-mono);
   line-height: 1.5;
+}
+
+/* OI 工具箱：工具选择（二级）与计时器（三级） */
+.oi-toolbox-body {
+  display: flex;
+  flex: 1;
+  flex-direction: column;
+  min-height: 0;
+  overflow: auto;
+  padding: 8px;
+}
+
+.oi-tool-row {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  width: 100%;
+  padding: 10px 12px;
+  border: 1px solid var(--border);
+  border-radius: 10px;
+  background: var(--btn-bg);
+  color: var(--text);
+  font: inherit;
+  font-size: 13px;
+  text-align: left;
+  cursor: pointer;
+  transition:
+    box-shadow 0.22s ease,
+    border-color 0.2s;
+}
+
+.oi-tool-row:hover {
+  border-color: var(--glow-ring);
+  box-shadow: var(--glow-shadow);
+}
+
+.oi-tool-row:focus-visible {
+  outline: 2px solid var(--glow-ring);
+  outline-offset: 1px;
+}
+
+.oi-tool-name {
+  flex: 1;
+}
+
+.oi-tool-hint {
+  color: var(--muted);
+  font-size: 12px;
+}
+
+.oi-timer {
+  display: flex;
+  flex-direction: column;
+  gap: 14px;
+}
+
+.oi-timer-modes {
+  display: flex;
+  gap: 6px;
+}
+
+.oi-timer-mode {
+  display: flex;
+  flex: 1;
+  align-items: center;
+  justify-content: center;
+  gap: 6px;
+  padding: 8px;
+  border: 1px solid var(--border);
+  border-radius: 10px;
+  background: var(--btn-bg);
+  color: var(--muted);
+  font: inherit;
+  font-size: 13px;
+  cursor: pointer;
+  transition:
+    color 0.2s,
+    border-color 0.2s,
+    box-shadow 0.22s ease;
+}
+
+.oi-timer-mode:hover {
+  box-shadow: var(--glow-shadow);
+}
+
+.oi-timer-mode:focus-visible {
+  outline: 2px solid var(--glow-ring);
+  outline-offset: 1px;
+}
+
+.oi-timer-mode-active {
+  border-color: var(--link);
+  color: var(--link);
+}
+
+.oi-timer-display {
+  padding: 18px 0;
+  border: 1px solid var(--card-border);
+  border-radius: var(--radius-card);
+  background: var(--code-bg);
+  color: var(--text);
+  font-family: var(--font-mono);
+  font-size: 40px;
+  font-variant-numeric: tabular-nums;
+  text-align: center;
+  letter-spacing: 0.02em;
+}
+
+.oi-timer-display-finished {
+  border-color: var(--error);
+  color: var(--error);
+  animation: oi-timer-blink 1s steps(2, start) infinite;
+}
+
+@keyframes oi-timer-blink {
+  to {
+    visibility: hidden;
+  }
+}
+
+.oi-timer-finished-text {
+  margin: -6px 0 0;
+  color: var(--error);
+  font-size: 13px;
+  text-align: center;
+}
+
+.oi-timer-inputs {
+  display: flex;
+  gap: 10px;
+}
+
+.oi-timer-inputs .oi-field {
+  flex: 1;
+}
+
+.oi-timer-controls {
+  display: flex;
+  gap: 8px;
+}
+
+.oi-timer-controls .oi-btn {
+  flex: 1;
+  justify-content: center;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .oi-timer-display-finished {
+    animation: none;
+  }
 }
 
 /* 问题面板：控制台风格底部面板（行 | 列 | 原因） */
