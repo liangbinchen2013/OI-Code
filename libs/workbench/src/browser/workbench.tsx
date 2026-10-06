@@ -38,6 +38,19 @@ export interface IWorkbenchOptions {
   readonly onDirtyStateChange?: (dirty: boolean) => void;
 }
 
+/**
+ * 工作台命令句柄：供 Code 层（应用菜单 / 全局快捷键）驱动工作台动作。
+ */
+export interface IWorkbenchHandle {
+  openFile(): void;
+  save(): void;
+  toggleTheme(): void;
+}
+
+export interface IWorkbenchInstance extends IWorkbenchHandle {
+  dispose(): void;
+}
+
 type WorkbenchStatus = 'idle' | 'saving' | 'saved' | 'saveFailed' | 'openFailed';
 
 interface IOpenDocument {
@@ -62,9 +75,10 @@ function fileNameOf(uri: URI): string {
 
 interface IWorkbenchProps extends Omit<IWorkbenchOptions, 'container'> {
   readonly initialTheme: ThemeKind;
+  readonly onReady?: (handle: IWorkbenchHandle) => void;
 }
 
-function Workbench({ services, onDirtyStateChange, initialTheme }: IWorkbenchProps) {
+function Workbench({ services, onDirtyStateChange, initialTheme, onReady }: IWorkbenchProps) {
   const [store] = useState(() => new DisposableStore());
   const [doc, setDoc] = useState<IOpenDocument | undefined>(undefined);
   const [dirty, setDirty] = useState(false);
@@ -108,6 +122,19 @@ function Workbench({ services, onDirtyStateChange, initialTheme }: IWorkbenchPro
     persistTheme(next);
     setTheme(next);
   }, [theme]);
+  const toggleThemeRef = useRef<() => void>(() => undefined);
+
+  useEffect(() => {
+    toggleThemeRef.current = toggleTheme;
+  }, [toggleTheme]);
+
+  useEffect(() => {
+    onReady?.({
+      openFile: () => void openFileRef.current(),
+      save: () => void saveRef.current(),
+      toggleTheme: () => toggleThemeRef.current(),
+    });
+  }, [onReady]);
 
   const setDirtyState = useCallback(
     (value: boolean) => {
@@ -299,19 +326,32 @@ function Workbench({ services, onDirtyStateChange, initialTheme }: IWorkbenchPro
 }
 
 /**
- * 在指定容器挂载工作台外壳，返回用于卸载 React 树的释放句柄。
+ * 在指定容器挂载工作台外壳，返回命令句柄与卸载函数。
  */
-export function renderWorkbench(options: IWorkbenchOptions): { dispose(): void } {
+export function renderWorkbench(options: IWorkbenchOptions): IWorkbenchInstance {
   const initialTheme = resolveInitialTheme();
   // 首帧渲染前落地主题，避免亮暗闪烁
   applyTheme(initialTheme);
+  let handle: IWorkbenchHandle = {
+    openFile: () => undefined,
+    save: () => undefined,
+    toggleTheme: () => undefined,
+  };
   const root = createRoot(options.container);
   root.render(
     <Workbench
       services={options.services}
       onDirtyStateChange={options.onDirtyStateChange}
       initialTheme={initialTheme}
+      onReady={(ready) => {
+        handle = ready;
+      }}
     />,
   );
-  return toDisposable(() => root.unmount());
+  return {
+    openFile: () => handle.openFile(),
+    save: () => handle.save(),
+    toggleTheme: () => handle.toggleTheme(),
+    dispose: () => root.unmount(),
+  };
 }
