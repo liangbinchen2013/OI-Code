@@ -1,0 +1,13 @@
+{
+  "name": "@oi/desktop",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "dependencies": {
+    "@oi/base": "workspace:*",
+    "@oi/editor": "workspace:*",
+    "@oi/platform": "workspace:*",
+    "@oi/workbench": "workspace:*",
+    "electron": "^44.5.1"
+  }
+}
