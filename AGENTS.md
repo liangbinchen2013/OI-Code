@@ -167,6 +167,7 @@ test(editor): 补充语法高亮单元测试
 pnpm lint                    # ESLint + Prettier
 npm run valid-layers-check   # 分层校验
 nx affected:test             # 受影响项目单元测试
+pnpm typecheck               # 全仓 TypeScript 类型检查
 ```
 
 ### 6.4 文档改进反馈（Agent 强制义务）
