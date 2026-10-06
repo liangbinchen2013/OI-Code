@@ -6,8 +6,8 @@ import { FontAwesomeIcon } from '@fortawesome/react-fontawesome';
 import {
   faCircleCheck,
   faCircleXmark,
+  faFileLines,
   faFloppyDisk,
-  faFolderOpen,
   faMoon,
   faSpinner,
   faSun,
@@ -247,7 +247,7 @@ function Workbench({ services, onDirtyStateChange, initialTheme }: IWorkbenchPro
             onClick={() => void openFileRef.current()}
             title={WORKBENCH_STRINGS.openFileTooltip}
           >
-            <FontAwesomeIcon icon={faFolderOpen} aria-hidden="true" />
+            <FontAwesomeIcon icon={faFileLines} aria-hidden="true" />
             <span>{WORKBENCH_STRINGS.openFile}</span>
           </button>
           <button
@@ -278,7 +278,7 @@ function Workbench({ services, onDirtyStateChange, initialTheme }: IWorkbenchPro
               className="oi-btn oi-btn-primary"
               onClick={() => void openFileRef.current()}
             >
-              <FontAwesomeIcon icon={faFolderOpen} aria-hidden="true" />
+              <FontAwesomeIcon icon={faFileLines} aria-hidden="true" />
               <span>{WORKBENCH_STRINGS.openFile}</span>
             </button>
           </div>

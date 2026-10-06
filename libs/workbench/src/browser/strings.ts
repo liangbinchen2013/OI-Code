@@ -10,7 +10,7 @@ export const WORKBENCH_STRINGS = {
   themeToDark: '切换到暗色',
   themeToLight: '切换到亮色',
   emptyTitle: '打开一个文件开始刷题',
-  emptyHint: '支持 C++、Python 与 Markdown；Ctrl+S 保存，Ctrl+O 打开',
+  emptyHint: '打开任意文件，自动识别语言并高亮；Ctrl+O 打开，Ctrl+S 保存',
   unsaved: '有未保存的修改',
   saving: '保存中',
   saved: '已保存',
