@@ -1,4 +1,4 @@
-import { DisposableStore, onUnexpectedError, toDisposable } from '@oi/base';
+import { DisposableStore, onUnexpectedError, toDisposable, type IDisposable } from '@oi/base';
 import { URI } from '@oi/base';
 import type { ILanguageService } from '@oi/editor';
 import { getFileExtension } from '@oi/editor';
@@ -79,6 +79,8 @@ interface ITabState {
 }
 
 const STATUS_AUTO_HIDE_MS = 3000;
+/** 输入停止后多久触发实时语法检查。 */
+const LIVE_CHECK_DEBOUNCE_MS = 700;
 
 // 进行中的状态不自动隐藏，完成后由新状态替换
 const STICKY_STATUSES: ReadonlySet<WorkbenchStatus> = new Set(['saving', 'compiling']);
@@ -145,12 +147,15 @@ function Workbench({ services, initialTheme, onDirtyStateChange }: IWorkbenchPro
   const saveQueuedRef = useRef(false);
   const busyRef = useRef(false);
   const problemsRef = useRef(new Map<string, IProblemItem[]>());
+  const checkTokensRef = useRef(new Map<string, number>());
+  const checkTimersRef = useRef(new Map<string, IDisposable>());
   const openFileRef = useRef<() => Promise<void>>(async () => undefined);
   const openFolderRef = useRef<() => Promise<void>>(async () => undefined);
   const saveRef = useRef<() => Promise<void>>(async () => undefined);
   const compileRef = useRef<() => Promise<void>>(async () => undefined);
   const compileRunRef = useRef<() => Promise<void>>(async () => undefined);
   const runRef = useRef<() => Promise<void>>(async () => undefined);
+  const scheduleCheckRef = useRef<(tab: ITabState, delayMs: number) => void>(() => undefined);
 
   useEffect(() => {
     tabsRef.current = tabs;
@@ -237,6 +242,7 @@ function Workbench({ services, initialTheme, onDirtyStateChange }: IWorkbenchPro
         setActiveTabId(tab.id);
         setView('editor');
         setStatus('idle');
+        scheduleCheckRef.current(tab, 0);
       } catch (error) {
         setStatus('openFailed');
         onUnexpectedError(error);
@@ -289,6 +295,14 @@ function Workbench({ services, initialTheme, onDirtyStateChange }: IWorkbenchPro
         }
       }
       editorPaneRef.current?.closeDocument(tab.uri);
+      const pendingTimer = checkTimersRef.current.get(tab.id);
+      if (pendingTimer !== undefined) {
+        store.delete(pendingTimer);
+        pendingTimer.dispose();
+        checkTimersRef.current.delete(tab.id);
+      }
+      // 令在途的实时检查结果失效
+      checkTokensRef.current.set(tab.id, (checkTokensRef.current.get(tab.id) ?? 0) + 1);
       const remaining = tabsRef.current.filter((candidate) => candidate.id !== id);
       setTabs(remaining);
       if (activeTabIdRef.current === id) {
@@ -307,6 +321,10 @@ function Workbench({ services, initialTheme, onDirtyStateChange }: IWorkbenchPro
       previous.map((tab) => (tab.uri.toString() === key ? { ...tab, dirty: true } : tab)),
     );
     setStatus('idle');
+    const tab = tabsRef.current.find((candidate) => candidate.uri.toString() === key);
+    if (tab !== undefined) {
+      scheduleCheckRef.current(tab, LIVE_CHECK_DEBOUNCE_MS);
+    }
   }, []);
 
   const save = useCallback(
@@ -347,6 +365,11 @@ function Workbench({ services, initialTheme, onDirtyStateChange }: IWorkbenchPro
             previous.map((candidate) => (candidate.id === tab.id ? updated : candidate)),
           );
           setActiveTabId(updated.id);
+          const groups = new Map(problemsRef.current);
+          groups.delete(tab.id);
+          problemsRef.current = groups;
+          setProblems([...groups.values()].flat());
+          scheduleCheckRef.current(updated, 0);
         } else {
           await services.fileService.writeFile(tab.uri, editor.getValue(tab.uri));
           setTabs((previous) =>
@@ -400,6 +423,19 @@ function Workbench({ services, initialTheme, onDirtyStateChange }: IWorkbenchPro
     problemsRef.current = new Map(groups);
     setProblems([...groups.values()].flat());
   }, []);
+
+  const setProblemsForFile = useCallback(
+    (key: string, items: readonly IProblemItem[]): void => {
+      const groups = new Map(problemsRef.current);
+      if (items.length === 0) {
+        groups.delete(key);
+      } else {
+        groups.set(key, [...items]);
+      }
+      replaceProblems(groups);
+    },
+    [replaceProblems],
+  );
 
   const languageOf = useCallback(
     (tab: ITabState): SourceLanguage | undefined => {
@@ -516,6 +552,79 @@ function Workbench({ services, initialTheme, onDirtyStateChange }: IWorkbenchPro
     ],
   );
 
+  /**
+   * 实时语法检查单个文档：内容变化防抖后调用，结果随令牌过期丢弃。
+   */
+  const performCheck = useCallback(
+    async (tab: ITabState): Promise<void> => {
+      const editor = editorPaneRef.current;
+      if (!editor || tab.untitled) {
+        return;
+      }
+      const language = languageOf(tab);
+      if (language === undefined) {
+        return;
+      }
+      const key = tab.uri.toString();
+      const token = (checkTokensRef.current.get(key) ?? 0) + 1;
+      checkTokensRef.current.set(key, token);
+      try {
+        const content = editor.getValue(tab.uri);
+        const diagnostics =
+          language === 'cpp'
+            ? await services.toolchainService.check(tab.uri, content)
+            : await services.pythonService.check(tab.uri, content);
+        // 输入期间会有多次检查在途，只采纳最后一次的结果
+        if (checkTokensRef.current.get(key) !== token) {
+          return;
+        }
+        editor.setMarkers(tab.uri, toEditorMarkers(diagnostics));
+        const sourceDiagnostics = diagnostics.filter(
+          (diagnostic) => diagnostic.uri === undefined || diagnostic.uri.toString() === key,
+        );
+        setProblemsForFile(
+          key,
+          sourceDiagnostics.map((diagnostic) => ({
+            uri: diagnostic.uri ?? tab.uri,
+            fileName: diagnostic.fileName ?? tab.name,
+            line: diagnostic.line,
+            column: diagnostic.column,
+            severity: diagnostic.severity,
+            message: diagnostic.message,
+          })),
+        );
+      } catch (error) {
+        onUnexpectedError(error);
+      }
+    },
+    [languageOf, services.pythonService, services.toolchainService, setProblemsForFile],
+  );
+
+  const scheduleCheck = useCallback(
+    (tab: ITabState, delayMs: number): void => {
+      const key = tab.uri.toString();
+      const existing = checkTimersRef.current.get(key);
+      if (existing !== undefined) {
+        store.delete(existing);
+        existing.dispose();
+        checkTimersRef.current.delete(key);
+      }
+      const timer = window.setTimeout(() => {
+        const entry = checkTimersRef.current.get(key);
+        if (entry !== undefined) {
+          store.delete(entry);
+          entry.dispose();
+          checkTimersRef.current.delete(key);
+        }
+        void performCheck(tab);
+      }, delayMs);
+      const handle = toDisposable(() => window.clearTimeout(timer));
+      store.add(handle);
+      checkTimersRef.current.set(key, handle);
+    },
+    [performCheck, store],
+  );
+
   const runActive = useCallback(async (): Promise<void> => {
     const tab = tabsRef.current.find((candidate) => candidate.id === activeTabIdRef.current);
     if (!tab || busyRef.current) {
@@ -576,6 +685,10 @@ function Workbench({ services, initialTheme, onDirtyStateChange }: IWorkbenchPro
   useEffect(() => {
     runRef.current = runActive;
   }, [runActive]);
+
+  useEffect(() => {
+    scheduleCheckRef.current = scheduleCheck;
+  }, [scheduleCheck]);
 
   useEffect(() => {
     const onKeyDown = (event: KeyboardEvent): void => {

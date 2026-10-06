@@ -48,6 +48,30 @@ async function openFile(
   await expect(page.locator('.oi-tab-active .oi-tab-name')).toHaveText(basename(filePath));
 }
 
+test('编辑时实时诊断在防抖后标记错误并更新问题角标', async () => {
+  test.skip(!hasCommand('g++'), '未安装 g++');
+  const directory = await mkdtemp(join(tmpdir(), 'oi-e2e-live-'));
+  const sourcePath = join(directory, 'live.cpp');
+  await writeFile(sourcePath, 'int main() { return 0; }\n', 'utf8');
+  const app = await launchApp();
+  try {
+    const page = await app.firstWindow();
+    await waitReady(page);
+    await openFile(app, page, sourcePath);
+    await expect(page.locator('.squiggly-error')).toHaveCount(0);
+
+    await page.locator('.monaco-editor').click();
+    await page.keyboard.press('Control+A');
+    await page.keyboard.type('int main() { int value = ; }\n');
+
+    await expect(page.locator('.squiggly-error').first()).toBeAttached({ timeout: 20_000 });
+    await expect(page.locator('.oi-problems-badge')).toBeVisible();
+  } finally {
+    await app.close();
+    await rm(directory, { recursive: true, force: true });
+  }
+});
+
 test('设置页自动搜索 g++ 与 Python 并展示版本与支持标准', async () => {
   const app = await launchApp();
   try {
