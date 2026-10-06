@@ -64,6 +64,19 @@ describe('DisposableStore', () => {
     const store = new DisposableStore();
     expect(() => store.add(store)).toThrow();
   });
+
+  it('delete 移除资源后不再随 store 释放', () => {
+    const disposeFn = vi.fn();
+    const disposable = toDisposable(disposeFn);
+    const store = new DisposableStore();
+    store.add(disposable);
+
+    expect(store.delete(disposable)).toBe(true);
+    expect(store.delete(disposable)).toBe(false);
+
+    store.dispose();
+    expect(disposeFn).not.toHaveBeenCalled();
+  });
 });
 
 describe('生命周期工具函数', () => {

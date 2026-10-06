@@ -66,6 +66,13 @@ export class DisposableStore implements IDisposable {
     return disposable;
   }
 
+  /**
+   * 从集合中移除指定资源（不释放它），由调用方负责其后续生命周期。
+   */
+  delete(disposable: IDisposable): boolean {
+    return this._toDispose.delete(disposable);
+  }
+
   clear(): void {
     if (this._toDispose.size === 0) {
       return;
