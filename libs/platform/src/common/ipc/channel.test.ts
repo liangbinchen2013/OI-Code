@@ -1,7 +1,7 @@
 import { Emitter, setUnexpectedErrorHandler } from '@oi/base';
 import { afterEach, describe, expect, it, vi } from 'vitest';
 import { type IMessageTransport, RpcChannel } from './channel';
-import { JSON_RPC_ERROR_CODES, RpcError } from './protocol';
+import { APP_RPC_ERROR_CODES, JSON_RPC_ERROR_CODES, RpcError } from './protocol';
 
 afterEach(() => {
   setUnexpectedErrorHandler(undefined);
@@ -50,6 +50,24 @@ describe('RpcChannel', () => {
     expect(rejection).toBeInstanceOf(RpcError);
     expect((rejection as RpcError).code).toBe(JSON_RPC_ERROR_CODES.internalError);
     expect((rejection as RpcError).message).toBe('handler failed');
+
+    client.dispose();
+    server.dispose();
+  });
+
+  it('处理器抛出的 RpcError 错误码与数据原样透传', async () => {
+    const [left, right] = createPipe();
+    const client = new RpcChannel(left);
+    const server = new RpcChannel(right);
+    server.registerMethod('get', () => {
+      throw new RpcError(APP_RPC_ERROR_CODES.accessDenied, '拒绝访问', { path: 'C:/secret.txt' });
+    });
+
+    const rejection = await client.call('get').catch((error: unknown) => error);
+
+    expect(rejection).toBeInstanceOf(RpcError);
+    expect((rejection as RpcError).code).toBe(APP_RPC_ERROR_CODES.accessDenied);
+    expect((rejection as RpcError).data).toEqual({ path: 'C:/secret.txt' });
 
     client.dispose();
     server.dispose();

@@ -1,5 +1,13 @@
 import { onUnexpectedError, setUnexpectedErrorHandler, toDisposable } from '@oi/base';
-import { type IMessageTransport, LogService, RpcChannel } from '@oi/platform';
+import { BUILTIN_LANGUAGES, LanguageService } from '@oi/editor';
+import {
+  FileDialogServiceClient,
+  FileServiceClient,
+  type IMessageTransport,
+  LogService,
+  RpcChannel,
+  WINDOW_RPC_NOTIFICATIONS,
+} from '@oi/platform';
 import { renderWorkbench } from '@oi/workbench';
 
 const logService = new LogService();
@@ -19,18 +27,37 @@ function connectToMain(): RpcChannel {
   return new RpcChannel(transport);
 }
 
+function createLanguageService(): LanguageService {
+  const languageService = new LanguageService();
+  for (const contribution of BUILTIN_LANGUAGES) {
+    languageService.registerLanguage(contribution);
+  }
+  return languageService;
+}
+
 async function bootstrap(): Promise<void> {
   const container = document.getElementById('root');
   if (!container) {
     throw new Error('找不到 #root 挂载点');
   }
 
-  const workbench = renderWorkbench({ container });
   const channel = connectToMain();
   const pong = await channel.call<{ pong: boolean }>('ping');
   if (!pong.pong) {
     throw new Error('IPC 握手失败');
   }
+
+  const workbench = renderWorkbench({
+    container,
+    services: {
+      fileService: new FileServiceClient(channel),
+      fileDialogService: new FileDialogServiceClient(channel),
+      languageService: createLanguageService(),
+    },
+    onDirtyStateChange: (dirty) => {
+      channel.notify(WINDOW_RPC_NOTIFICATIONS.setDirtyState, { dirty });
+    },
+  });
   document.documentElement.dataset.oiCodeReady = 'true';
 
   window.addEventListener('unload', () => {

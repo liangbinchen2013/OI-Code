@@ -175,6 +175,11 @@ export class RpcChannel implements IChannel {
       const result = await handler(request.params);
       this._transport.send({ jsonrpc: JSON_RPC_VERSION, id: request.id, result });
     } catch (error) {
+      // 处理器显式抛出的 RpcError 携带业务错误码（如访问被拒），原样透传给调用方
+      if (error instanceof RpcError) {
+        this._sendError(request.id, error.code, error.message, error.data);
+        return;
+      }
       this._sendError(
         request.id,
         JSON_RPC_ERROR_CODES.internalError,
@@ -183,7 +188,11 @@ export class RpcChannel implements IChannel {
     }
   }
 
-  private _sendError(id: JsonRpcId, code: number, message: string): void {
-    this._transport.send({ jsonrpc: JSON_RPC_VERSION, id, error: { code, message } });
+  private _sendError(id: JsonRpcId, code: number, message: string, data?: unknown): void {
+    this._transport.send({
+      jsonrpc: JSON_RPC_VERSION,
+      id,
+      error: { code, message, ...(data === undefined ? {} : { data }) },
+    });
   }
 }

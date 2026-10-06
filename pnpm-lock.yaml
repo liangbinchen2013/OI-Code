@@ -292,6 +292,9 @@ importers:
       '@oi/platform':
         specifier: workspace:*
         version: link:../platform
+      monaco-editor:
+        specifier: ^0.57.0
+        version: 0.57.0
 
   libs/platform:
     dependencies:
@@ -301,6 +304,15 @@ importers:
 
   libs/workbench:
     dependencies:
+      '@fortawesome/fontawesome-svg-core':
+        specifier: ^7.3.1
+        version: 7.3.1
+      '@fortawesome/free-solid-svg-icons':
+        specifier: ^7.3.1
+        version: 7.3.1
+      '@fortawesome/react-fontawesome':
+        specifier: ^3.5.0
+        version: 3.5.0(@fortawesome/fontawesome-svg-core@7.3.1)(react@19.3.0)
       '@oi/base':
         specifier: workspace:*
         version: link:../base

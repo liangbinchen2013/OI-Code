@@ -1,6 +1,6 @@
 # NEXT_STEP：保存代码 + 代码高亮（阶段 2 第一步）
 
-> 状态：待执行（阶段 1 已完成并合并 `main`）
+> 状态：已完成（2026-10-06，待合并 `main`）
 > 范围：打开 / 编辑 / 保存本地题解文件 + C++ / Python / Markdown 语法高亮
 > **明确不做**：编译与运行（后续独立任务）、多标签页、完整文件树、OI 工具集、暗色主题
 
@@ -8,12 +8,12 @@
 
 ## 1. 验收标准
 
-- [ ] 可通过系统打开对话框或快捷键打开 `.cpp` / `.py` / `.md` 文件并在 Monaco 中编辑
-- [ ] C++ / Python / Markdown 完成语法高亮（关键字、注释、字符串等 token 正确）
-- [ ] `Ctrl+S` 保存回原文件；保存状态有右下角状态胶囊反馈（成功绿 / 进行中橙 / 失败红）
-- [ ] 有未保存修改时关闭窗口必须弹确认，禁止静默丢失
-- [ ] 渲染进程零 Node API 直调，读写一律经 JSON-RPC；主进程校验消息来源
-- [ ] `pnpm lint`、`npm run valid-layers-check`、`nx affected:test`、`nx run desktop:e2e` 全绿
+- [x] 可通过系统打开对话框或快捷键打开 `.cpp` / `.py` / `.md` 文件并在 Monaco 中编辑
+- [x] C++ / Python / Markdown 完成语法高亮（关键字、注释、字符串等 token 正确）
+- [x] `Ctrl+S` 保存回原文件；保存状态有右下角状态胶囊反馈（成功绿 / 进行中橙 / 失败红）
+- [x] 有未保存修改时关闭窗口必须弹确认，禁止静默丢失
+- [x] 渲染进程零 Node API 直调，读写一律经 JSON-RPC；主进程校验消息来源
+- [x] `pnpm lint`、`npm run valid-layers-check`、`nx affected:test`、`nx run desktop:e2e` 全绿
 
 ---
 
@@ -83,3 +83,28 @@
 
 上述任务全部提交、四项必跑命令全绿、`nx run desktop:e2e` 覆盖"打开 → 编辑 → 保存"闭环后，
 在 `main` 上打阶段性说明，并转入"编译与运行"任务。
+
+---
+
+## 6. 完成情况（2026-10-06）
+
+**实现落点**：
+
+| 层 | 文件 | 说明 |
+|----|------|------|
+| Platform | `src/common/{fs,dialog}.ts`、`src/node/fileService.ts` | `IFileService` / `IFileDialogService` 契约 + Node 实现 + `FileServiceClient` / `FileDialogServiceClient` RPC 代理 |
+| Editor | `src/common/{languageService,languages}.ts`、`src/browser/{monacoEnvironment,codeEditor}.ts` | 语言注册表（含单测）、Monaco 按需注册三语言、设计令牌主题、`ICodeEditor` 门面 |
+| Workbench | `src/browser/{workbench,editorPane}.tsx`、`strings.ts` | 顶栏 + 空态 + 编辑器面板 + 状态胶囊 + `Ctrl+S`/`Ctrl+O` |
+| Code | `apps/desktop/src/main/*`、`src/renderer/main.tsx` | 文件 RPC、访问白名单、原生对话框、关闭确认、渲染进程装配 |
+
+**与计划的差异（均为实现约束下的等价/更优方案）**：
+
+- Monaco 0.57 将子路径导出映射到 `esm/vs/`，导入写为 `monaco-editor/editor/editor.api`；只注册 cpp / python / markdown 三种语言定义，worker 采用 `?worker&inline` 并放行 CSP `worker-src blob:`（file:// 下实测可用）。
+- Chromium 会把 `#ffffff` 计算为 `#fff`，主题生成前统一展开为 6 位十六进制。
+- 关闭确认由主进程原生对话框完成；脏状态在编辑瞬间同步上报，消除"编辑后立刻关闭"竞态。
+- `window.close()`（渲染进程）会绕过可取消的 close 事件，E2E 以原生窗口关闭路径验证。
+
+**验证结果**：`pnpm lint`、`valid-layers-check`、`nx affected:test`、`pnpm typecheck`、`nx run desktop:e2e`（4 用例：打开-高亮-编辑-保存 / 白名单拒绝 / 关闭确认 / 冒烟）全绿；
+打包版 `release/oi-code-win32-x64/OI-Code.exe` 以 `OI_E2E_EXECUTABLE` 复跑同一套 E2E 亦全绿。
+
+**遗留待办**：i18n 服务落地前，文案集中于 `libs/workbench/src/browser/strings.ts`；单文档模式、多标签、文件树、大文件性能按计划留待后续。

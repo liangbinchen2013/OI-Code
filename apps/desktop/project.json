@@ -17,6 +17,13 @@
         "command": "node tools/scripts/serve-desktop.mjs"
       }
     },
+    "package": {
+      "executor": "nx:run-commands",
+      "dependsOn": ["build"],
+      "options": {
+        "command": "node tools/scripts/package-desktop.mjs"
+      }
+    },
     "typecheck": {
       "executor": "nx:run-commands",
       "options": {
