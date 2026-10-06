@@ -69,6 +69,7 @@ function Workbench({ services, onDirtyStateChange }: Omit<IWorkbenchOptions, 'co
   const [status, setStatus] = useState<WorkbenchStatus>('idle');
   const editorPaneRef = useRef<IEditorPaneHandle | null>(null);
   const docRef = useRef<IOpenDocument | undefined>(undefined);
+  // 关闭确认依赖主进程缓存的脏状态，编辑瞬间同步上报，避免“编辑后立刻关闭”的竞态
   const dirtyRef = useRef(false);
   const savingRef = useRef(false);
   const saveQueuedRef = useRef(false);
@@ -80,13 +81,19 @@ function Workbench({ services, onDirtyStateChange }: Omit<IWorkbenchOptions, 'co
   }, [doc]);
 
   useEffect(() => {
-    dirtyRef.current = dirty;
-    onDirtyStateChange?.(dirty);
-  }, [dirty, onDirtyStateChange]);
-
-  useEffect(() => {
     return () => store.dispose();
   }, [store]);
+
+  const setDirtyState = useCallback(
+    (value: boolean) => {
+      if (dirtyRef.current !== value) {
+        dirtyRef.current = value;
+        onDirtyStateChange?.(value);
+      }
+      setDirty(value);
+    },
+    [onDirtyStateChange],
+  );
 
   const openFile = useCallback(async (): Promise<void> => {
     try {
@@ -108,7 +115,7 @@ function Workbench({ services, onDirtyStateChange }: Omit<IWorkbenchOptions, 'co
       const text = await services.fileService.readFile(uri);
       editorPaneRef.current?.setContent(text, uri);
       setDoc({ uri, name: fileNameOf(uri) });
-      setDirty(false);
+      setDirtyState(false);
       setStatus('idle');
     } catch (error) {
       setStatus('openFailed');
@@ -131,7 +138,7 @@ function Workbench({ services, onDirtyStateChange }: Omit<IWorkbenchOptions, 'co
       setStatus('saving');
       try {
         await services.fileService.writeFile(current.uri, editorPaneRef.current.getValue());
-        setDirty(false);
+        setDirtyState(false);
         setStatus('saved');
       } catch (error) {
         setStatus('saveFailed');
@@ -174,9 +181,9 @@ function Workbench({ services, onDirtyStateChange }: Omit<IWorkbenchOptions, 'co
   }, [store]);
 
   const handleContentChange = useCallback(() => {
-    setDirty(true);
+    setDirtyState(true);
     setStatus('idle');
-  }, []);
+  }, [setDirtyState]);
 
   const statusPresentation = status === 'idle' ? undefined : STATUS_PRESENTATION[status];
 
