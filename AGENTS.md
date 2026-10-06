@@ -83,6 +83,8 @@ tools/generators/   # 代码生成器
 
 ## 4. 编码规范（强制）
 
+> **图标规范**：界面与源码禁止 emoji，图标统一使用 `@fortawesome/*` Free 系列，详见 [`ICON_GUIDE.md`](./ICON_GUIDE.md)（`reviewer` 必查项）。
+
 ### 4.1 命名
 
 - 接口：`IFileService`

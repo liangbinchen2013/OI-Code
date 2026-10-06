@@ -68,6 +68,7 @@
 | 桌面 | `electron` | 44.5.1（二进制已下载） |
 | 编辑器/UI | `monaco-editor` | 0.57.0 |
 | | `react` / `react-dom` | 19.3.0 |
+| | `@fortawesome/*`（svg-core + solid/brands/regular + react-fontawesome） | 7.3.1 / 3.5.0，**项目唯一图标库，见 `ICON_GUIDE.md`** |
 | | `@types/react` / `@types/react-dom` / `@types/node` | 19.3.0 / 19.3.0 / 26.6.4 |
 | 测试 | `vitest` / `@vitest/coverage-v8` | **4.1.11**（见下方"已知问题"） |
 | | `@playwright/test` | 1.63.0 + Chromium 153.0.8010.12（已安装并实测启动成功） |
