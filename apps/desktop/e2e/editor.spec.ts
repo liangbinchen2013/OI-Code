@@ -1,20 +1,11 @@
-import { mkdtemp, readFile, rm, writeFile } from 'node:fs/promises';
+import { mkdir, mkdtemp, readFile, rm, writeFile } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { expect, test, type ElectronApplication } from '@playwright/test';
-import { launchApp, mockCloseDialog, mockOpenFileDialog } from './helpers';
-
-/**
- * 以原生窗口路径发起关闭（等价用户点击关闭按钮）；
- * 渲染进程的 window.close() 会绕过可取消的 close 事件，不用于本用例。
- */
-async function closeWindow(app: ElectronApplication): Promise<void> {
-  await app.evaluate(({ BrowserWindow }) => {
-    BrowserWindow.getAllWindows()[0]?.close();
-  });
-}
+import { launchApp, mockCloseDialog, mockOpenFileDialog, mockSaveFileDialog } from './helpers';
 
 const C_SOURCE = '#include <iostream>\n\nint main() {\n  std::cout << "hi";\n  return 0;\n}\n';
+const PY_SOURCE = 'def solve(n):\n    return n * 2\n';
 const CURSOR_TO_END = 'Control+End';
 
 async function createFixture(
@@ -30,7 +21,7 @@ async function createFixture(
 test('打开 C++ 文件、高亮、编辑并保存', async () => {
   const { directory, filePath } = await createFixture('hello.cpp', C_SOURCE);
   const pythonPath = join(directory, 'solution.py');
-  await writeFile(pythonPath, 'def solve(n):\n    return n * 2\n', 'utf8');
+  await writeFile(pythonPath, PY_SOURCE, 'utf8');
   const app = await launchApp();
   try {
     const page = await app.firstWindow();
@@ -38,9 +29,12 @@ test('打开 C++ 文件、高亮、编辑并保存', async () => {
     await expect(page.locator('.oi-empty-state')).toBeVisible();
 
     await mockOpenFileDialog(app, filePath);
-    await page.locator('.oi-topbar').getByRole('button', { name: '打开文件' }).click();
+    await page
+      .locator('.oi-empty-state')
+      .getByRole('button', { name: '打开文件', exact: true })
+      .click();
 
-    await expect(page.locator('.oi-doc-name')).toHaveText('hello.cpp');
+    await expect(page.locator('.oi-tab-active .oi-tab-name')).toHaveText('hello.cpp');
     await expect(page.locator('.view-lines')).toContainText('iostream');
     await expect(page.locator('.view-line span[class*="mtk"]').first()).toBeAttached();
 
@@ -48,19 +42,26 @@ test('打开 C++ 文件、高亮、编辑并保存', async () => {
     await editor.click();
     await page.keyboard.press(CURSOR_TO_END);
     await page.keyboard.type('// edited by e2e');
-    await expect(page.locator('.oi-dirty-dot')).toBeAttached();
+    await expect(page.locator('.oi-tab-active .oi-dirty-dot')).toBeAttached();
 
     await page.keyboard.press('Control+s');
     await expect(page.locator('.oi-status-capsule')).toContainText('已保存');
-    await expect(page.locator('.oi-dirty-dot')).toHaveCount(0);
+    await expect(page.locator('.oi-tab-active .oi-dirty-dot')).toHaveCount(0);
 
     const saved = await readFile(filePath, 'utf8');
     expect(saved).toContain('// edited by e2e');
 
-    // 同一会话内切换到 Python 文件：全量语言注册后应直接命中高亮
+    // “已保存”胶囊应在几秒后自动消失
+    await expect(page.locator('.oi-status-capsule')).toHaveCount(0, { timeout: 6000 });
+
+    // 同一会话再开 Python 文件（经设置页入口），全量语言注册后直接命中高亮
     await mockOpenFileDialog(app, pythonPath);
-    await page.locator('.oi-topbar').getByRole('button', { name: '打开文件' }).click();
-    await expect(page.locator('.oi-doc-name')).toHaveText('solution.py');
+    await page.locator('.oi-sidebar-settings').click();
+    await page
+      .locator('.oi-settings')
+      .getByRole('button', { name: '打开文件', exact: true })
+      .click();
+    await expect(page.locator('.oi-tab-active .oi-tab-name')).toHaveText('solution.py');
     await expect(page.locator('.view-lines')).toContainText('def solve');
     await expect(page.locator('.view-line span[class*="mtk"]').first()).toBeAttached();
   } finally {
@@ -121,13 +122,16 @@ test('有未保存修改时关闭窗口必须确认', async () => {
     await expect(page.locator('html')).toHaveAttribute('data-oi-code-ready', 'true');
 
     await mockOpenFileDialog(app, filePath);
-    await page.locator('.oi-topbar').getByRole('button', { name: '打开文件' }).click();
-    await expect(page.locator('.oi-doc-name')).toHaveText('close-test.cpp');
+    await page
+      .locator('.oi-empty-state')
+      .getByRole('button', { name: '打开文件', exact: true })
+      .click();
+    await expect(page.locator('.oi-tab-active .oi-tab-name')).toHaveText('close-test.cpp');
 
     await page.locator('.monaco-editor').click();
     await page.keyboard.press(CURSOR_TO_END);
     await page.keyboard.type('// dirty');
-    await expect(page.locator('.oi-dirty-dot')).toBeAttached();
+    await expect(page.locator('.oi-tab-active .oi-dirty-dot')).toBeAttached();
 
     // 第一次关闭：选择“返回编辑”后窗口必须保留
     await mockCloseDialog(app, 1);
@@ -145,3 +149,49 @@ test('有未保存修改时关闭窗口必须确认', async () => {
     await rm(directory, { recursive: true, force: true });
   }
 });
+
+test('标签页新建、另存为与关闭', async () => {
+  const directory = await mkdtemp(join(tmpdir(), 'oi-code-tabs-'));
+  await mkdir(directory, { recursive: true });
+  const saveTarget = join(directory, 'saved.txt');
+  const app = await launchApp();
+  try {
+    const page = await app.firstWindow();
+    await expect(page.locator('html')).toHaveAttribute('data-oi-code-ready', 'true');
+
+    await page.locator('.oi-tab-new').click();
+    await expect(page.locator('.oi-tab-active .oi-tab-name')).toHaveText('未命名-1');
+
+    await page.locator('.oi-tab-new').click();
+    await expect(page.locator('.oi-tab')).toHaveCount(2);
+
+    await page.locator('.monaco-editor').click();
+    await page.keyboard.type('hello from e2e');
+    await expect(page.locator('.oi-tab-active .oi-dirty-dot')).toBeAttached();
+
+    await mockSaveFileDialog(app, saveTarget);
+    await page.keyboard.press('Control+s');
+    await expect(page.locator('.oi-status-capsule')).toContainText('已保存');
+    await expect(page.locator('.oi-tab-active .oi-tab-name')).toHaveText('saved.txt');
+    expect(await readFile(saveTarget, 'utf8')).toContain('hello from e2e');
+
+    await page.locator('.oi-tab', { hasText: '未命名-1' }).locator('.oi-tab-close').click();
+    await expect(page.locator('.oi-tab')).toHaveCount(1);
+
+    await page.locator('.oi-tab-close').click();
+    await expect(page.locator('.oi-empty-state')).toBeVisible();
+  } finally {
+    await app.close();
+    await rm(directory, { recursive: true, force: true });
+  }
+});
+
+/**
+ * 以原生窗口路径发起关闭（等价用户点击关闭按钮）；
+ * 渲染进程的 window.close() 会绕过可取消的 close 事件，不用于本用例。
+ */
+async function closeWindow(app: ElectronApplication): Promise<void> {
+  await app.evaluate(({ BrowserWindow }) => {
+    BrowserWindow.getAllWindows()[0]?.close();
+  });
+}

@@ -19,33 +19,46 @@ export interface ICreateCodeEditorOptions {
 }
 
 /**
- * 代码编辑器门面：工作台只依赖此接口，Monaco 细节封装在 editor 层内部。
+ * 多文档代码编辑器门面：单个 Monaco 实例 + 每个文档一个 model。
+ * 工作台只依赖此接口，Monaco 细节封装在 editor 层内部。
  */
-export interface ICodeEditor extends IDisposable {
-  /** 用户输入导致的内容变化；程序调用 {@link setContent} 不触发。 */
-  readonly onDidChangeContent: Event<void>;
-  getValue(): string;
-  /** 切换到新文档：替换内容与语言，复位光标与滚动位置。 */
-  setContent(text: string, uri: URI): void;
+export interface ICodeEditorHost extends IDisposable {
+  /** 用户输入导致的内容变化，携带所属文档 URI；程序性写入不触发。 */
+  readonly onDidChangeContent: Event<URI>;
+  /** 打开文档并设为当前；已打开时刷新内容。 */
+  openDocument(uri: URI, text: string): void;
+  /** 关闭文档并释放其 model；若为当前文档则清空编辑器。 */
+  closeDocument(uri: URI): void;
+  /** 另存为：用新 URI 重建文档（保持内容）并设为当前。 */
+  replaceDocument(previousUri: URI, nextUri: URI, text: string): void;
+  /** 切换当前文档；undefined 表示清空。 */
+  setActiveDocument(uri: URI | undefined): void;
+  getValue(uri: URI): string;
+  hasDocument(uri: URI): boolean;
   /** 绑定 Ctrl+S 保存命令，返回句柄用于解绑。 */
   addSaveCommand(handler: () => void): IDisposable;
   focus(): void;
 }
 
-class CodeEditor implements ICodeEditor {
+interface IOpenDocument {
+  readonly model: monaco.editor.ITextModel;
+  readonly changeSubscription: IDisposable;
+}
+
+class CodeEditorHost implements ICodeEditorHost {
   private readonly _disposables = new DisposableStore();
-  private readonly _onDidChangeContent = new Emitter<void>();
+  private readonly _onDidChangeContent = new Emitter<URI>();
   private readonly _editor: monaco.editor.IStandaloneCodeEditor;
   private readonly _languageService: ILanguageService;
-  private _isSettingContent = false;
+  private readonly _documents = new Map<string, IOpenDocument>();
+  private _isProgrammatic = false;
 
   constructor(options: ICreateCodeEditorOptions) {
     ensureMonacoEnvironment();
     applyWorkbenchTheme(currentThemeKind());
     this._languageService = options.languageService;
     this._editor = monaco.editor.create(options.container, {
-      value: '',
-      language: 'plaintext',
+      model: null,
       theme: themeIdFor(currentThemeKind()),
       automaticLayout: true,
       minimap: { enabled: false },
@@ -56,38 +69,77 @@ class CodeEditor implements ICodeEditor {
     });
     this._disposables.add(this._onDidChangeContent);
     this._disposables.add(toDisposable(() => this._editor.dispose()));
-    this._disposables.add(
-      this._editor.onDidChangeModelContent(() => {
-        if (!this._isSettingContent) {
-          this._onDidChangeContent.fire();
-        }
-      }),
-    );
+    this._disposables.add(toDisposable(() => this._disposeDocuments()));
   }
 
-  get onDidChangeContent(): Event<void> {
+  get onDidChangeContent(): Event<URI> {
     return this._onDidChangeContent.event;
   }
 
-  getValue(): string {
-    return this._editor.getValue();
+  openDocument(uri: URI, text: string): void {
+    const key = uri.toString();
+    const existing = this._documents.get(key);
+    if (existing) {
+      this._isProgrammatic = true;
+      try {
+        existing.model.setValue(text);
+      } finally {
+        this._isProgrammatic = false;
+      }
+      this._editor.setModel(existing.model);
+      this._editor.focus();
+      return;
+    }
+    const model = monaco.editor.createModel(text, this._languageIdOf(uri), monaco.Uri.parse(key));
+    const changeSubscription = model.onDidChangeContent(() => {
+      if (!this._isProgrammatic) {
+        this._onDidChangeContent.fire(uri);
+      }
+    });
+    this._documents.set(key, { model, changeSubscription });
+    this._editor.setModel(model);
+    this._editor.focus();
   }
 
-  setContent(text: string, uri: URI): void {
-    const model = this._editor.getModel();
-    if (!model) {
-      throw new Error('编辑器模型未初始化');
+  closeDocument(uri: URI): void {
+    const key = uri.toString();
+    const document = this._documents.get(key);
+    if (!document) {
+      return;
     }
-    this._isSettingContent = true;
-    try {
-      model.setValue(text);
-      monaco.editor.setModelLanguage(model, this._languageIdOf(uri));
-      this._editor.setPosition({ lineNumber: 1, column: 1 });
-      this._editor.setScrollTop(0);
-    } finally {
-      this._isSettingContent = false;
+    const isActive = this._editor.getModel() === document.model;
+    document.changeSubscription.dispose();
+    document.model.dispose();
+    this._documents.delete(key);
+    if (isActive) {
+      this._editor.setModel(null);
     }
+  }
+
+  replaceDocument(previousUri: URI, nextUri: URI, text: string): void {
+    this.closeDocument(previousUri);
+    this.openDocument(nextUri, text);
+  }
+
+  setActiveDocument(uri: URI | undefined): void {
+    if (uri === undefined) {
+      this._editor.setModel(null);
+      return;
+    }
+    const document = this._documents.get(uri.toString());
+    if (!document) {
+      throw new Error(`文档未打开：${uri.toString()}`);
+    }
+    this._editor.setModel(document.model);
     this._editor.focus();
+  }
+
+  getValue(uri: URI): string {
+    return this._documents.get(uri.toString())?.model.getValue() ?? '';
+  }
+
+  hasDocument(uri: URI): boolean {
+    return this._documents.has(uri.toString());
   }
 
   addSaveCommand(handler: () => void): IDisposable {
@@ -109,6 +161,14 @@ class CodeEditor implements ICodeEditor {
     this._disposables.dispose();
   }
 
+  private _disposeDocuments(): void {
+    for (const document of this._documents.values()) {
+      document.changeSubscription.dispose();
+      document.model.dispose();
+    }
+    this._documents.clear();
+  }
+
   private _languageIdOf(uri: URI): string {
     const fileName = uri.path.split('/').pop() ?? '';
     const byFileName = this._languageService.getLanguageByFileName(fileName);
@@ -122,6 +182,6 @@ class CodeEditor implements ICodeEditor {
   }
 }
 
-export function createCodeEditor(options: ICreateCodeEditorOptions): ICodeEditor {
-  return new CodeEditor(options);
+export function createCodeEditor(options: ICreateCodeEditorOptions): ICodeEditorHost {
+  return new CodeEditorHost(options);
 }

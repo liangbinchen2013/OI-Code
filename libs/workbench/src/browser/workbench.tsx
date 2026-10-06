@@ -1,5 +1,5 @@
 import { DisposableStore, onUnexpectedError, toDisposable } from '@oi/base';
-import type { URI } from '@oi/base';
+import { URI } from '@oi/base';
 import type { ILanguageService } from '@oi/editor';
 import type { ThemeKind } from '@oi/editor/browser';
 import { FontAwesomeIcon } from '@fortawesome/react-fontawesome';
@@ -7,17 +7,18 @@ import {
   faCircleCheck,
   faCircleXmark,
   faFileLines,
-  faFloppyDisk,
-  faMoon,
+  faFolderOpen,
   faSpinner,
-  faSun,
 } from '@fortawesome/free-solid-svg-icons';
 import type { IconDefinition } from '@fortawesome/fontawesome-svg-core';
 import type { IFileDialogService, IFileService } from '@oi/platform';
 import { useCallback, useEffect, useRef, useState } from 'react';
 import { createRoot } from 'react-dom/client';
 import { EditorPane, type IEditorPaneHandle } from './editorPane';
+import { SettingsView } from './settingsView';
+import { Sidebar } from './sidebar';
 import { WORKBENCH_STRINGS } from './strings';
+import { TabBar } from './tabBar';
 import { applyTheme, persistTheme, readStoredTheme, resolveInitialTheme } from './theme';
 import './tokens.css';
 import './workbench.css';
@@ -38,25 +39,18 @@ export interface IWorkbenchOptions {
   readonly onDirtyStateChange?: (dirty: boolean) => void;
 }
 
-/**
- * 工作台命令句柄：供 Code 层（应用菜单 / 全局快捷键）驱动工作台动作。
- */
-export interface IWorkbenchHandle {
-  openFile(): void;
-  save(): void;
-  toggleTheme(): void;
-}
-
-export interface IWorkbenchInstance extends IWorkbenchHandle {
-  dispose(): void;
-}
-
+type WorkbenchView = 'editor' | 'settings';
 type WorkbenchStatus = 'idle' | 'saving' | 'saved' | 'saveFailed' | 'openFailed';
 
-interface IOpenDocument {
+interface ITabState {
+  readonly id: string;
   readonly uri: URI;
   readonly name: string;
+  readonly untitled: boolean;
+  readonly dirty: boolean;
 }
+
+const STATUS_AUTO_HIDE_MS = 3000;
 
 const STATUS_PRESENTATION: Record<
   Exclude<WorkbenchStatus, 'idle'>,
@@ -73,29 +67,38 @@ function fileNameOf(uri: URI): string {
   return name !== undefined && name.length > 0 ? name : uri.path;
 }
 
-interface IWorkbenchProps extends Omit<IWorkbenchOptions, 'container'> {
+interface IWorkbenchProps {
+  readonly services: IWorkbenchServices;
   readonly initialTheme: ThemeKind;
-  readonly onReady?: (handle: IWorkbenchHandle) => void;
+  readonly onDirtyStateChange?: (dirty: boolean) => void;
 }
 
-function Workbench({ services, onDirtyStateChange, initialTheme, onReady }: IWorkbenchProps) {
+function Workbench({ services, initialTheme, onDirtyStateChange }: IWorkbenchProps) {
   const [store] = useState(() => new DisposableStore());
-  const [doc, setDoc] = useState<IOpenDocument | undefined>(undefined);
-  const [dirty, setDirty] = useState(false);
-  const [status, setStatus] = useState<WorkbenchStatus>('idle');
+  const [tabs, setTabs] = useState<ITabState[]>([]);
+  const [activeTabId, setActiveTabId] = useState<string | undefined>(undefined);
+  const [rootUri, setRootUri] = useState<URI | undefined>(undefined);
+  const [treeVersion, setTreeVersion] = useState(0);
+  const [view, setView] = useState<WorkbenchView>('editor');
   const [theme, setTheme] = useState<ThemeKind>(initialTheme);
+  const [status, setStatus] = useState<WorkbenchStatus>('idle');
   const editorPaneRef = useRef<IEditorPaneHandle | null>(null);
-  const docRef = useRef<IOpenDocument | undefined>(undefined);
-  // 关闭确认依赖主进程缓存的脏状态，编辑瞬间同步上报，避免“编辑后立刻关闭”的竞态
-  const dirtyRef = useRef(false);
+  const tabsRef = useRef<ITabState[]>([]);
+  const activeTabIdRef = useRef<string | undefined>(undefined);
+  const nextUntitledRef = useRef(1);
   const savingRef = useRef(false);
   const saveQueuedRef = useRef(false);
   const openFileRef = useRef<() => Promise<void>>(async () => undefined);
+  const openFolderRef = useRef<() => Promise<void>>(async () => undefined);
   const saveRef = useRef<() => Promise<void>>(async () => undefined);
 
   useEffect(() => {
-    docRef.current = doc;
-  }, [doc]);
+    tabsRef.current = tabs;
+  }, [tabs]);
+
+  useEffect(() => {
+    activeTabIdRef.current = activeTabId;
+  }, [activeTabId]);
 
   useEffect(() => {
     applyTheme(theme);
@@ -113,6 +116,26 @@ function Workbench({ services, onDirtyStateChange, initialTheme, onReady }: IWor
     store.add(toDisposable(() => media.removeEventListener('change', listener)));
   }, [store]);
 
+  // 任一标签页存在未保存修改即视为脏
+  const anyDirty = tabs.some((tab) => tab.dirty);
+  useEffect(() => {
+    onDirtyStateChange?.(anyDirty);
+  }, [anyDirty, onDirtyStateChange]);
+
+  // 结果胶囊几秒后自动消失
+  useEffect(() => {
+    if (status !== 'saved' && status !== 'saveFailed' && status !== 'openFailed') {
+      return undefined;
+    }
+    const timer = window.setTimeout(() => setStatus('idle'), STATUS_AUTO_HIDE_MS);
+    const handle = toDisposable(() => window.clearTimeout(timer));
+    store.add(handle);
+    return () => {
+      store.delete(handle);
+      handle.dispose();
+    };
+  }, [status, store]);
+
   useEffect(() => {
     return () => store.dispose();
   }, [store]);
@@ -122,62 +145,115 @@ function Workbench({ services, onDirtyStateChange, initialTheme, onReady }: IWor
     persistTheme(next);
     setTheme(next);
   }, [theme]);
-  const toggleThemeRef = useRef<() => void>(() => undefined);
 
-  useEffect(() => {
-    toggleThemeRef.current = toggleTheme;
-  }, [toggleTheme]);
+  const activateTab = useCallback((id: string): void => {
+    setActiveTabId(id);
+    const tab = tabsRef.current.find((candidate) => candidate.id === id);
+    if (tab) {
+      editorPaneRef.current?.setActiveDocument(tab.uri);
+    }
+    setView('editor');
+  }, []);
 
-  useEffect(() => {
-    onReady?.({
-      openFile: () => void openFileRef.current(),
-      save: () => void saveRef.current(),
-      toggleTheme: () => toggleThemeRef.current(),
-    });
-  }, [onReady]);
-
-  const setDirtyState = useCallback(
-    (value: boolean) => {
-      if (dirtyRef.current !== value) {
-        dirtyRef.current = value;
-        onDirtyStateChange?.(value);
+  const openUri = useCallback(
+    async (uri: URI): Promise<void> => {
+      const key = uri.toString();
+      const existing = tabsRef.current.find((tab) => tab.uri.toString() === key);
+      if (existing) {
+        activateTab(existing.id);
+        return;
       }
-      setDirty(value);
+      try {
+        const text = await services.fileService.readFile(uri);
+        editorPaneRef.current?.openDocument(uri, text);
+        const tab: ITabState = {
+          id: key,
+          uri,
+          name: fileNameOf(uri),
+          untitled: false,
+          dirty: false,
+        };
+        setTabs((previous) => [...previous, tab]);
+        setActiveTabId(tab.id);
+        setView('editor');
+        setStatus('idle');
+      } catch (error) {
+        setStatus('openFailed');
+        onUnexpectedError(error);
+      }
     },
-    [onDirtyStateChange],
+    [activateTab, services.fileService],
   );
 
   const openFile = useCallback(async (): Promise<void> => {
-    try {
-      if (dirtyRef.current) {
-        const confirmed = await services.fileDialogService.confirmDiscardChanges(
-          docRef.current?.name,
-        );
+    const uri = await services.fileDialogService.showOpenFile({
+      title: WORKBENCH_STRINGS.openFile,
+    });
+    if (uri) {
+      await openUri(uri);
+    }
+  }, [openUri, services.fileDialogService]);
+
+  const openFolder = useCallback(async (): Promise<void> => {
+    const uri = await services.fileDialogService.showOpenFolder({
+      title: WORKBENCH_STRINGS.openFolder,
+    });
+    if (uri) {
+      setRootUri(uri);
+      setTreeVersion((version) => version + 1);
+      setView('editor');
+    }
+  }, [services.fileDialogService]);
+
+  const newFile = useCallback((): void => {
+    const index = nextUntitledRef.current++;
+    const name = `${WORKBENCH_STRINGS.untitledPrefix}-${index}`;
+    const uri = URI.from({ scheme: 'untitled', path: `/${name}` });
+    editorPaneRef.current?.openDocument(uri, '');
+    const tab: ITabState = { id: uri.toString(), uri, name, untitled: true, dirty: false };
+    setTabs((previous) => [...previous, tab]);
+    setActiveTabId(tab.id);
+    setView('editor');
+  }, []);
+
+  const closeTab = useCallback(
+    async (id: string): Promise<void> => {
+      const tab = tabsRef.current.find((candidate) => candidate.id === id);
+      if (!tab) {
+        return;
+      }
+      if (tab.dirty) {
+        const confirmed = await services.fileDialogService.confirmDiscardChanges(tab.name);
         if (!confirmed) {
           return;
         }
       }
-      const uri = await services.fileDialogService.showOpenFile({
-        title: WORKBENCH_STRINGS.openFile,
-      });
-      if (!uri) {
-        return;
+      editorPaneRef.current?.closeDocument(tab.uri);
+      const remaining = tabsRef.current.filter((candidate) => candidate.id !== id);
+      setTabs(remaining);
+      if (activeTabIdRef.current === id) {
+        const index = tabsRef.current.findIndex((candidate) => candidate.id === id);
+        const next = remaining[Math.min(index, remaining.length - 1)];
+        setActiveTabId(next?.id);
+        editorPaneRef.current?.setActiveDocument(next?.uri);
       }
-      const text = await services.fileService.readFile(uri);
-      editorPaneRef.current?.setContent(text, uri);
-      setDoc({ uri, name: fileNameOf(uri) });
-      setDirtyState(false);
-      setStatus('idle');
-    } catch (error) {
-      setStatus('openFailed');
-      onUnexpectedError(error);
-    }
-  }, [services.fileDialogService, services.fileService]);
+    },
+    [services.fileDialogService],
+  );
+
+  const handleContentChange = useCallback((uri: URI): void => {
+    const key = uri.toString();
+    setTabs((previous) =>
+      previous.map((tab) => (tab.uri.toString() === key ? { ...tab, dirty: true } : tab)),
+    );
+    setStatus('idle');
+  }, []);
 
   const save = useCallback(
     async function saveLoop(): Promise<void> {
-      const current = docRef.current;
-      if (!current || !editorPaneRef.current) {
+      const tab = tabsRef.current.find((candidate) => candidate.id === activeTabIdRef.current);
+      const editor = editorPaneRef.current;
+      if (!tab || !editor) {
         return;
       }
       if (savingRef.current) {
@@ -188,8 +264,37 @@ function Workbench({ services, onDirtyStateChange, initialTheme, onReady }: IWor
       savingRef.current = true;
       setStatus('saving');
       try {
-        await services.fileService.writeFile(current.uri, editorPaneRef.current.getValue());
-        setDirtyState(false);
+        if (tab.untitled) {
+          const target = await services.fileDialogService.showSaveFile({
+            title: WORKBENCH_STRINGS.saveAs,
+            defaultPath: tab.name,
+          });
+          if (!target) {
+            setStatus('idle');
+            return;
+          }
+          const text = editor.getValue(tab.uri);
+          await services.fileService.writeFile(target, text);
+          editor.replaceDocument(tab.uri, target, text);
+          const updated: ITabState = {
+            id: target.toString(),
+            uri: target,
+            name: fileNameOf(target),
+            untitled: false,
+            dirty: false,
+          };
+          setTabs((previous) =>
+            previous.map((candidate) => (candidate.id === tab.id ? updated : candidate)),
+          );
+          setActiveTabId(updated.id);
+        } else {
+          await services.fileService.writeFile(tab.uri, editor.getValue(tab.uri));
+          setTabs((previous) =>
+            previous.map((candidate) =>
+              candidate.id === tab.id ? { ...candidate, dirty: false } : candidate,
+            ),
+          );
+        }
         setStatus('saved');
       } catch (error) {
         setStatus('saveFailed');
@@ -202,12 +307,16 @@ function Workbench({ services, onDirtyStateChange, initialTheme, onReady }: IWor
         }
       }
     },
-    [services.fileService],
+    [services.fileDialogService, services.fileService],
   );
 
   useEffect(() => {
     openFileRef.current = openFile;
   }, [openFile]);
+
+  useEffect(() => {
+    openFolderRef.current = openFolder;
+  }, [openFolder]);
 
   useEffect(() => {
     saveRef.current = save;
@@ -225,133 +334,113 @@ function Workbench({ services, onDirtyStateChange, initialTheme, onReady }: IWor
       } else if (key === 'o') {
         event.preventDefault();
         void openFileRef.current();
+      } else if (key === 'n') {
+        event.preventDefault();
+        newFile();
       }
     };
     window.addEventListener('keydown', onKeyDown);
     store.add(toDisposable(() => window.removeEventListener('keydown', onKeyDown)));
-  }, [store]);
+  }, [newFile, store]);
 
-  const handleContentChange = useCallback(() => {
-    setDirtyState(true);
-    setStatus('idle');
-  }, [setDirtyState]);
-
+  const activeTab = tabs.find((tab) => tab.id === activeTabId);
   const statusPresentation = status === 'idle' ? undefined : STATUS_PRESENTATION[status];
 
   return (
     <div className="oi-workbench">
-      <header className="oi-topbar">
-        <div className="oi-brand">{WORKBENCH_STRINGS.brand}</div>
-        <div className="oi-doc-info">
-          {doc ? (
-            <>
-              <span className="oi-doc-name" title={doc.uri.toString()}>
-                {doc.name}
-              </span>
-              {dirty ? (
-                <span className="oi-dirty-dot" role="img" aria-label={WORKBENCH_STRINGS.unsaved} />
-              ) : null}
-            </>
-          ) : null}
-        </div>
-        <div className="oi-topbar-actions">
-          <button
-            type="button"
-            className="oi-btn oi-btn-secondary oi-btn-icon oi-theme-toggle"
-            onClick={toggleTheme}
-            title={
-              theme === 'dark' ? WORKBENCH_STRINGS.themeToLight : WORKBENCH_STRINGS.themeToDark
-            }
-            aria-label={
-              theme === 'dark' ? WORKBENCH_STRINGS.themeToLight : WORKBENCH_STRINGS.themeToDark
-            }
-          >
-            <FontAwesomeIcon icon={theme === 'dark' ? faSun : faMoon} aria-hidden="true" />
-          </button>
-          <button
-            type="button"
-            className="oi-btn oi-btn-secondary"
-            onClick={() => void openFileRef.current()}
-            title={WORKBENCH_STRINGS.openFileTooltip}
-          >
-            <FontAwesomeIcon icon={faFileLines} aria-hidden="true" />
-            <span>{WORKBENCH_STRINGS.openFile}</span>
-          </button>
-          <button
-            type="button"
-            className="oi-btn oi-btn-primary"
-            onClick={() => void saveRef.current()}
-            disabled={doc === undefined || status === 'saving'}
-            title={WORKBENCH_STRINGS.saveTooltip}
-          >
-            <FontAwesomeIcon icon={faFloppyDisk} aria-hidden="true" />
-            <span>{WORKBENCH_STRINGS.save}</span>
-          </button>
-        </div>
-      </header>
-      <main className="oi-main">
-        <EditorPane
-          ref={editorPaneRef}
-          languageService={services.languageService}
-          onDidChangeContent={handleContentChange}
-          onSaveRequested={() => void saveRef.current()}
+      <TabBar
+        tabs={tabs}
+        activeTabId={activeTabId}
+        onActivate={activateTab}
+        onClose={(id) => void closeTab(id)}
+        onNew={newFile}
+      />
+      <div className="oi-body">
+        <Sidebar
+          rootUri={rootUri}
+          treeVersion={treeVersion}
+          fileService={services.fileService}
+          settingsActive={view === 'settings'}
+          onOpenFile={(uri) => void openUri(uri)}
+          onOpenFolder={() => void openFolderRef.current()}
+          onRefresh={() => setTreeVersion((version) => version + 1)}
+          onOpenSettings={() => setView('settings')}
         />
-        {doc === undefined ? (
-          <div className="oi-empty-state">
-            <h1 className="oi-empty-title">{WORKBENCH_STRINGS.emptyTitle}</h1>
-            <p className="oi-empty-hint">{WORKBENCH_STRINGS.emptyHint}</p>
-            <button
-              type="button"
-              className="oi-btn oi-btn-primary"
-              onClick={() => void openFileRef.current()}
-            >
-              <FontAwesomeIcon icon={faFileLines} aria-hidden="true" />
-              <span>{WORKBENCH_STRINGS.openFile}</span>
-            </button>
-          </div>
-        ) : null}
-        {statusPresentation ? (
-          <div className={`oi-status-capsule oi-status-${status}`} role="status" aria-live="polite">
-            <FontAwesomeIcon
-              icon={statusPresentation.icon}
-              spin={status === 'saving'}
-              aria-hidden="true"
+        <main className="oi-main">
+          <EditorPane
+            ref={editorPaneRef}
+            languageService={services.languageService}
+            onDidChangeContent={handleContentChange}
+            onSaveRequested={() => void saveRef.current()}
+          />
+          {view === 'settings' ? (
+            <SettingsView
+              theme={theme}
+              canSave={activeTab !== undefined}
+              onToggleTheme={toggleTheme}
+              onOpenFile={() => void openFileRef.current()}
+              onOpenFolder={() => void openFolderRef.current()}
+              onSave={() => void saveRef.current()}
             />
-            <span>{statusPresentation.text}</span>
-          </div>
-        ) : null}
-      </main>
+          ) : null}
+          {view === 'editor' && tabs.length === 0 ? (
+            <div className="oi-empty-state">
+              <h1 className="oi-empty-title">{WORKBENCH_STRINGS.emptyTitle}</h1>
+              <p className="oi-empty-hint">{WORKBENCH_STRINGS.emptyHint}</p>
+              <div className="oi-empty-actions">
+                <button
+                  type="button"
+                  className="oi-btn oi-btn-primary"
+                  onClick={() => void openFileRef.current()}
+                >
+                  <FontAwesomeIcon icon={faFileLines} aria-hidden="true" />
+                  <span>{WORKBENCH_STRINGS.openFile}</span>
+                </button>
+                <button
+                  type="button"
+                  className="oi-btn oi-btn-secondary"
+                  onClick={() => void openFolderRef.current()}
+                >
+                  <FontAwesomeIcon icon={faFolderOpen} aria-hidden="true" />
+                  <span>{WORKBENCH_STRINGS.openFolder}</span>
+                </button>
+              </div>
+            </div>
+          ) : null}
+          {statusPresentation ? (
+            <div
+              className={`oi-status-capsule oi-status-${status}`}
+              role="status"
+              aria-live="polite"
+            >
+              <FontAwesomeIcon
+                icon={statusPresentation.icon}
+                spin={status === 'saving'}
+                aria-hidden="true"
+              />
+              <span>{statusPresentation.text}</span>
+            </div>
+          ) : null}
+        </main>
+      </div>
     </div>
   );
 }
 
 /**
- * 在指定容器挂载工作台外壳，返回命令句柄与卸载函数。
+ * 在指定容器挂载工作台外壳，返回卸载函数。
  */
-export function renderWorkbench(options: IWorkbenchOptions): IWorkbenchInstance {
+export function renderWorkbench(options: IWorkbenchOptions): { dispose(): void } {
   const initialTheme = resolveInitialTheme();
   // 首帧渲染前落地主题，避免亮暗闪烁
   applyTheme(initialTheme);
-  let handle: IWorkbenchHandle = {
-    openFile: () => undefined,
-    save: () => undefined,
-    toggleTheme: () => undefined,
-  };
   const root = createRoot(options.container);
   root.render(
     <Workbench
       services={options.services}
-      onDirtyStateChange={options.onDirtyStateChange}
       initialTheme={initialTheme}
-      onReady={(ready) => {
-        handle = ready;
-      }}
+      onDirtyStateChange={options.onDirtyStateChange}
     />,
   );
-  return {
-    openFile: () => handle.openFile(),
-    save: () => handle.save(),
-    toggleTheme: () => handle.toggleTheme(),
-    dispose: () => root.unmount(),
-  };
+  return toDisposable(() => root.unmount());
 }

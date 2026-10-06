@@ -40,6 +40,18 @@ export async function mockOpenFileDialog(
 }
 
 /**
+ * 替换主进程的另存为对话框，模拟用户选定保存路径。
+ */
+export async function mockSaveFileDialog(
+  app: ElectronApplication,
+  filePath: string,
+): Promise<void> {
+  await app.evaluate(({ dialog }, selected) => {
+    dialog.showSaveDialog = async () => ({ canceled: false, filePath: selected });
+  }, filePath);
+}
+
+/**
  * 替换主进程的关闭确认框，模拟用户点击第 response 个按钮（0 = 放弃修改并关闭）。
  */
 export async function mockCloseDialog(app: ElectronApplication, response: number): Promise<void> {

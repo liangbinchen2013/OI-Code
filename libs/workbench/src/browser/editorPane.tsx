@@ -1,27 +1,30 @@
 import { DisposableStore } from '@oi/base';
 import type { URI } from '@oi/base';
 import type { ILanguageService } from '@oi/editor';
-import { createCodeEditor, type ICodeEditor } from '@oi/editor/browser';
+import { createCodeEditor, type ICodeEditorHost } from '@oi/editor/browser';
 import { type Ref, useEffect, useImperativeHandle, useRef, useState } from 'react';
 
 /**
- * 编辑器面板向父组件暴露的最小命令面。
+ * 编辑器面板向父组件暴露的文档级命令面。
  */
 export interface IEditorPaneHandle {
-  getValue(): string;
-  setContent(text: string, uri: URI): void;
-  focus(): void;
+  openDocument(uri: URI, text: string): void;
+  closeDocument(uri: URI): void;
+  replaceDocument(previousUri: URI, nextUri: URI, text: string): void;
+  setActiveDocument(uri: URI | undefined): void;
+  getValue(uri: URI): string;
+  hasDocument(uri: URI): boolean;
 }
 
 export interface IEditorPaneProps {
   readonly languageService: ILanguageService;
-  readonly onDidChangeContent: () => void;
+  readonly onDidChangeContent: (uri: URI) => void;
   readonly onSaveRequested: () => void;
   readonly ref?: Ref<IEditorPaneHandle | null>;
 }
 
 /**
- * Monaco 编辑器宿主：管理编辑器生命周期，通过 ref 暴露命令面。
+ * Monaco 编辑器宿主：管理多文档编辑器生命周期，通过 ref 暴露命令面。
  */
 export function EditorPane({
   languageService,
@@ -30,7 +33,7 @@ export function EditorPane({
   ref,
 }: IEditorPaneProps) {
   const hostRef = useRef<HTMLDivElement>(null);
-  const [editor, setEditor] = useState<ICodeEditor | null>(null);
+  const [editor, setEditor] = useState<ICodeEditorHost | null>(null);
   const changeHandlerRef = useRef(onDidChangeContent);
   const saveHandlerRef = useRef(onSaveRequested);
 
@@ -51,8 +54,8 @@ export function EditorPane({
     const instance = createCodeEditor({ container: host, languageService });
     store.add(instance);
     store.add(
-      instance.onDidChangeContent(() => {
-        changeHandlerRef.current();
+      instance.onDidChangeContent((uri) => {
+        changeHandlerRef.current(uri);
       }),
     );
     store.add(
@@ -70,13 +73,20 @@ export function EditorPane({
   useImperativeHandle(
     ref,
     () => ({
-      getValue: () => editor?.getValue() ?? '',
-      setContent: (text: string, uri: URI): void => {
-        editor?.setContent(text, uri);
+      openDocument: (uri: URI, text: string): void => {
+        editor?.openDocument(uri, text);
       },
-      focus: (): void => {
-        editor?.focus();
+      closeDocument: (uri: URI): void => {
+        editor?.closeDocument(uri);
       },
+      replaceDocument: (previousUri: URI, nextUri: URI, text: string): void => {
+        editor?.replaceDocument(previousUri, nextUri, text);
+      },
+      setActiveDocument: (uri: URI | undefined): void => {
+        editor?.setActiveDocument(uri);
+      },
+      getValue: (uri: URI): string => editor?.getValue(uri) ?? '',
+      hasDocument: (uri: URI): boolean => editor?.hasDocument(uri) ?? false,
     }),
     [editor],
   );

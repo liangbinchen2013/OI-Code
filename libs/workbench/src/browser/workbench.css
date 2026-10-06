@@ -19,50 +19,6 @@ body {
   background: var(--bg);
 }
 
-/* 顶栏：品牌 · 文档信息 · 操作（UI_DESIGN §3） */
-.oi-topbar {
-  display: flex;
-  align-items: center;
-  gap: 16px;
-  padding: 9px 24px;
-  border-bottom: 1px solid var(--border);
-  background: var(--bg);
-}
-
-.oi-brand {
-  font-weight: 700;
-  color: var(--link);
-}
-
-.oi-doc-info {
-  display: flex;
-  flex: 1;
-  align-items: center;
-  gap: 8px;
-  min-width: 0;
-  color: var(--muted);
-  font-size: 14px;
-}
-
-.oi-doc-name {
-  overflow: hidden;
-  text-overflow: ellipsis;
-  white-space: nowrap;
-}
-
-.oi-dirty-dot {
-  flex: none;
-  width: 8px;
-  height: 8px;
-  border-radius: 999px;
-  background: var(--warn);
-}
-
-.oi-topbar-actions {
-  display: flex;
-  gap: 8px;
-}
-
 /* 按钮：悬浮只发光，不位移不缩放（UI_DESIGN §4） */
 .oi-btn {
   position: relative;
@@ -85,7 +41,7 @@ body {
     color 0.2s;
 }
 
-/* 视觉高度 36px，透明热区补足 ≥44px 点击目标（UI_DESIGN §7） */
+/* 视觉高度有限时用透明热区补足点击目标（UI_DESIGN §7） */
 .oi-btn::after {
   content: '';
   position: absolute;
@@ -129,10 +85,227 @@ body {
   box-shadow: var(--glow-shadow);
 }
 
-/* 主区域：编辑器全宽；空态覆盖在上层 */
+/* 顶部文件栏：标签页 + 新建（窄条，纯文件栏） */
+.oi-tabbar {
+  display: flex;
+  align-items: stretch;
+  height: 36px;
+  border-bottom: 1px solid var(--border);
+  background: var(--card-bg);
+}
+
+.oi-tabbar-tabs {
+  display: flex;
+  flex: 1;
+  min-width: 0;
+  overflow-x: auto;
+  scrollbar-width: thin;
+}
+
+.oi-tab {
+  display: flex;
+  flex: none;
+  align-items: center;
+  padding: 0 4px 0 12px;
+  border-right: 1px solid var(--border);
+  color: var(--muted);
+  font-size: 13px;
+}
+
+.oi-tab-active {
+  background: var(--bg);
+  color: var(--text);
+}
+
+.oi-tab-label {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  height: 100%;
+  padding: 0;
+  border: 0;
+  background: transparent;
+  color: inherit;
+  font: inherit;
+  cursor: pointer;
+}
+
+.oi-tab-label:focus-visible {
+  outline: 2px solid var(--glow-ring);
+  outline-offset: -2px;
+}
+
+.oi-tab-name {
+  max-width: 160px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.oi-dirty-dot {
+  flex: none;
+  width: 7px;
+  height: 7px;
+  border-radius: 999px;
+  background: var(--warn);
+}
+
+.oi-tab-close {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 20px;
+  height: 20px;
+  margin-left: 4px;
+  border: 0;
+  border-radius: 6px;
+  background: transparent;
+  color: var(--muted);
+  cursor: pointer;
+}
+
+.oi-tab-close:hover {
+  background: var(--btn-hover);
+  color: var(--text);
+}
+
+.oi-tab-new {
+  flex: none;
+  width: 32px;
+  height: 32px;
+  margin: 2px 6px;
+  border-radius: 8px;
+}
+
+/* 主体：左侧资源管理器 + 右侧编辑区 */
+.oi-body {
+  display: flex;
+  flex: 1;
+  min-height: 0;
+}
+
+.oi-sidebar {
+  display: flex;
+  flex: none;
+  flex-direction: column;
+  width: 232px;
+  border-right: 1px solid var(--border);
+  background: var(--card-bg);
+}
+
+.oi-sidebar-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+  padding: 6px 8px 6px 12px;
+  border-bottom: 1px solid var(--border);
+}
+
+.oi-sidebar-title {
+  font-size: 11px;
+  letter-spacing: 0.05em;
+  text-transform: uppercase;
+  color: var(--muted);
+}
+
+.oi-sidebar-actions {
+  display: flex;
+  gap: 4px;
+}
+
+.oi-tree {
+  flex: 1;
+  min-height: 0;
+  overflow: auto;
+  padding: 4px 0;
+}
+
+.oi-sidebar-empty {
+  margin: 12px;
+  color: var(--muted);
+  font-size: 13px;
+}
+
+.oi-tree-row {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  width: 100%;
+  padding: 4px 8px;
+  border: 0;
+  background: transparent;
+  color: var(--text);
+  font: inherit;
+  font-size: 13px;
+  text-align: left;
+  cursor: pointer;
+}
+
+.oi-tree-row:hover {
+  background: var(--btn-hover);
+}
+
+.oi-tree-row:focus-visible {
+  outline: 2px solid var(--glow-ring);
+  outline-offset: -2px;
+}
+
+.oi-tree-icon {
+  flex: none;
+  color: var(--muted);
+}
+
+.oi-tree-name {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.oi-sidebar-footer {
+  border-top: 1px solid var(--border);
+  padding: 6px;
+}
+
+.oi-sidebar-settings {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  width: 100%;
+  padding: 8px 10px;
+  border: 0;
+  border-radius: 8px;
+  background: transparent;
+  color: var(--text);
+  font: inherit;
+  font-size: 13px;
+  cursor: pointer;
+  transition:
+    box-shadow 0.22s ease,
+    background 0.2s,
+    color 0.2s;
+}
+
+.oi-sidebar-settings:hover {
+  background: var(--btn-hover);
+  box-shadow: var(--glow-shadow);
+}
+
+.oi-sidebar-settings:focus-visible {
+  outline: 2px solid var(--glow-ring);
+  outline-offset: -2px;
+}
+
+.oi-sidebar-settings-active {
+  background: var(--btn-hover);
+  color: var(--link);
+}
+
+/* 主区域：编辑器全宽；内容页覆盖在上层 */
 .oi-main {
   position: relative;
   flex: 1;
+  min-width: 0;
   min-height: 0;
 }
 
@@ -170,13 +343,61 @@ body {
   font-size: 14px;
 }
 
+.oi-empty-actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  justify-content: center;
+}
+
 @media (max-width: 640px) {
   .oi-empty-title {
     font-size: 25px;
   }
 }
 
-/* 状态胶囊：右下角三态（成功绿 / 进行中橙 / 失败红） */
+/* 设置页：居中内容卡片（UI_DESIGN §3 内容页） */
+.oi-settings {
+  position: absolute;
+  inset: 0;
+  overflow: auto;
+  padding: 32px 24px;
+  background: var(--bg);
+}
+
+.oi-settings-card {
+  max-width: 920px;
+  margin: 0 auto;
+}
+
+.oi-settings-title {
+  margin: 0 0 24px;
+  font-size: 25px;
+  font-weight: 700;
+}
+
+.oi-settings-section {
+  margin-bottom: 20px;
+  padding: 16px;
+  border: 1px solid var(--card-border);
+  border-radius: var(--radius-card);
+  background: var(--card-bg);
+}
+
+.oi-settings-section-title {
+  margin: 0 0 12px;
+  color: var(--muted);
+  font-size: 14px;
+  font-weight: 600;
+}
+
+.oi-settings-actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+}
+
+/* 状态胶囊：右下角三态（成功绿 / 进行中橙 / 失败红），自动淡出前保持可见 */
 .oi-status-capsule {
   position: absolute;
   right: 24px;
@@ -219,7 +440,8 @@ body {
 }
 
 @media (prefers-reduced-motion: reduce) {
-  .oi-btn {
+  .oi-btn,
+  .oi-sidebar-settings {
     transition: none;
   }
 
