@@ -148,7 +148,8 @@ nx affected:test             # 受影响项目单元测试
 ```bash
 nx run desktop:serve         # 开发模式启动
 nx run desktop:build         # 生产构建
-nx run desktop:e2e           # E2E 测试
+nx run desktop:package       # Windows 便携打包（release/oi-code-win32-x64/OI-Code.exe）
+nx run desktop:e2e           # E2E 测试（设 OI_E2E_EXECUTABLE 可对打包产物复跑）
 ```
 
 完整命令与规则见 `AGENTS.md` §9。
