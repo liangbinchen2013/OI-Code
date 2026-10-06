@@ -22,12 +22,13 @@ export function getFileExtension(path: string): string | undefined {
 }
 
 /**
- * 语言注册服务：维护 语言 id 与扩展名 的双向映射。
- * 重复注册（同 id 或同扩展名）立即抛错，避免扩展静默覆盖彼此的声明。
+ * 语言注册服务：维护 语言 id 与扩展名 / 文件名 的双向映射。
+ * 重复注册（同 id、同扩展名或同文件名）立即抛错，避免扩展静默覆盖彼此的声明。
  */
 export class LanguageService implements ILanguageService {
   private readonly _byId = new Map<LanguageId, ILanguageContribution>();
   private readonly _byExtension = new Map<string, LanguageId>();
+  private readonly _byFileName = new Map<string, LanguageId>();
 
   registerLanguage(contribution: ILanguageContribution): IDisposable {
     if (contribution.id.length === 0) {
@@ -46,15 +47,29 @@ export class LanguageService implements ILanguageService {
         throw new Error(`扩展名 .${extension} 已属于语言：${owner}`);
       }
     }
+    const fileNames = (contribution.filenames ?? []).map((fileName) => fileName.toLowerCase());
+    for (const fileName of fileNames) {
+      const owner = this._byFileName.get(fileName);
+      if (owner !== undefined) {
+        throw new Error(`文件名 ${fileName} 已属于语言：${owner}`);
+      }
+    }
     this._byId.set(contribution.id, contribution);
     for (const extension of extensions) {
       this._byExtension.set(extension, contribution.id);
+    }
+    for (const fileName of fileNames) {
+      this._byFileName.set(fileName, contribution.id);
     }
     return toDisposable(() => this._unregister(contribution.id));
   }
 
   getLanguageByExtension(extension: string): LanguageId | undefined {
     return this._byExtension.get(normalizeExtension(extension));
+  }
+
+  getLanguageByFileName(fileName: string): LanguageId | undefined {
+    return this._byFileName.get(fileName.toLowerCase());
   }
 
   private _unregister(id: LanguageId): void {
@@ -66,6 +81,11 @@ export class LanguageService implements ILanguageService {
     for (const extension of contribution.extensions.map(normalizeExtension)) {
       if (this._byExtension.get(extension) === id) {
         this._byExtension.delete(extension);
+      }
+    }
+    for (const fileName of (contribution.filenames ?? []).map((name) => name.toLowerCase())) {
+      if (this._byFileName.get(fileName) === id) {
+        this._byFileName.delete(fileName);
       }
     }
   }

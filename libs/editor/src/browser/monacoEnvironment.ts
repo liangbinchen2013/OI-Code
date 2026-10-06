@@ -1,10 +1,8 @@
 /// <reference types="vite/client" />
 import * as monaco from 'monaco-editor/editor/editor.api';
 import 'monaco-editor/features/register.all.js';
-// 只注册首发需要的三种内置语言，避免把全部语言与富语言服务打进包
-import 'monaco-editor/languages/definitions/cpp/register.js';
-import 'monaco-editor/languages/definitions/python/register.js';
-import 'monaco-editor/languages/definitions/markdown/register.js';
+// 注册全部内置语言定义：任意文件都尽量匹配高亮（语法文件按需懒加载）
+import 'monaco-editor/languages/register.all.js';
 import EditorWorker from 'monaco-editor/editor/editor.worker?worker&inline';
 
 let environmentReady = false;

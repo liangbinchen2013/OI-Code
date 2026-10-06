@@ -30,14 +30,50 @@ describe('LanguageService', () => {
       id: 'python',
       displayName: 'Python',
       extensions: ['py'],
+      filenames: ['SConstruct'],
     });
 
     registration.dispose();
 
     expect(service.getLanguageByExtension('py')).toBeUndefined();
+    expect(service.getLanguageByFileName('SConstruct')).toBeUndefined();
     expect(() =>
       service.registerLanguage({ id: 'python', displayName: 'Python', extensions: ['py'] }),
     ).not.toThrow();
+  });
+
+  it('按文件名注册与查询，忽略大小写', () => {
+    const service = new LanguageService();
+    service.registerLanguage({
+      id: 'makefile',
+      displayName: 'Makefile',
+      extensions: ['mk'],
+      filenames: ['Makefile'],
+    });
+
+    expect(service.getLanguageByFileName('Makefile')).toBe('makefile');
+    expect(service.getLanguageByFileName('MAKEFILE')).toBe('makefile');
+    expect(service.getLanguageByFileName('Makefile.am')).toBeUndefined();
+    expect(service.getLanguageByExtension('mk')).toBe('makefile');
+  });
+
+  it('重复的文件名立即抛错', () => {
+    const service = new LanguageService();
+    service.registerLanguage({
+      id: 'makefile',
+      displayName: 'Makefile',
+      extensions: [],
+      filenames: ['Makefile'],
+    });
+
+    expect(() =>
+      service.registerLanguage({
+        id: 'other',
+        displayName: 'Other',
+        extensions: [],
+        filenames: ['makefile'],
+      }),
+    ).toThrow(/文件名 makefile 已属于语言：makefile/);
   });
 });
 

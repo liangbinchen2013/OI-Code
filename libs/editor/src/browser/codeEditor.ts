@@ -109,10 +109,15 @@ class CodeEditor implements ICodeEditor {
   }
 
   private _languageIdOf(uri: URI): string {
+    const fileName = uri.path.split('/').pop() ?? '';
+    const byFileName = this._languageService.getLanguageByFileName(fileName);
+    if (byFileName !== undefined) {
+      return byFileName;
+    }
     const extension = getFileExtension(uri.path);
-    const languageId =
+    const byExtension =
       extension === undefined ? undefined : this._languageService.getLanguageByExtension(extension);
-    return languageId ?? 'plaintext';
+    return byExtension ?? 'plaintext';
   }
 }
 

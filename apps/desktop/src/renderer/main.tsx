@@ -1,5 +1,6 @@
 import { onUnexpectedError, setUnexpectedErrorHandler, toDisposable } from '@oi/base';
-import { BUILTIN_LANGUAGES, LanguageService } from '@oi/editor';
+import { LanguageService } from '@oi/editor';
+import { collectMonacoLanguageContributions } from '@oi/editor/browser';
 import {
   FileDialogServiceClient,
   FileServiceClient,
@@ -29,8 +30,12 @@ function connectToMain(): RpcChannel {
 
 function createLanguageService(): LanguageService {
   const languageService = new LanguageService();
-  for (const contribution of BUILTIN_LANGUAGES) {
-    languageService.registerLanguage(contribution);
+  for (const contribution of collectMonacoLanguageContributions()) {
+    try {
+      languageService.registerLanguage(contribution);
+    } catch (error) {
+      logService.warn(`已跳过冲突的语言注册：${contribution.id}`, error);
+    }
   }
   return languageService;
 }
