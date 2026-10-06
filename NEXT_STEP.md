@@ -4,6 +4,8 @@
 > 范围：打开 / 编辑 / 保存本地题解文件 + C++ / Python / Markdown 语法高亮
 > **明确不做**：编译与运行（后续独立任务）、多标签页、完整文件树、OI 工具集、暗色主题
 
+> 阶段 2 第二步（编译与运行）的完成情况见文末 §7（2026-10-06）。
+
 ---
 
 ## 1. 验收标准
@@ -108,3 +110,43 @@
 打包版 `release/oi-code-win32-x64/OI-Code.exe` 以 `OI_E2E_EXECUTABLE` 复跑同一套 E2E 亦全绿。
 
 **遗留待办**：i18n 服务落地前，文案集中于 `libs/workbench/src/browser/strings.ts`；单文档模式、多标签、文件树、大文件性能按计划留待后续。
+
+---
+
+## 7. 阶段 2 第二步：编译与运行（2026-10-06）
+
+**交付内容**（对应用户 7 点要求）：
+
+| # | 要求 | 实现 |
+|---|------|------|
+| 1 | 编译 / 运行 / 编译并运行按钮 + 快捷键 | 文件栏右侧动作区三个按钮；`F12` 编译、`F10` 运行、`F11` 编译并运行（C++ 与 Python 均适用） |
+| 2 | 自动搜索 g++ 并实测 C++ 标准 | 候选（PATH / MSYS2 / MinGW / Dev-C++ / scoop / winget 等）→ 版本探测取最高 → 从 c++98 起逐标准编译探测直到报错（含 c++26 之后的 +3 年未来候选）；设置页展示版本、路径、标准列表与默认标准选择，搜索带旋转动画与逐个探测进度 |
+| 3 | 搜索 Python 并输出版本 | `py -0p` / `where python|python3` / 常见安装目录；逐候选探测 `sys.version` 与真实路径并去重排序；设置页单选默认解释器 |
+| 4 | pip 中文化安装 | 设置页输入包名 / 版本（可选）/ 清华源开关（默认开启）→ `python -m pip install` 实时流式输出到日志区 |
+| 5 | 黑窗口运行与统计 | 独立控制台窗口：`T1.exe \| CPU:xxms \| Mem:x.xMB` 状态行钉底 20Hz 刷新（VT 滚动区域；不支持 VT 时回退窗口标题），结束打印 `--------------`、运行时间、峰值内存、CPU 时间、非零退出码，最后"按任意键退出"（`OI_RUNNER_NO_PAUSE=1` 可跳过） |
+| 6 | C++ 编译错误面板 + 实时检查 | 问题面板按 `行 \| 列 \| 原因` 展示（无位置错误如链接错误显示 `- \| -`），点击跳转；编辑器 marker 同步；输入停止 700ms 后经 `g++ -fsyntax-only`（stdin）实时检查，过期结果丢弃 |
+| 7 | Python 错误检测 | 实时 `compile()` 语法检查（子进程 stdin 传入，不执行用户代码），行列与消息映射为 marker 与问题面板条目 |
+
+**分层落点**：
+
+| 层 | 文件 | 说明 |
+|----|------|------|
+| Platform | `src/common/{config,diagnostics,toolchain,python,runner}.ts`、`*ServiceClient.ts`、`src/node/configService.ts`、`ipc/protocol.ts` | 契约 + RPC 方法/通知常量 + 渲染进程代理 + JSON 配置存储（临时文件原子替换） |
+| Code | `apps/desktop/src/main/{processRunner,runnerService,oiRunnerSource,toolchainService,cppDiagnostics,pythonService,configKeys}.ts`、`mainProcess.ts` | 进程执行、OI 运行器（C++ 包装器源码内嵌、g++ 编译缓存 + 源码哈希失效）、g++ 搜索/标准探测/编译、诊断解析、Python/pip；RPC 注册与线格式序列化 |
+| Editor | `src/browser/codeEditor.ts` | `setMarkers` / `revealPosition`（Monaco owner `oi-code`） |
+| Workbench | `src/browser/{workbench,tabBar,problemsPanel,settingsView,strings}.tsx`、`workbench.css` | 动作区、问题面板、设置页三大面板、快捷键、实时诊断调度（防抖 + 令牌） |
+
+**关键实现决策**：
+
+- 编译使用**同目录临时源文件**（`<name>.oi-code-tmp.cpp`），不覆盖用户文件、保证 `#include "..."` 相对路径成立，编译后清理；可执行文件与源文件同目录同名（Windows `.exe`）。
+- 首次编译/运行时若未配置工具链会自动搜索一次（无果不反复重试，设置页"重新搜索"可强制重试）。
+- 运行器由检测到的 g++ 用 `-O2 -municode -static -lpsapi` 编译并缓存于 userData，源码哈希变化自动重编；运行器自行 `AllocConsole` 兜底、UTF-8 控制台。
+- 编译/运行环境自动把编译器 bin 目录前置到 PATH（MSYS2 运行时 DLL 可被目标程序找到）。
+
+**验证结果**：`pnpm lint`、`valid-layers-check`、`nx affected:test`、`pnpm typecheck`、`nx run desktop:e2e`（13 用例：原有 8 + C++ 编译成功/F11 运行、编译错误行列原因、Python 检查、设置页搜索、实时诊断）全绿；打包版 `OI-Code.exe` 以 `OI_E2E_EXECUTABLE` 复跑同一套 E2E 待最终确认。
+
+**遗留待办**：
+
+- 工具链实现暂放在 `apps/desktop/src/main`（Code 层）；Extension Host（阶段 6）落地后应迁移至 `libs/extensions/cpp` / `libs/extensions/python`，经 Platform 契约访问编辑器与工作台。
+- 实时检查目前是编译级诊断；更完整的补全/语义分析（clangd / Pylance 类）留待后续。
+- pip 安装因依赖网络未纳入 E2E（UI 与参数构造已由单测覆盖）。
