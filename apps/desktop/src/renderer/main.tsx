@@ -8,6 +8,7 @@ import {
   LogService,
   RpcChannel,
   WINDOW_RPC_NOTIFICATIONS,
+  WORKBENCH_COMMANDS,
 } from '@oi/platform';
 import { renderWorkbench } from '@oi/workbench';
 
@@ -62,6 +63,25 @@ async function bootstrap(): Promise<void> {
     onDirtyStateChange: (dirty) => {
       channel.notify(WINDOW_RPC_NOTIFICATIONS.setDirtyState, { dirty });
     },
+  });
+  channel.listen(WINDOW_RPC_NOTIFICATIONS.executeCommand, (params) => {
+    const command =
+      typeof params === 'object' && params !== null
+        ? (params as { command?: unknown }).command
+        : undefined;
+    switch (command) {
+      case WORKBENCH_COMMANDS.openFile:
+        workbench.openFile();
+        break;
+      case WORKBENCH_COMMANDS.save:
+        workbench.save();
+        break;
+      case WORKBENCH_COMMANDS.toggleTheme:
+        workbench.toggleTheme();
+        break;
+      default:
+        logService.warn(`已忽略未知工作台命令：${String(command)}`);
+    }
   });
   document.documentElement.dataset.oiCodeReady = 'true';
 
