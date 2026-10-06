@@ -1,20 +1,30 @@
 import { DisposableStore, onUnexpectedError, toDisposable } from '@oi/base';
 import { URI } from '@oi/base';
 import type { ILanguageService } from '@oi/editor';
-import type { ThemeKind } from '@oi/editor/browser';
+import { getFileExtension } from '@oi/editor';
+import type { IEditorMarker, ThemeKind } from '@oi/editor/browser';
 import { FontAwesomeIcon } from '@fortawesome/react-fontawesome';
 import {
   faCircleCheck,
+  faCircleInfo,
   faCircleXmark,
   faFileLines,
   faFolderOpen,
+  faPlay,
   faSpinner,
 } from '@fortawesome/free-solid-svg-icons';
 import type { IconDefinition } from '@fortawesome/fontawesome-svg-core';
-import type { IFileDialogService, IFileService } from '@oi/platform';
+import type {
+  ICodeDiagnostic,
+  IFileDialogService,
+  IFileService,
+  IPythonServiceClient,
+  IToolchainServiceClient,
+} from '@oi/platform';
 import { useCallback, useEffect, useRef, useState } from 'react';
 import { createRoot } from 'react-dom/client';
 import { EditorPane, type IEditorPaneHandle } from './editorPane';
+import { ProblemsPanel, type IProblemItem } from './problemsPanel';
 import { SettingsView } from './settingsView';
 import { Sidebar } from './sidebar';
 import { WORKBENCH_STRINGS } from './strings';
@@ -30,6 +40,8 @@ export interface IWorkbenchServices {
   readonly fileService: IFileService;
   readonly fileDialogService: IFileDialogService;
   readonly languageService: ILanguageService;
+  readonly toolchainService: IToolchainServiceClient;
+  readonly pythonService: IPythonServiceClient;
 }
 
 export interface IWorkbenchOptions {
@@ -40,7 +52,23 @@ export interface IWorkbenchOptions {
 }
 
 type WorkbenchView = 'editor' | 'settings';
-type WorkbenchStatus = 'idle' | 'saving' | 'saved' | 'saveFailed' | 'openFailed';
+type WorkbenchStatus =
+  | 'idle'
+  | 'saving'
+  | 'saved'
+  | 'saveFailed'
+  | 'openFailed'
+  | 'compiling'
+  | 'compileOk'
+  | 'compileFailed'
+  | 'checkOk'
+  | 'checkFailed'
+  | 'runLaunched'
+  | 'runFailed'
+  | 'unsupported'
+  | 'needSave';
+type BusyAction = 'compile' | 'run' | undefined;
+type SourceLanguage = 'cpp' | 'python';
 
 interface ITabState {
   readonly id: string;
@@ -52,6 +80,9 @@ interface ITabState {
 
 const STATUS_AUTO_HIDE_MS = 3000;
 
+// 进行中的状态不自动隐藏，完成后由新状态替换
+const STICKY_STATUSES: ReadonlySet<WorkbenchStatus> = new Set(['saving', 'compiling']);
+
 const STATUS_PRESENTATION: Record<
   Exclude<WorkbenchStatus, 'idle'>,
   { readonly icon: IconDefinition; readonly text: string }
@@ -60,11 +91,31 @@ const STATUS_PRESENTATION: Record<
   saved: { icon: faCircleCheck, text: WORKBENCH_STRINGS.saved },
   saveFailed: { icon: faCircleXmark, text: WORKBENCH_STRINGS.saveFailed },
   openFailed: { icon: faCircleXmark, text: WORKBENCH_STRINGS.openFailed },
+  compiling: { icon: faSpinner, text: WORKBENCH_STRINGS.compiling },
+  compileOk: { icon: faCircleCheck, text: WORKBENCH_STRINGS.compileOk },
+  compileFailed: { icon: faCircleXmark, text: WORKBENCH_STRINGS.compileFailed },
+  checkOk: { icon: faCircleCheck, text: WORKBENCH_STRINGS.checkOk },
+  checkFailed: { icon: faCircleXmark, text: WORKBENCH_STRINGS.checkFailed },
+  runLaunched: { icon: faPlay, text: WORKBENCH_STRINGS.runLaunched },
+  runFailed: { icon: faCircleXmark, text: WORKBENCH_STRINGS.runFailed },
+  unsupported: { icon: faCircleInfo, text: WORKBENCH_STRINGS.unsupported },
+  needSave: { icon: faCircleInfo, text: WORKBENCH_STRINGS.needSave },
 };
 
 function fileNameOf(uri: URI): string {
   const name = uri.path.split('/').pop();
   return name !== undefined && name.length > 0 ? name : uri.path;
+}
+
+function toEditorMarkers(diagnostics: readonly ICodeDiagnostic[]): IEditorMarker[] {
+  return diagnostics.map((diagnostic) => ({
+    severity: diagnostic.severity,
+    message: diagnostic.message,
+    line: diagnostic.line,
+    column: diagnostic.column,
+    ...(diagnostic.endLine === undefined ? {} : { endLine: diagnostic.endLine }),
+    ...(diagnostic.endColumn === undefined ? {} : { endColumn: diagnostic.endColumn }),
+  }));
 }
 
 interface IWorkbenchProps {
@@ -82,15 +133,24 @@ function Workbench({ services, initialTheme, onDirtyStateChange }: IWorkbenchPro
   const [view, setView] = useState<WorkbenchView>('editor');
   const [theme, setTheme] = useState<ThemeKind>(initialTheme);
   const [status, setStatus] = useState<WorkbenchStatus>('idle');
+  const [statusDetail, setStatusDetail] = useState<string | undefined>(undefined);
+  const [busy, setBusy] = useState<BusyAction>(undefined);
+  const [problems, setProblems] = useState<IProblemItem[]>([]);
+  const [problemsOpen, setProblemsOpen] = useState(false);
   const editorPaneRef = useRef<IEditorPaneHandle | null>(null);
   const tabsRef = useRef<ITabState[]>([]);
   const activeTabIdRef = useRef<string | undefined>(undefined);
   const nextUntitledRef = useRef(1);
   const savingRef = useRef(false);
   const saveQueuedRef = useRef(false);
+  const busyRef = useRef(false);
+  const problemsRef = useRef(new Map<string, IProblemItem[]>());
   const openFileRef = useRef<() => Promise<void>>(async () => undefined);
   const openFolderRef = useRef<() => Promise<void>>(async () => undefined);
   const saveRef = useRef<() => Promise<void>>(async () => undefined);
+  const compileRef = useRef<() => Promise<void>>(async () => undefined);
+  const compileRunRef = useRef<() => Promise<void>>(async () => undefined);
+  const runRef = useRef<() => Promise<void>>(async () => undefined);
 
   useEffect(() => {
     tabsRef.current = tabs;
@@ -122,9 +182,9 @@ function Workbench({ services, initialTheme, onDirtyStateChange }: IWorkbenchPro
     onDirtyStateChange?.(anyDirty);
   }, [anyDirty, onDirtyStateChange]);
 
-  // 结果胶囊几秒后自动消失
+  // 结果胶囊几秒后自动消失；进行中状态常驻
   useEffect(() => {
-    if (status !== 'saved' && status !== 'saveFailed' && status !== 'openFailed') {
+    if (status === 'idle' || STICKY_STATUSES.has(status)) {
       return undefined;
     }
     const timer = window.setTimeout(() => setStatus('idle'), STATUS_AUTO_HIDE_MS);
@@ -310,6 +370,189 @@ function Workbench({ services, initialTheme, onDirtyStateChange }: IWorkbenchPro
     [services.fileDialogService, services.fileService],
   );
 
+  const groupProblems = useCallback(
+    (sourceUri: URI, sourceName: string, diagnostics: readonly ICodeDiagnostic[]) => {
+      const groups = new Map<string, IProblemItem[]>();
+      for (const diagnostic of diagnostics) {
+        const uri = diagnostic.uri ?? sourceUri;
+        const key = uri.toString();
+        const item: IProblemItem = {
+          uri,
+          fileName: diagnostic.fileName ?? sourceName,
+          line: diagnostic.line,
+          column: diagnostic.column,
+          severity: diagnostic.severity,
+          message: diagnostic.message,
+        };
+        const bucket = groups.get(key);
+        if (bucket === undefined) {
+          groups.set(key, [item]);
+        } else {
+          bucket.push(item);
+        }
+      }
+      return groups;
+    },
+    [],
+  );
+
+  const replaceProblems = useCallback((groups: ReadonlyMap<string, IProblemItem[]>): void => {
+    problemsRef.current = new Map(groups);
+    setProblems([...groups.values()].flat());
+  }, []);
+
+  const languageOf = useCallback(
+    (tab: ITabState): SourceLanguage | undefined => {
+      const extension = getFileExtension(tab.name);
+      const languageId =
+        services.languageService.getLanguageByFileName(tab.name) ??
+        (extension === undefined
+          ? undefined
+          : services.languageService.getLanguageByExtension(extension));
+      return languageId === 'cpp' || languageId === 'python' ? languageId : undefined;
+    },
+    [services.languageService],
+  );
+
+  const runTab = useCallback(
+    async (tab: ITabState, language: SourceLanguage): Promise<void> => {
+      setBusy('run');
+      try {
+        const result =
+          language === 'cpp'
+            ? await services.toolchainService.run(tab.uri)
+            : await services.pythonService.run(tab.uri);
+        if (result.launched) {
+          setStatus('runLaunched');
+          setStatusDetail(undefined);
+        } else {
+          setStatus('runFailed');
+          setStatusDetail(result.message);
+        }
+      } catch (error) {
+        setStatus('runFailed');
+        setStatusDetail(undefined);
+        onUnexpectedError(error);
+      } finally {
+        setBusy(undefined);
+      }
+    },
+    [services.pythonService, services.toolchainService],
+  );
+
+  const compileActive = useCallback(
+    async (andRun: boolean): Promise<void> => {
+      const tab = tabsRef.current.find((candidate) => candidate.id === activeTabIdRef.current);
+      const editor = editorPaneRef.current;
+      if (!tab || !editor || busyRef.current) {
+        return;
+      }
+      if (tab.untitled) {
+        setStatus('needSave');
+        setStatusDetail(undefined);
+        return;
+      }
+      const language = languageOf(tab);
+      if (language === undefined) {
+        setStatus('unsupported');
+        setStatusDetail(undefined);
+        return;
+      }
+      const content = editor.getValue(tab.uri);
+      busyRef.current = true;
+      setBusy('compile');
+      setStatus('compiling');
+      setStatusDetail(undefined);
+      try {
+        if (language === 'python') {
+          const diagnostics = await services.pythonService.check(tab.uri, content);
+          editor.setMarkers(tab.uri, toEditorMarkers(diagnostics));
+          replaceProblems(
+            diagnostics.length === 0 ? new Map() : groupProblems(tab.uri, tab.name, diagnostics),
+          );
+          if (diagnostics.length > 0) {
+            setProblemsOpen(true);
+          }
+          setStatus(diagnostics.length === 0 ? 'checkOk' : 'checkFailed');
+          setStatusDetail(diagnostics.length === 0 ? undefined : `${diagnostics.length} 处问题`);
+          if (andRun) {
+            await runTab(tab, language);
+          }
+        } else {
+          const result = await services.toolchainService.compile({ uri: tab.uri, content });
+          editor.setMarkers(tab.uri, toEditorMarkers(result.diagnostics));
+          replaceProblems(groupProblems(tab.uri, tab.name, result.diagnostics));
+          if (!result.ok && result.diagnostics.length > 0) {
+            setProblemsOpen(true);
+          }
+          setStatus(result.ok ? 'compileOk' : 'compileFailed');
+          setStatusDetail(
+            result.ok
+              ? `${result.durationMs}ms`
+              : result.diagnostics.length > 0
+                ? `${result.diagnostics.length} 处问题`
+                : result.message,
+          );
+          if (result.ok && andRun) {
+            await runTab(tab, language);
+          }
+        }
+      } catch (error) {
+        setStatus('compileFailed');
+        setStatusDetail(undefined);
+        onUnexpectedError(error);
+      } finally {
+        busyRef.current = false;
+        setBusy(undefined);
+      }
+    },
+    [
+      groupProblems,
+      languageOf,
+      replaceProblems,
+      runTab,
+      services.pythonService,
+      services.toolchainService,
+    ],
+  );
+
+  const runActive = useCallback(async (): Promise<void> => {
+    const tab = tabsRef.current.find((candidate) => candidate.id === activeTabIdRef.current);
+    if (!tab || busyRef.current) {
+      return;
+    }
+    if (tab.untitled) {
+      setStatus('needSave');
+      setStatusDetail(undefined);
+      return;
+    }
+    const language = languageOf(tab);
+    if (language === undefined) {
+      setStatus('unsupported');
+      setStatusDetail(undefined);
+      return;
+    }
+    busyRef.current = true;
+    try {
+      await runTab(tab, language);
+    } finally {
+      busyRef.current = false;
+    }
+  }, [languageOf, runTab]);
+
+  const gotoProblem = useCallback(
+    async (problem: IProblemItem): Promise<void> => {
+      if (problem.uri === undefined) {
+        return;
+      }
+      if (editorPaneRef.current?.hasDocument(problem.uri) !== true) {
+        await openUri(problem.uri);
+      }
+      editorPaneRef.current?.revealPosition(problem.uri, problem.line, problem.column);
+    },
+    [openUri],
+  );
+
   useEffect(() => {
     openFileRef.current = openFile;
   }, [openFile]);
@@ -323,7 +566,34 @@ function Workbench({ services, initialTheme, onDirtyStateChange }: IWorkbenchPro
   }, [save]);
 
   useEffect(() => {
+    compileRef.current = () => compileActive(false);
+  }, [compileActive]);
+
+  useEffect(() => {
+    compileRunRef.current = () => compileActive(true);
+  }, [compileActive]);
+
+  useEffect(() => {
+    runRef.current = runActive;
+  }, [runActive]);
+
+  useEffect(() => {
     const onKeyDown = (event: KeyboardEvent): void => {
+      if (event.key === 'F10') {
+        event.preventDefault();
+        void runRef.current();
+        return;
+      }
+      if (event.key === 'F11') {
+        event.preventDefault();
+        void compileRunRef.current();
+        return;
+      }
+      if (event.key === 'F12') {
+        event.preventDefault();
+        void compileRef.current();
+        return;
+      }
       if (!(event.ctrlKey || event.metaKey) || event.altKey) {
         return;
       }
@@ -354,6 +624,14 @@ function Workbench({ services, initialTheme, onDirtyStateChange }: IWorkbenchPro
         onActivate={activateTab}
         onClose={(id) => void closeTab(id)}
         onNew={newFile}
+        actionsEnabled={activeTab !== undefined}
+        busy={busy !== undefined}
+        problemCount={problems.length}
+        problemsOpen={problemsOpen}
+        onCompile={() => void compileRef.current()}
+        onRun={() => void runRef.current()}
+        onCompileRun={() => void compileRunRef.current()}
+        onToggleProblems={() => setProblemsOpen((open) => !open)}
       />
       <div className="oi-body">
         <Sidebar
@@ -407,6 +685,13 @@ function Workbench({ services, initialTheme, onDirtyStateChange }: IWorkbenchPro
               </div>
             </div>
           ) : null}
+          {view === 'editor' && problemsOpen ? (
+            <ProblemsPanel
+              problems={problems}
+              onSelect={(problem) => void gotoProblem(problem)}
+              onClose={() => setProblemsOpen(false)}
+            />
+          ) : null}
           {statusPresentation ? (
             <div
               className={`oi-status-capsule oi-status-${status}`}
@@ -415,10 +700,13 @@ function Workbench({ services, initialTheme, onDirtyStateChange }: IWorkbenchPro
             >
               <FontAwesomeIcon
                 icon={statusPresentation.icon}
-                spin={status === 'saving'}
+                spin={status === 'saving' || status === 'compiling'}
                 aria-hidden="true"
               />
               <span>{statusPresentation.text}</span>
+              {statusDetail !== undefined ? (
+                <span className="oi-status-detail">{statusDetail}</span>
+              ) : null}
             </div>
           ) : null}
         </main>

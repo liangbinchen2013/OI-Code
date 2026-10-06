@@ -173,8 +173,54 @@ body {
   flex: none;
   width: 32px;
   height: 32px;
-  margin: 2px 6px;
+  margin: 0;
   border-radius: 8px;
+}
+
+/* 文件栏右侧动作区：新建 / 编译 / 运行 / 编译并运行 / 问题开关 */
+.oi-tabbar-actions {
+  display: flex;
+  flex: none;
+  align-items: center;
+  gap: 2px;
+  padding: 0 6px;
+}
+
+.oi-tabbar-actions .oi-btn-icon {
+  width: 32px;
+  height: 32px;
+  border-radius: 8px;
+}
+
+.oi-tabbar-separator {
+  width: 1px;
+  height: 20px;
+  margin: 0 4px;
+  background: var(--border);
+}
+
+.oi-problems-toggle {
+  position: relative;
+}
+
+.oi-problems-toggle-active {
+  border-color: var(--glow-ring);
+  background: var(--btn-hover);
+}
+
+.oi-problems-badge {
+  position: absolute;
+  top: -2px;
+  right: -2px;
+  min-width: 16px;
+  height: 16px;
+  padding: 0 4px;
+  border-radius: 8px;
+  background: var(--error);
+  color: var(--bg);
+  font-size: 10px;
+  line-height: 16px;
+  text-align: center;
 }
 
 /* 主体：左侧资源管理器 + 右侧编辑区 */
@@ -397,11 +443,129 @@ body {
   gap: 8px;
 }
 
-/* 状态胶囊：右下角三态（成功绿 / 进行中橙 / 失败红），自动淡出前保持可见 */
+/* 问题面板：控制台风格底部面板（行 | 列 | 原因） */
+.oi-problems {
+  position: absolute;
+  right: 0;
+  bottom: 0;
+  left: 0;
+  z-index: 3;
+  display: flex;
+  flex-direction: column;
+  height: 220px;
+  border-top: 1px solid var(--border);
+  background: var(--code-bg);
+  box-shadow: var(--card-shadow);
+}
+
+.oi-problems-header {
+  display: flex;
+  flex: none;
+  align-items: center;
+  justify-content: space-between;
+  padding: 4px 8px 4px 12px;
+  border-bottom: 1px solid var(--border);
+}
+
+.oi-problems-title {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  font-size: 11px;
+  font-weight: 600;
+  letter-spacing: 0.05em;
+  text-transform: uppercase;
+  color: var(--muted);
+}
+
+.oi-problems-count {
+  color: var(--text);
+}
+
+.oi-problems-close {
+  width: 28px;
+  height: 28px;
+}
+
+.oi-problems-list {
+  flex: 1;
+  min-height: 0;
+  overflow: auto;
+  padding: 4px 0;
+  font-family: var(--font-mono);
+  font-size: 12.5px;
+}
+
+.oi-problems-empty {
+  margin: 12px;
+  color: var(--muted);
+  font-family: var(--font-ui);
+  font-size: 13px;
+}
+
+.oi-problem-row {
+  display: flex;
+  align-items: baseline;
+  gap: 10px;
+  width: 100%;
+  padding: 4px 12px;
+  border: 0;
+  background: transparent;
+  color: var(--text);
+  font: inherit;
+  text-align: left;
+  cursor: pointer;
+}
+
+.oi-problem-row:hover {
+  background: var(--btn-hover);
+}
+
+.oi-problem-row:focus-visible {
+  outline: 2px solid var(--glow-ring);
+  outline-offset: -2px;
+}
+
+.oi-problem-icon {
+  flex: none;
+}
+
+.oi-problem-error .oi-problem-icon {
+  color: var(--error);
+}
+
+.oi-problem-warning .oi-problem-icon {
+  color: var(--warn);
+}
+
+.oi-problem-info .oi-problem-icon {
+  color: var(--muted);
+}
+
+.oi-problem-location {
+  flex: none;
+  width: 64px;
+  color: var(--muted);
+}
+
+.oi-problem-message {
+  flex: 1;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.oi-problem-file {
+  flex: none;
+  color: var(--muted);
+}
+
+/* 状态胶囊：右下角多态（成功绿 / 进行中橙 / 失败红），自动淡出前保持可见 */
 .oi-status-capsule {
   position: absolute;
   right: 24px;
   bottom: 24px;
+  z-index: 4;
   display: flex;
   align-items: center;
   gap: 8px;
@@ -414,20 +578,36 @@ body {
   animation: oi-fade-in 0.26s ease;
 }
 
-.oi-status-saving {
+.oi-status-detail {
+  color: var(--muted);
+}
+
+.oi-status-saving,
+.oi-status-compiling {
   border-color: var(--warn);
   color: var(--warn);
 }
 
-.oi-status-saved {
+.oi-status-saved,
+.oi-status-compileOk,
+.oi-status-checkOk,
+.oi-status-runLaunched {
   border-color: var(--success);
   color: var(--success);
 }
 
 .oi-status-saveFailed,
-.oi-status-openFailed {
+.oi-status-openFailed,
+.oi-status-compileFailed,
+.oi-status-checkFailed,
+.oi-status-runFailed {
   border-color: var(--error);
   color: var(--error);
+}
+
+.oi-status-unsupported,
+.oi-status-needSave {
+  color: var(--muted);
 }
 
 @keyframes oi-fade-in {

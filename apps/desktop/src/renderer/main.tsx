@@ -1,4 +1,9 @@
-import { onUnexpectedError, setUnexpectedErrorHandler, toDisposable } from '@oi/base';
+import {
+  DisposableStore,
+  onUnexpectedError,
+  setUnexpectedErrorHandler,
+  toDisposable,
+} from '@oi/base';
 import { LanguageService } from '@oi/editor';
 import { collectMonacoLanguageContributions } from '@oi/editor/browser';
 import {
@@ -6,7 +11,9 @@ import {
   FileServiceClient,
   type IMessageTransport,
   LogService,
+  PythonServiceClient,
   RpcChannel,
+  ToolchainServiceClient,
   WINDOW_RPC_NOTIFICATIONS,
 } from '@oi/platform';
 import { renderWorkbench } from '@oi/workbench';
@@ -52,12 +59,16 @@ async function bootstrap(): Promise<void> {
     throw new Error('IPC 握手失败');
   }
 
+  const toolchainService = new ToolchainServiceClient(channel);
+  const pythonService = new PythonServiceClient(channel);
   const workbench = renderWorkbench({
     container,
     services: {
       fileService: new FileServiceClient(channel),
       fileDialogService: new FileDialogServiceClient(channel),
       languageService: createLanguageService(),
+      toolchainService,
+      pythonService,
     },
     onDirtyStateChange: (dirty) => {
       channel.notify(WINDOW_RPC_NOTIFICATIONS.setDirtyState, { dirty });
@@ -65,10 +76,14 @@ async function bootstrap(): Promise<void> {
   });
   document.documentElement.dataset.oiCodeReady = 'true';
 
+  const disposables = new DisposableStore();
+  disposables.add(toolchainService);
+  disposables.add(pythonService);
+  disposables.add(workbench);
+  disposables.add(channel);
+  disposables.add(logService);
   window.addEventListener('unload', () => {
-    channel.dispose();
-    workbench.dispose();
-    logService.dispose();
+    disposables.dispose();
   });
 }
 

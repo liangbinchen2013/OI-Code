@@ -22,6 +22,8 @@ export async function launchApp(): Promise<ElectronApplication> {
     }
   }
   env['OI_CODE_USER_DATA'] = userDataDir;
+  // E2E 中运行器不等待按键，避免遗留控制台窗口
+  env['OI_RUNNER_NO_PAUSE'] = '1';
   return electron.launch(
     executablePath === undefined ? { args: [mainEntry], env } : { executablePath, env },
   );
