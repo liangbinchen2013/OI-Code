@@ -1,5 +1,11 @@
-import * as monaco from 'monaco-editor';
-import EditorWorker from 'monaco-editor/esm/vs/editor/editor.worker?worker&inline';
+/// <reference types="vite/client" />
+import * as monaco from 'monaco-editor/editor/editor.api';
+import 'monaco-editor/features/register.all.js';
+// 只注册首发需要的三种内置语言，避免把全部语言与富语言服务打进包
+import 'monaco-editor/languages/definitions/cpp/register.js';
+import 'monaco-editor/languages/definitions/python/register.js';
+import 'monaco-editor/languages/definitions/markdown/register.js';
+import EditorWorker from 'monaco-editor/editor/editor.worker?worker&inline';
 
 let environmentReady = false;
 
@@ -40,6 +46,27 @@ const MONACO_COLOR_TOKENS: Readonly<Record<string, string>> = {
   'scrollbarSlider.activeBackground': '--glow-ring',
 };
 
+const HEX_SHORT = /^#([0-9a-f])([0-9a-f])([0-9a-f])$/i;
+
+/**
+ * Monaco 的主题颜色只接受 6/8 位十六进制；
+ * Chromium 会把 #ffffff 规范化为 #fff，这里展开还原。
+ */
+function normalizeColor(value: string): string | undefined {
+  const color = value.trim();
+  if (color.length === 0) {
+    return undefined;
+  }
+  const match = HEX_SHORT.exec(color);
+  if (match) {
+    const r = match[1] ?? '';
+    const g = match[2] ?? '';
+    const b = match[3] ?? '';
+    return `#${r}${r}${g}${g}${b}${b}`;
+  }
+  return color;
+}
+
 /**
  * 由工作台设计令牌生成 Monaco 浅色主题；令牌缺失时保持 Monaco 默认色。
  */
@@ -47,8 +74,8 @@ export function defineWorkbenchTheme(): void {
   const styles = getComputedStyle(document.documentElement);
   const colors: Record<string, string> = {};
   for (const [colorId, tokenName] of Object.entries(MONACO_COLOR_TOKENS)) {
-    const value = styles.getPropertyValue(tokenName).trim();
-    if (value.length > 0) {
+    const value = normalizeColor(styles.getPropertyValue(tokenName));
+    if (value !== undefined) {
       colors[colorId] = value;
     }
   }

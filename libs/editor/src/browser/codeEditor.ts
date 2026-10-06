@@ -1,6 +1,6 @@
 import { DisposableStore, Emitter, type Event, type IDisposable, toDisposable } from '@oi/base';
 import type { URI } from '@oi/base';
-import * as monaco from 'monaco-editor';
+import * as monaco from 'monaco-editor/editor/editor.api';
 import type { ILanguageService } from '../common/language';
 import { getFileExtension } from '../common/languageService';
 import {
