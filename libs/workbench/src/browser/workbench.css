@@ -2020,6 +2020,10 @@ body {
   background: var(--bg);
 }
 
+.oi-vjudge[hidden] {
+  display: none;
+}
+
 .oi-vjudge-topbar {
   display: flex;
   align-items: center;
