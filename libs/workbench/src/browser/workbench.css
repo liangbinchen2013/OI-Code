@@ -1074,6 +1074,15 @@ body {
   font-size: 12px;
 }
 
+.oi-template-source {
+  flex: none;
+  padding: 1px 6px;
+  border: 1px solid var(--border);
+  border-radius: 999px;
+  color: var(--muted);
+  font-size: 10px;
+}
+
 .oi-template-row .oi-btn-icon {
   flex: none;
   width: 28px;

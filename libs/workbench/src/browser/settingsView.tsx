@@ -13,6 +13,7 @@ import {
   faMoon,
   faPen,
   faPlus,
+  faRotateLeft,
   faSpinner,
   faSun,
   faTrashCan,
@@ -50,7 +51,9 @@ export interface ISettingsViewProps {
   readonly toolchainService: IToolchainServiceClient;
   readonly pythonService: IPythonServiceClient;
   readonly templates: readonly IFileTemplate[];
+  readonly builtInTemplateIds: readonly string[];
   readonly onTemplatesChange: (templates: readonly IFileTemplate[]) => void;
+  readonly onResetBuiltInTemplates: () => void;
 }
 
 const PIP_LOG_LIMIT = 200;
@@ -92,7 +95,9 @@ export function SettingsView({
   toolchainService,
   pythonService,
   templates,
+  builtInTemplateIds,
   onTemplatesChange,
+  onResetBuiltInTemplates,
 }: ISettingsViewProps) {
   const [cppStatus, setCppStatus] = useState<IToolchainStatus | undefined>(undefined);
   const [cppSearching, setCppSearching] = useState(false);
@@ -411,32 +416,43 @@ export function SettingsView({
             </p>
           ) : (
             <div className="oi-template-list">
-              {templates.map((template) => (
-                <div key={template.id} className="oi-template-row">
-                  <span className="oi-template-name">{template.name}</span>
-                  <span className="oi-template-ext">
-                    {template.extension.length > 0 ? `.${template.extension}` : '—'}
-                  </span>
-                  <button
-                    type="button"
-                    className="oi-btn oi-btn-icon oi-btn-secondary oi-template-edit"
-                    onClick={() => setTemplateDraft({ ...template })}
-                    title={`${WORKBENCH_STRINGS.templateEdit}：${template.name}`}
-                    aria-label={`${WORKBENCH_STRINGS.templateEdit}：${template.name}`}
-                  >
-                    <FontAwesomeIcon icon={faPen} aria-hidden="true" />
-                  </button>
-                  <button
-                    type="button"
-                    className="oi-btn oi-btn-icon oi-btn-secondary oi-template-delete"
-                    onClick={() => deleteTemplate(template.id)}
-                    title={`${WORKBENCH_STRINGS.templateDelete}：${template.name}`}
-                    aria-label={`${WORKBENCH_STRINGS.templateDelete}：${template.name}`}
-                  >
-                    <FontAwesomeIcon icon={faTrashCan} aria-hidden="true" />
-                  </button>
-                </div>
-              ))}
+              {templates.map((template) => {
+                const builtIn = builtInTemplateIds.includes(template.id);
+                const deleteLabel = builtIn
+                  ? WORKBENCH_STRINGS.templateHideBuiltIn
+                  : WORKBENCH_STRINGS.templateDelete;
+                return (
+                  <div key={template.id} className="oi-template-row">
+                    <span className="oi-template-name">{template.name}</span>
+                    <span className="oi-template-ext">
+                      {template.extension.length > 0 ? `.${template.extension}` : '—'}
+                    </span>
+                    <span className="oi-template-source">
+                      {builtIn
+                        ? WORKBENCH_STRINGS.templateSourceBuiltIn
+                        : WORKBENCH_STRINGS.templateSourceCustom}
+                    </span>
+                    <button
+                      type="button"
+                      className="oi-btn oi-btn-icon oi-btn-secondary oi-template-edit"
+                      onClick={() => setTemplateDraft({ ...template })}
+                      title={`${WORKBENCH_STRINGS.templateEdit}：${template.name}`}
+                      aria-label={`${WORKBENCH_STRINGS.templateEdit}：${template.name}`}
+                    >
+                      <FontAwesomeIcon icon={faPen} aria-hidden="true" />
+                    </button>
+                    <button
+                      type="button"
+                      className="oi-btn oi-btn-icon oi-btn-secondary oi-template-delete"
+                      onClick={() => deleteTemplate(template.id)}
+                      title={`${deleteLabel}：${template.name}`}
+                      aria-label={`${deleteLabel}：${template.name}`}
+                    >
+                      <FontAwesomeIcon icon={faTrashCan} aria-hidden="true" />
+                    </button>
+                  </div>
+                );
+              })}
             </div>
           )}
           <div className="oi-settings-actions">
@@ -454,6 +470,14 @@ export function SettingsView({
             >
               <FontAwesomeIcon icon={faPlus} aria-hidden="true" />
               <span>{WORKBENCH_STRINGS.templateAdd}</span>
+            </button>
+            <button
+              type="button"
+              className="oi-btn oi-btn-secondary oi-template-reset"
+              onClick={onResetBuiltInTemplates}
+            >
+              <FontAwesomeIcon icon={faRotateLeft} aria-hidden="true" />
+              <span>{WORKBENCH_STRINGS.templateResetBuiltIn}</span>
             </button>
           </div>
           {templateDraft !== undefined ? (

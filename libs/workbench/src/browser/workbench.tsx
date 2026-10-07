@@ -57,11 +57,14 @@ import { ExplorerPanel } from './sidebar';
 import { WORKBENCH_STRINGS } from './strings';
 import { TabBar } from './tabBar';
 import {
-  BUILT_IN_TEMPLATES,
+  BUILT_IN_TEMPLATE_IDS,
   DEFAULT_TEMPLATE,
-  loadCustomTemplates,
-  saveCustomTemplates,
+  loadTemplateStore,
+  mergeTemplateStore,
+  saveTemplateStore,
+  templateStoreFromList,
   type IFileTemplate,
+  type ITemplateStore,
 } from './templates';
 import { applyTheme, persistTheme, readStoredTheme, resolveInitialTheme } from './theme';
 import './tokens.css';
@@ -184,9 +187,7 @@ function Workbench({ services, initialTheme, onDirtyStateChange }: IWorkbenchPro
   const [activityView, setActivityView] = useState<ActivityView>('explorer');
   const [sidebarWidth, setSidebarWidth] = useState(() => readStoredSidebarWidth());
   const [lastExpandedWidth, setLastExpandedWidth] = useState(() => readStoredLastExpandedWidth());
-  const [customTemplates, setCustomTemplates] = useState<readonly IFileTemplate[]>(() =>
-    loadCustomTemplates(),
-  );
+  const [templateStore, setTemplateStore] = useState<ITemplateStore>(() => loadTemplateStore());
   const [editorSettings, setEditorSettings] = useState(() => readEditorSettings());
   const [split, setSplit] = useState(() => readStoredSplit());
   const [contentVersion, setContentVersion] = useState(0);
@@ -334,6 +335,25 @@ function Workbench({ services, initialTheme, onDirtyStateChange }: IWorkbenchPro
     persistEditorSettings(normalized);
   }, []);
 
+  // + 菜单使用的模板列表：内置模板可覆盖/隐藏，后接自定义模板
+  const templates = useMemo(() => mergeTemplateStore(templateStore), [templateStore]);
+
+  const updateTemplates = useCallback((next: readonly IFileTemplate[]): void => {
+    const store = templateStoreFromList(next);
+    setTemplateStore(store);
+    saveTemplateStore(store);
+  }, []);
+
+  /** 恢复内置模板默认内容并取消隐藏；保留用户新增模板。 */
+  const resetBuiltInTemplates = useCallback((): void => {
+    const store: ITemplateStore = {
+      custom: templateStore.custom.filter((template) => !BUILT_IN_TEMPLATE_IDS.has(template.id)),
+      hidden: [],
+    };
+    setTemplateStore(store);
+    saveTemplateStore(store);
+  }, [templateStore.custom]);
+
   const activateTab = useCallback((id: string): void => {
     setActiveTabId(id);
     const tab = tabsRef.current.find((candidate) => candidate.id === id);
@@ -422,13 +442,12 @@ function Workbench({ services, initialTheme, onDirtyStateChange }: IWorkbenchPro
   );
 
   const newDefaultFile = useCallback((): void => {
-    createFromTemplate(DEFAULT_TEMPLATE);
-  }, [createFromTemplate]);
-
-  const updateCustomTemplates = useCallback((next: readonly IFileTemplate[]): void => {
-    setCustomTemplates(next);
-    saveCustomTemplates(next);
-  }, []);
+    const preferred =
+      templates.find((template) => template.id === DEFAULT_TEMPLATE.id) ??
+      templates[0] ??
+      DEFAULT_TEMPLATE;
+    createFromTemplate(preferred);
+  }, [createFromTemplate, templates]);
 
   const clearAutoSaveDraft = useCallback(
     (uri: URI): void => {
@@ -1088,7 +1107,7 @@ function Workbench({ services, initialTheme, onDirtyStateChange }: IWorkbenchPro
         onToggleProblems={() => setProblemsOpen((open) => !open)}
         splitDirection={split.direction}
         onCycleSplit={cycleSplit}
-        templates={[...BUILT_IN_TEMPLATES, ...customTemplates]}
+        templates={templates}
         newMenuOpen={newMenuOpen}
         onToggleNewMenu={() => setNewMenuOpen((open) => !open)}
         onCloseNewMenu={() => setNewMenuOpen(false)}
@@ -1125,8 +1144,10 @@ function Workbench({ services, initialTheme, onDirtyStateChange }: IWorkbenchPro
                 onSave={() => void saveRef.current()}
                 toolchainService={services.toolchainService}
                 pythonService={services.pythonService}
-                templates={customTemplates}
-                onTemplatesChange={updateCustomTemplates}
+                templates={templates}
+                builtInTemplateIds={[...BUILT_IN_TEMPLATE_IDS]}
+                onTemplatesChange={updateTemplates}
+                onResetBuiltInTemplates={resetBuiltInTemplates}
               />
             </div>
           </div>

@@ -51,6 +51,21 @@ export const BUILT_IN_TEMPLATES: readonly IFileTemplate[] = [CPP_TEMPLATE, PYTHO
 /** `Ctrl+N` 直接使用的新建默认模板。 */
 export const DEFAULT_TEMPLATE = CPP_TEMPLATE;
 
+export const BUILT_IN_TEMPLATE_IDS: ReadonlySet<string> = new Set(
+  BUILT_IN_TEMPLATES.map((template) => template.id),
+);
+
+/**
+ * 模板持久化结构：内置模板的覆盖项与用户新增模板同存于 custom；
+ * hidden 记录被用户删除的内置模板 id。
+ */
+export interface ITemplateStore {
+  readonly custom: readonly IFileTemplate[];
+  readonly hidden: readonly string[];
+}
+
+export const EMPTY_TEMPLATE_STORE: ITemplateStore = { custom: [], hidden: [] };
+
 function isTemplate(value: unknown): value is IFileTemplate {
   if (typeof value !== 'object' || value === null) {
     return false;
@@ -65,28 +80,88 @@ function isTemplate(value: unknown): value is IFileTemplate {
 }
 
 /**
- * 读取用户自定义模板；存储损坏或不可用时返回空列表。
+ * 读取模板持久化结构；兼容旧版直接存放数组的格式；损坏时回退为空。
  */
-export function loadCustomTemplates(): IFileTemplate[] {
+export function loadTemplateStore(): ITemplateStore {
   try {
     const raw = window.localStorage.getItem(TEMPLATES_STORAGE_KEY);
     if (raw === null) {
-      return [];
+      return EMPTY_TEMPLATE_STORE;
     }
     const parsed: unknown = JSON.parse(raw);
-    return Array.isArray(parsed) ? parsed.filter(isTemplate) : [];
+    if (Array.isArray(parsed)) {
+      return { custom: parsed.filter(isTemplate), hidden: [] };
+    }
+    if (typeof parsed !== 'object' || parsed === null) {
+      return EMPTY_TEMPLATE_STORE;
+    }
+    const { custom, hidden } = parsed as { custom?: unknown; hidden?: unknown };
+    return {
+      custom: Array.isArray(custom) ? custom.filter(isTemplate) : [],
+      hidden: Array.isArray(hidden)
+        ? hidden.filter((id): id is string => typeof id === 'string')
+        : [],
+    };
   } catch (error) {
     onUnexpectedError(error);
-    return [];
+    return EMPTY_TEMPLATE_STORE;
   }
 }
 
-export function saveCustomTemplates(templates: readonly IFileTemplate[]): void {
+export function saveTemplateStore(store: ITemplateStore): void {
   try {
-    window.localStorage.setItem(TEMPLATES_STORAGE_KEY, JSON.stringify(templates));
+    window.localStorage.setItem(TEMPLATES_STORAGE_KEY, JSON.stringify(store));
   } catch (error) {
     onUnexpectedError(error);
   }
+}
+
+function templateEquals(left: IFileTemplate, right: IFileTemplate): boolean {
+  return (
+    left.id === right.id &&
+    left.name === right.name &&
+    left.extension === right.extension &&
+    left.content === right.content
+  );
+}
+
+/**
+ * 合成 + 菜单使用的模板列表：内置模板可被同 id 覆盖或被隐藏，
+ * 自定义新增模板追加在内置模板之后。
+ */
+export function mergeTemplateStore(store: ITemplateStore): IFileTemplate[] {
+  const overrides = new Map(store.custom.map((template) => [template.id, template]));
+  const hidden = new Set(store.hidden);
+  const merged: IFileTemplate[] = [];
+  for (const builtIn of BUILT_IN_TEMPLATES) {
+    if (hidden.has(builtIn.id)) {
+      continue;
+    }
+    merged.push(overrides.get(builtIn.id) ?? builtIn);
+  }
+  for (const template of store.custom) {
+    if (!BUILT_IN_TEMPLATE_IDS.has(template.id)) {
+      merged.push(template);
+    }
+  }
+  return merged;
+}
+
+/**
+ * 由编辑后的完整模板列表反推持久化结构：
+ * 与内置默认一致的项不落盘；缺失的内置 id 视为隐藏；其余按覆盖/新增保存。
+ */
+export function templateStoreFromList(templates: readonly IFileTemplate[]): ITemplateStore {
+  const builtInById = new Map(BUILT_IN_TEMPLATES.map((template) => [template.id, template]));
+  const remaining = new Set(templates.map((template) => template.id));
+  const hidden = BUILT_IN_TEMPLATES.filter((template) => !remaining.has(template.id)).map(
+    (template) => template.id,
+  );
+  const custom = templates.filter((template) => {
+    const builtIn = builtInById.get(template.id);
+    return builtIn === undefined || !templateEquals(builtIn, template);
+  });
+  return { custom, hidden };
 }
 
 export function createTemplateId(): string {

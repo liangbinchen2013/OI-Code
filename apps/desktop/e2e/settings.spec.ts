@@ -44,6 +44,51 @@ test('设置中可调编辑器字号与制表符宽度并持久化', async () =>
   }
 });
 
+test('内置模板可编辑、隐藏并通过恢复按钮还原', async () => {
+  test.setTimeout(120_000);
+  const app = await launchApp();
+  try {
+    const page = await app.firstWindow();
+    await waitReady(page);
+    await page.locator('.oi-activity-item-settings').click();
+
+    // 编辑内置 C++ 模板
+    await page
+      .locator('.oi-template-row', { hasText: 'C++ 文件' })
+      .locator('.oi-template-edit')
+      .click();
+    await page.locator('.oi-template-name-input').fill('我的 C++');
+    const contentEditor = page.locator('.oi-template-content-editor .monaco-editor');
+    await contentEditor.click();
+    await page.keyboard.press('Control+A');
+    await page.keyboard.type('// custom template');
+    await page.locator('.oi-template-save').click();
+    await expect(page.locator('.oi-template-row', { hasText: '我的 C++' })).toBeVisible();
+
+    // + 菜单使用覆盖后的模板
+    await page.locator('.oi-tab-new').click();
+    await page.locator('.oi-menu-item', { hasText: '我的 C++' }).click();
+    await expect(page.locator('.view-lines').first()).toContainText('custom template');
+
+    // 隐藏内置 Python 模板（设置面板仍处于活动视图）
+    await page
+      .locator('.oi-template-row', { hasText: 'Python 文件' })
+      .locator('.oi-template-delete')
+      .click();
+    await expect(page.locator('.oi-template-row', { hasText: 'Python 文件' })).toHaveCount(0);
+    await page.locator('.oi-tab-new').click();
+    await expect(page.locator('.oi-menu-item', { hasText: 'Python 文件' })).toHaveCount(0);
+    await page.locator('.oi-menu-backdrop').click();
+
+    // 恢复内置模板
+    await page.locator('.oi-template-reset').click();
+    await expect(page.locator('.oi-template-row', { hasText: 'C++ 文件' })).toBeVisible();
+    await expect(page.locator('.oi-template-row', { hasText: 'Python 文件' })).toBeVisible();
+  } finally {
+    await app.close();
+  }
+});
+
 test('模板内容使用 Monaco 编辑器且 Tab 正常缩进', async () => {
   test.setTimeout(120_000);
   const app = await launchApp();
