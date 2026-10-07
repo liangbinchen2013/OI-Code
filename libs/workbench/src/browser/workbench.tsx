@@ -11,10 +11,13 @@ import {
   faFileLines,
   faFolderOpen,
   faPlay,
+  faRotateLeft,
   faSpinner,
 } from '@fortawesome/free-solid-svg-icons';
 import type { IconDefinition } from '@fortawesome/fontawesome-svg-core';
 import type {
+  IAutoSaveDraft,
+  IAutoSaveServiceClient,
   ICodeDiagnostic,
   IFileDialogService,
   IFileService,
@@ -61,6 +64,7 @@ export interface IWorkbenchServices {
   readonly languageService: ILanguageService;
   readonly toolchainService: IToolchainServiceClient;
   readonly pythonService: IPythonServiceClient;
+  readonly autoSaveService: IAutoSaveServiceClient;
 }
 
 export interface IWorkbenchOptions {
@@ -99,6 +103,8 @@ interface ITabState {
 const STATUS_AUTO_HIDE_MS = 3000;
 /** 输入停止后多久触发实时语法检查。 */
 const LIVE_CHECK_DEBOUNCE_MS = 700;
+/** 静默自动保存触发间隔（毫秒）。 */
+const AUTOSAVE_INTERVAL_MS = 10_000;
 
 // 进行中的状态不自动隐藏，完成后由新状态替换
 const STICKY_STATUSES: ReadonlySet<WorkbenchStatus> = new Set(['saving', 'compiling']);
@@ -125,6 +131,14 @@ const STATUS_PRESENTATION: Record<
 function fileNameOf(uri: URI): string {
   const name = uri.path.split('/').pop();
   return name !== undefined && name.length > 0 ? name : uri.path;
+}
+
+function draftDisplayName(uri: string): string {
+  try {
+    return fileNameOf(URI.parse(uri));
+  } catch {
+    return uri;
+  }
 }
 
 function toEditorMarkers(diagnostics: readonly ICodeDiagnostic[]): IEditorMarker[] {
@@ -166,6 +180,8 @@ function Workbench({ services, initialTheme, onDirtyStateChange }: IWorkbenchPro
   const [busy, setBusy] = useState<BusyAction>(undefined);
   const [problems, setProblems] = useState<IProblemItem[]>([]);
   const [problemsOpen, setProblemsOpen] = useState(false);
+  const [pendingDrafts, setPendingDrafts] = useState<readonly IAutoSaveDraft[]>([]);
+  const lastAutoSavedRef = useRef(new Map<string, string>());
   const editorPaneRef = useRef<IEditorPaneHandle | null>(null);
   const tabsRef = useRef<ITabState[]>([]);
   const activeTabIdRef = useRef<string | undefined>(undefined);
@@ -224,6 +240,43 @@ function Workbench({ services, initialTheme, onDirtyStateChange }: IWorkbenchPro
     media.addEventListener('change', listener);
     store.add(toDisposable(() => media.removeEventListener('change', listener)));
   }, [store]);
+
+  // 启动时扫描崩溃/断电留下的草稿
+  useEffect(() => {
+    let cancelled = false;
+    services.autoSaveService.scanDrafts().then(
+      (drafts) => {
+        if (!cancelled && drafts.length > 0) {
+          setPendingDrafts(drafts);
+        }
+      },
+      (error: unknown) => onUnexpectedError(error),
+    );
+    return () => {
+      cancelled = true;
+    };
+  }, [services.autoSaveService]);
+
+  // 定时静默保存脏文档；内容与上次落盘一致时跳过
+  useEffect(() => {
+    const timer = window.setInterval(() => {
+      const editor = editorPaneRef.current;
+      if (!editor) {
+        return;
+      }
+      for (const document of editor.getDirtyDocuments()) {
+        const key = document.uri.toString();
+        if (lastAutoSavedRef.current.get(key) === document.content) {
+          continue;
+        }
+        void services.autoSaveService.saveDraft(key, document.content).then(
+          () => lastAutoSavedRef.current.set(key, document.content),
+          (error: unknown) => onUnexpectedError(error),
+        );
+      }
+    }, AUTOSAVE_INTERVAL_MS);
+    store.add(toDisposable(() => window.clearInterval(timer)));
+  }, [services.autoSaveService, store]);
 
   // 任一标签页存在未保存修改即视为脏
   const anyDirty = tabs.some((tab) => tab.dirty);
@@ -334,6 +387,64 @@ function Workbench({ services, initialTheme, onDirtyStateChange }: IWorkbenchPro
     saveCustomTemplates(next);
   }, []);
 
+  const clearAutoSaveDraft = useCallback(
+    (uri: URI): void => {
+      lastAutoSavedRef.current.delete(uri.toString());
+      void services.autoSaveService.clearDraft(uri.toString()).catch(onUnexpectedError);
+    },
+    [services.autoSaveService],
+  );
+
+  /** 恢复全部待处理草稿：内容回填编辑器并重建为脏标签页。 */
+  const recoverDrafts = useCallback((): void => {
+    const drafts = pendingDrafts;
+    setPendingDrafts([]);
+    const editor = editorPaneRef.current;
+    if (editor === null || drafts.length === 0) {
+      return;
+    }
+    const recovered = new Map<string, ITabState>();
+    for (const draft of drafts) {
+      const uri = URI.parse(draft.uri);
+      const id = uri.toString();
+      editor.openDocument(uri, draft.content);
+      lastAutoSavedRef.current.set(id, draft.content);
+      recovered.set(id, {
+        id,
+        uri,
+        name: fileNameOf(uri),
+        untitled: uri.scheme !== 'file',
+        dirty: true,
+      });
+    }
+    setTabs((previous) => {
+      const existing = new Set(previous.map((tab) => tab.id));
+      const merged = previous.map((tab) => (recovered.has(tab.id) ? { ...tab, dirty: true } : tab));
+      for (const [id, tab] of recovered) {
+        if (!existing.has(id)) {
+          merged.push(tab);
+        }
+      }
+      return merged;
+    });
+    const first = drafts[0];
+    if (first !== undefined) {
+      const id = URI.parse(first.uri).toString();
+      setActiveTabId(id);
+      editor.setActiveDocument(URI.parse(first.uri));
+    }
+  }, [pendingDrafts]);
+
+  /** 放弃恢复：删除全部待处理草稿。 */
+  const dismissDrafts = useCallback((): void => {
+    const drafts = pendingDrafts;
+    setPendingDrafts([]);
+    for (const draft of drafts) {
+      lastAutoSavedRef.current.delete(draft.uri);
+      void services.autoSaveService.clearDraft(draft.uri).catch(onUnexpectedError);
+    }
+  }, [pendingDrafts, services.autoSaveService]);
+
   const closeTab = useCallback(
     async (id: string): Promise<void> => {
       const tab = tabsRef.current.find((candidate) => candidate.id === id);
@@ -347,6 +458,7 @@ function Workbench({ services, initialTheme, onDirtyStateChange }: IWorkbenchPro
         }
       }
       editorPaneRef.current?.closeDocument(tab.uri);
+      clearAutoSaveDraft(tab.uri);
       const pendingTimer = checkTimersRef.current.get(tab.id);
       if (pendingTimer !== undefined) {
         store.delete(pendingTimer);
@@ -364,7 +476,7 @@ function Workbench({ services, initialTheme, onDirtyStateChange }: IWorkbenchPro
         editorPaneRef.current?.setActiveDocument(next?.uri);
       }
     },
-    [services.fileDialogService],
+    [clearAutoSaveDraft, services.fileDialogService],
   );
 
   const handleContentChange = useCallback((uri: URI): void => {
@@ -406,6 +518,7 @@ function Workbench({ services, initialTheme, onDirtyStateChange }: IWorkbenchPro
           const text = editor.getValue(tab.uri);
           await services.fileService.writeFile(target, text);
           editor.replaceDocument(tab.uri, target, text);
+          clearAutoSaveDraft(tab.uri);
           const updated: ITabState = {
             id: target.toString(),
             uri: target,
@@ -424,6 +537,8 @@ function Workbench({ services, initialTheme, onDirtyStateChange }: IWorkbenchPro
           scheduleCheckRef.current(updated, 0);
         } else {
           await services.fileService.writeFile(tab.uri, editor.getValue(tab.uri));
+          editor.markSaved(tab.uri);
+          clearAutoSaveDraft(tab.uri);
           setTabs((previous) =>
             previous.map((candidate) =>
               candidate.id === tab.id ? { ...candidate, dirty: false } : candidate,
@@ -442,7 +557,7 @@ function Workbench({ services, initialTheme, onDirtyStateChange }: IWorkbenchPro
         }
       }
     },
-    [services.fileDialogService, services.fileService],
+    [clearAutoSaveDraft, services.fileDialogService, services.fileService],
   );
 
   const groupProblems = useCallback(
@@ -965,6 +1080,43 @@ function Workbench({ services, initialTheme, onDirtyStateChange }: IWorkbenchPro
           ) : null}
         </main>
       </div>
+      {pendingDrafts.length > 0 ? (
+        <div
+          className="oi-recover-overlay"
+          role="dialog"
+          aria-modal="true"
+          aria-label={WORKBENCH_STRINGS.recoverTitle}
+        >
+          <div className="oi-recover-dialog">
+            <h2 className="oi-recover-title">{WORKBENCH_STRINGS.recoverTitle}</h2>
+            <p className="oi-recover-hint">
+              {WORKBENCH_STRINGS.recoverHint.replace('{count}', String(pendingDrafts.length))}
+            </p>
+            <ul className="oi-recover-list">
+              {pendingDrafts.map((draft) => (
+                <li key={draft.uri}>{draftDisplayName(draft.uri)}</li>
+              ))}
+            </ul>
+            <div className="oi-recover-actions">
+              <button
+                type="button"
+                className="oi-btn oi-btn-primary oi-recover-confirm"
+                onClick={recoverDrafts}
+              >
+                <FontAwesomeIcon icon={faRotateLeft} aria-hidden="true" />
+                <span>{WORKBENCH_STRINGS.recoverConfirm}</span>
+              </button>
+              <button
+                type="button"
+                className="oi-btn oi-btn-secondary oi-recover-dismiss"
+                onClick={dismissDrafts}
+              >
+                <span>{WORKBENCH_STRINGS.recoverDismiss}</span>
+              </button>
+            </div>
+          </div>
+        </div>
+      ) : null}
     </div>
   );
 }

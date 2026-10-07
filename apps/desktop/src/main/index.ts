@@ -2,6 +2,7 @@ import { join } from 'node:path';
 import { app } from 'electron';
 import { setUnexpectedErrorHandler, toError } from '@oi/base';
 import {
+  IAutoSaveService,
   IConfigService,
   IFileDialogService,
   IFileService,
@@ -15,6 +16,7 @@ import {
   SyncDescriptor,
 } from '@oi/platform';
 import { JsonConfigService, NodeFileService } from '@oi/platform/node';
+import { AutoSaveService } from './autoSaveService';
 import { FileDialogService } from './fileDialogService';
 import { MainProcess } from './mainProcess';
 import { PythonService } from './pythonService';
@@ -46,6 +48,10 @@ function main(): void {
   services.set(IPythonService, new SyncDescriptor(PythonService));
   services.set(IFileService, new NodeFileService());
   services.set(IFileDialogService, new FileDialogService());
+  // 自动保存草稿目录：默认系统临时目录；E2E 经环境变量隔离到独立 userData
+  const autoSaveDirectory =
+    process.env['OI_CODE_AUTOSAVE_DIR'] ?? join(app.getPath('temp'), 'oi-code-autosave');
+  services.set(IAutoSaveService, new SyncDescriptor(AutoSaveService, [autoSaveDirectory]));
   const instantiationService = new InstantiationService(services);
   const mainProcess = instantiationService.createInstance(MainProcess);
 

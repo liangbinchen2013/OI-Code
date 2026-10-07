@@ -46,6 +46,16 @@ export const WINDOW_RPC_NOTIFICATIONS = {
 } as const;
 
 /**
+ * 静默自动保存服务的 RPC 方法名。
+ */
+export const AUTOSAVE_RPC_METHODS = {
+  saveDraft: 'autosave.saveDraft',
+  clearDraft: 'autosave.clearDraft',
+  clearAllDrafts: 'autosave.clearAllDrafts',
+  scanDrafts: 'autosave.scanDrafts',
+} as const;
+
+/**
  * C++ 工具链服务的 RPC 方法名。
  */
 export const TOOLCHAIN_RPC_METHODS = {

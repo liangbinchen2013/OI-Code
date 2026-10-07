@@ -3,8 +3,10 @@ import { BrowserWindow, Menu, app, dialog, ipcMain, type IpcMainEvent } from 'el
 import { DisposableStore, type IDisposable, URI, onUnexpectedError, toDisposable } from '@oi/base';
 import {
   APP_RPC_ERROR_CODES,
+  AUTOSAVE_RPC_METHODS,
   DIALOG_RPC_METHODS,
   FILE_RPC_METHODS,
+  IAutoSaveService,
   IFileDialogService,
   IFileService,
   ILogService,
@@ -161,6 +163,28 @@ function parseInterpreterPathParam(params: unknown): string {
   return path;
 }
 
+function parseDraftParams(params: unknown): { uri: string; content: string } {
+  if (typeof params !== 'object' || params === null) {
+    throw new RpcError(JSON_RPC_ERROR_CODES.invalidParams, '缺少草稿参数');
+  }
+  const { uri, content } = params as { uri?: unknown; content?: unknown };
+  if (typeof uri !== 'string' || uri.length === 0 || typeof content !== 'string') {
+    throw new RpcError(JSON_RPC_ERROR_CODES.invalidParams, '草稿参数非法');
+  }
+  return { uri, content };
+}
+
+function parseDraftUri(params: unknown): string {
+  if (typeof params !== 'object' || params === null || !('uri' in params)) {
+    throw new RpcError(JSON_RPC_ERROR_CODES.invalidParams, '缺少 uri 参数');
+  }
+  const { uri } = params as { uri?: unknown };
+  if (typeof uri !== 'string' || uri.length === 0) {
+    throw new RpcError(JSON_RPC_ERROR_CODES.invalidParams, 'uri 参数非法');
+  }
+  return uri;
+}
+
 function parsePipRequestParam(params: unknown): IPipInstallRequest {
   if (typeof params !== 'object' || params === null) {
     throw new RpcError(JSON_RPC_ERROR_CODES.invalidParams, '缺少 pip 安装参数');
@@ -192,6 +216,7 @@ export class MainProcess implements IDisposable {
   private readonly _fileAccess = new FileAccessGuard();
   private readonly _dirtyWindows = new Map<number, boolean>();
   private readonly _closeConfirmedWindows = new Set<number>();
+  private _draftsCleared = false;
 
   constructor(
     @ILogService private readonly _logService: ILogService,
@@ -199,6 +224,7 @@ export class MainProcess implements IDisposable {
     @IFileDialogService private readonly _fileDialogService: IFileDialogService,
     @IToolchainService private readonly _toolchainService: IToolchainService,
     @IPythonService private readonly _pythonService: IPythonService,
+    @IAutoSaveService private readonly _autoSaveService: IAutoSaveService,
   ) {}
 
   start(): void {
@@ -212,6 +238,22 @@ export class MainProcess implements IDisposable {
         this._openWindow();
       }
     });
+    // 正常退出：先清理自动保存草稿再放行（崩溃/断电不触发，留给下次启动恢复）
+    const handleBeforeQuit = (event: { preventDefault(): void }): void => {
+      if (this._draftsCleared) {
+        return;
+      }
+      event.preventDefault();
+      void this._autoSaveService
+        .clearAllDrafts()
+        .catch(onUnexpectedError)
+        .finally(() => {
+          this._draftsCleared = true;
+          app.quit();
+        });
+    };
+    app.on('before-quit', handleBeforeQuit);
+    this._disposables.add(toDisposable(() => app.removeListener('before-quit', handleBeforeQuit)));
     void app.whenReady().then(
       () => {
         this._disposables.add(
@@ -318,6 +360,20 @@ export class MainProcess implements IDisposable {
     });
     channel.registerMethod(DIALOG_RPC_METHODS.confirmDiscardChanges, (params) =>
       this._fileDialogService.confirmDiscardChanges(parseFileNameParam(params)),
+    );
+
+    channel.registerMethod(AUTOSAVE_RPC_METHODS.saveDraft, async (params) => {
+      const { uri, content } = parseDraftParams(params);
+      await this._autoSaveService.saveDraft(uri, content);
+    });
+    channel.registerMethod(AUTOSAVE_RPC_METHODS.clearDraft, async (params) => {
+      await this._autoSaveService.clearDraft(parseDraftUri(params));
+    });
+    channel.registerMethod(AUTOSAVE_RPC_METHODS.clearAllDrafts, () =>
+      this._autoSaveService.clearAllDrafts(),
+    );
+    channel.registerMethod(AUTOSAVE_RPC_METHODS.scanDrafts, () =>
+      this._autoSaveService.scanDrafts(),
     );
 
     channel.listen(WINDOW_RPC_NOTIFICATIONS.setDirtyState, (params) => {

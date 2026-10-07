@@ -1,5 +1,11 @@
-import { DisposableStore, Emitter, type Event, type IDisposable, toDisposable } from '@oi/base';
-import type { URI } from '@oi/base';
+import {
+  DisposableStore,
+  Emitter,
+  URI,
+  type Event,
+  type IDisposable,
+  toDisposable,
+} from '@oi/base';
 import * as monaco from 'monaco-editor/editor/editor.api';
 import type { ILanguageService } from '../common/language';
 import { getFileExtension } from '../common/languageService';
@@ -58,6 +64,12 @@ function toMonacoMarker(marker: IEditorMarker): monaco.editor.IMarkerData {
   };
 }
 
+/** 有未保存修改的文档快照，供自动保存轮询。 */
+export interface IDirtyDocument {
+  readonly uri: URI;
+  readonly content: string;
+}
+
 export interface ICreateCodeEditorOptions {
   readonly container: HTMLElement;
   readonly languageService: ILanguageService;
@@ -80,6 +92,10 @@ export interface ICodeEditorHost extends IDisposable {
   setActiveDocument(uri: URI | undefined): void;
   getValue(uri: URI): string;
   hasDocument(uri: URI): boolean;
+  /** 有未保存修改的全部文档（按最近变更为序）。 */
+  getDirtyDocuments(): readonly IDirtyDocument[];
+  /** 标记文档已落盘（保存成功后调用），从脏集合移除。 */
+  markSaved(uri: URI): void;
   /** 设置文档诊断标记；重复调用整体替换。 */
   setMarkers(uri: URI, markers: readonly IEditorMarker[]): void;
   /** 滚动并聚焦到指定位置（1 起始）；文档已打开时生效。 */
@@ -100,6 +116,7 @@ class CodeEditorHost implements ICodeEditorHost {
   private readonly _editor: monaco.editor.IStandaloneCodeEditor;
   private readonly _languageService: ILanguageService;
   private readonly _documents = new Map<string, IOpenDocument>();
+  private readonly _dirtyUris = new Set<string>();
   private _isProgrammatic = false;
 
   constructor(options: ICreateCodeEditorOptions) {
@@ -138,6 +155,7 @@ class CodeEditorHost implements ICodeEditorHost {
       } finally {
         this._isProgrammatic = false;
       }
+      this._dirtyUris.delete(key);
       this._editor.setModel(existing.model);
       this._editor.focus();
       return;
@@ -145,6 +163,7 @@ class CodeEditorHost implements ICodeEditorHost {
     const model = monaco.editor.createModel(text, this._languageIdOf(uri), monaco.Uri.parse(key));
     const changeSubscription = model.onDidChangeContent(() => {
       if (!this._isProgrammatic) {
+        this._dirtyUris.add(key);
         this._onDidChangeContent.fire(uri);
       }
     });
@@ -163,6 +182,7 @@ class CodeEditorHost implements ICodeEditorHost {
     document.changeSubscription.dispose();
     document.model.dispose();
     this._documents.delete(key);
+    this._dirtyUris.delete(key);
     if (isActive) {
       this._editor.setModel(null);
     }
@@ -192,6 +212,21 @@ class CodeEditorHost implements ICodeEditorHost {
 
   hasDocument(uri: URI): boolean {
     return this._documents.has(uri.toString());
+  }
+
+  getDirtyDocuments(): readonly IDirtyDocument[] {
+    const dirty: IDirtyDocument[] = [];
+    for (const key of this._dirtyUris) {
+      const document = this._documents.get(key);
+      if (document !== undefined) {
+        dirty.push({ uri: URI.parse(key), content: document.model.getValue() });
+      }
+    }
+    return dirty;
+  }
+
+  markSaved(uri: URI): void {
+    this._dirtyUris.delete(uri.toString());
   }
 
   setMarkers(uri: URI, markers: readonly IEditorMarker[]): void {
@@ -244,6 +279,7 @@ class CodeEditorHost implements ICodeEditorHost {
       document.model.dispose();
     }
     this._documents.clear();
+    this._dirtyUris.clear();
   }
 
   private _languageIdOf(uri: URI): string {

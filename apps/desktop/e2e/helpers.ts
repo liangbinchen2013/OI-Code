@@ -8,13 +8,19 @@ const specDir = dirname(fileURLToPath(import.meta.url));
 
 export const mainEntry = resolve(specDir, '../../../dist/desktop/main.cjs');
 
+export interface ILaunchOptions {
+  /** 复用既有 userData 目录（自动保存恢复用例跨重启复用）。 */
+  readonly userDataDir?: string;
+}
+
 /**
  * 默认启动构建产物；设置 OI_E2E_EXECUTABLE 时改为启动打包后的可执行文件。
- * 每次启动使用独立 userData，避免测试间共享主题、日志等本地状态。
+ * 每次启动使用独立 userData，避免测试间共享主题、日志等本地状态；
+ * 自动保存草稿隔离到各自 userData，避免跨用例污染系统临时目录。
  */
-export async function launchApp(): Promise<ElectronApplication> {
+export async function launchApp(options: ILaunchOptions = {}): Promise<ElectronApplication> {
   const executablePath = process.env['OI_E2E_EXECUTABLE'];
-  const userDataDir = await mkdtemp(join(tmpdir(), 'oi-code-userdata-'));
+  const userDataDir = options.userDataDir ?? (await mkdtemp(join(tmpdir(), 'oi-code-userdata-')));
   const env: Record<string, string> = {};
   for (const [key, value] of Object.entries(process.env)) {
     if (value !== undefined) {
@@ -22,6 +28,7 @@ export async function launchApp(): Promise<ElectronApplication> {
     }
   }
   env['OI_CODE_USER_DATA'] = userDataDir;
+  env['OI_CODE_AUTOSAVE_DIR'] = join(userDataDir, 'autosave');
   // E2E 中运行器不等待按键，避免遗留控制台窗口
   env['OI_RUNNER_NO_PAUSE'] = '1';
   return electron.launch(

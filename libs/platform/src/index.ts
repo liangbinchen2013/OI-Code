@@ -1,3 +1,5 @@
+export * from './common/autosave';
+export * from './common/autoSaveServiceClient';
 export * from './common/config';
 export * from './common/diagnostics';
 export * from './common/dialog';

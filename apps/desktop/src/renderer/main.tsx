@@ -7,6 +7,7 @@ import {
 import { LanguageService } from '@oi/editor';
 import { collectMonacoLanguageContributions } from '@oi/editor/browser';
 import {
+  AutoSaveServiceClient,
   FileDialogServiceClient,
   FileServiceClient,
   type IMessageTransport,
@@ -69,6 +70,7 @@ async function bootstrap(): Promise<void> {
       languageService: createLanguageService(),
       toolchainService,
       pythonService,
+      autoSaveService: new AutoSaveServiceClient(channel),
     },
     onDirtyStateChange: (dirty) => {
       channel.notify(WINDOW_RPC_NOTIFICATIONS.setDirtyState, { dirty });
