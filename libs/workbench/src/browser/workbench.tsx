@@ -29,6 +29,12 @@ import type { PointerEvent as ReactPointerEvent } from 'react';
 import { createRoot } from 'react-dom/client';
 import { ActivityBar, type ActivityView } from './activityBar';
 import { EditorPane, type IEditorPaneHandle } from './editorPane';
+import {
+  normalizeEditorSettings,
+  persistEditorSettings,
+  readEditorSettings,
+  type IEditorSettings,
+} from './editorSettings';
 import { detectLanguageFromContent } from './languageDetection';
 import {
   clampSidebarWidth,
@@ -181,6 +187,7 @@ function Workbench({ services, initialTheme, onDirtyStateChange }: IWorkbenchPro
   const [customTemplates, setCustomTemplates] = useState<readonly IFileTemplate[]>(() =>
     loadCustomTemplates(),
   );
+  const [editorSettings, setEditorSettings] = useState(() => readEditorSettings());
   const [split, setSplit] = useState(() => readStoredSplit());
   const [contentVersion, setContentVersion] = useState(0);
   const splitContainerRef = useRef<HTMLDivElement | null>(null);
@@ -320,6 +327,12 @@ function Workbench({ services, initialTheme, onDirtyStateChange }: IWorkbenchPro
     persistTheme(next);
     setTheme(next);
   }, [theme]);
+
+  const updateEditorSettings = useCallback((next: IEditorSettings): void => {
+    const normalized = normalizeEditorSettings(next);
+    setEditorSettings(normalized);
+    persistEditorSettings(normalized);
+  }, []);
 
   const activateTab = useCallback((id: string): void => {
     setActiveTabId(id);
@@ -1104,6 +1117,9 @@ function Workbench({ services, initialTheme, onDirtyStateChange }: IWorkbenchPro
                 canSave={activeTab !== undefined}
                 hidden={activityView !== 'settings'}
                 onToggleTheme={toggleTheme}
+                editorSettings={editorSettings}
+                onEditorSettingsChange={updateEditorSettings}
+                languageService={services.languageService}
                 onOpenFile={() => void openFileRef.current()}
                 onOpenFolder={() => void openFolderRef.current()}
                 onSave={() => void saveRef.current()}
@@ -1146,6 +1162,8 @@ function Workbench({ services, initialTheme, onDirtyStateChange }: IWorkbenchPro
                 languageService={services.languageService}
                 onDidChangeContent={handleContentChange}
                 onSaveRequested={() => void saveRef.current()}
+                fontSize={editorSettings.fontSize}
+                tabSize={editorSettings.tabSize}
               />
             </div>
             {splitActive ? (

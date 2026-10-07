@@ -1099,6 +1099,14 @@ body {
   line-height: 1.5;
 }
 
+/* 模板内容编辑器：Monaco 宿主，固定高度内滚动 */
+.oi-template-content-editor {
+  height: 220px;
+  overflow: hidden;
+  border: 1px solid var(--border);
+  border-radius: 8px;
+}
+
 /* OI 工具箱：工具选择（二级）与计时器（三级） */
 .oi-toolbox-body {
   display: flex;

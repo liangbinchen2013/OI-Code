@@ -1,4 +1,5 @@
 import { DisposableStore, onUnexpectedError } from '@oi/base';
+import type { ILanguageService } from '@oi/editor';
 import type { ThemeKind } from '@oi/editor/browser';
 import { FontAwesomeIcon } from '@fortawesome/react-fontawesome';
 import {
@@ -25,7 +26,14 @@ import type {
   ToolchainCandidateSource,
 } from '@oi/platform';
 import { useCallback, useEffect, useRef, useState } from 'react';
+import {
+  EDITOR_FONT_SIZE_MAX,
+  EDITOR_FONT_SIZE_MIN,
+  EDITOR_TAB_SIZE_OPTIONS,
+  type IEditorSettings,
+} from './editorSettings';
 import { WORKBENCH_STRINGS } from './strings';
+import { TemplateContentEditor } from './templateContentEditor';
 import { createTemplateId, type IFileTemplate } from './templates';
 
 export interface ISettingsViewProps {
@@ -33,6 +41,9 @@ export interface ISettingsViewProps {
   readonly canSave: boolean;
   readonly hidden?: boolean;
   readonly onToggleTheme: () => void;
+  readonly editorSettings: IEditorSettings;
+  readonly onEditorSettingsChange: (settings: IEditorSettings) => void;
+  readonly languageService: ILanguageService;
   readonly onOpenFile: () => void;
   readonly onOpenFolder: () => void;
   readonly onSave: () => void;
@@ -72,6 +83,9 @@ export function SettingsView({
   canSave,
   hidden,
   onToggleTheme,
+  editorSettings,
+  onEditorSettingsChange,
+  languageService,
   onOpenFile,
   onOpenFolder,
   onSave,
@@ -308,6 +322,50 @@ export function SettingsView({
             <FontAwesomeIcon icon={theme === 'dark' ? faSun : faMoon} aria-hidden="true" />
             <span>{themeToggleText}</span>
           </button>
+          <div className="oi-settings-rows">
+            <div className="oi-settings-row">
+              <label className="oi-settings-label" htmlFor="oi-editor-font-size">
+                {WORKBENCH_STRINGS.settingsEditorFontSize}
+              </label>
+              <input
+                id="oi-editor-font-size"
+                className="oi-input oi-editor-font-size"
+                type="number"
+                min={EDITOR_FONT_SIZE_MIN}
+                max={EDITOR_FONT_SIZE_MAX}
+                step={1}
+                value={editorSettings.fontSize}
+                onChange={(event) =>
+                  onEditorSettingsChange({
+                    ...editorSettings,
+                    fontSize: Number.parseInt(event.target.value, 10),
+                  })
+                }
+              />
+            </div>
+            <div className="oi-settings-row">
+              <label className="oi-settings-label" htmlFor="oi-editor-tab-size">
+                {WORKBENCH_STRINGS.settingsEditorTabSize}
+              </label>
+              <select
+                id="oi-editor-tab-size"
+                className="oi-select oi-editor-tab-size"
+                value={editorSettings.tabSize}
+                onChange={(event) =>
+                  onEditorSettingsChange({
+                    ...editorSettings,
+                    tabSize: Number.parseInt(event.target.value, 10),
+                  })
+                }
+              >
+                {EDITOR_TAB_SIZE_OPTIONS.map((size) => (
+                  <option key={size} value={size}>
+                    {WORKBENCH_STRINGS.settingsEditorTabSizeUnit.replace('{size}', String(size))}
+                  </option>
+                ))}
+              </select>
+            </div>
+          </div>
         </section>
 
         <section className="oi-settings-section">
@@ -422,17 +480,21 @@ export function SettingsView({
                   }
                 />
               </label>
-              <label className="oi-field">
+              <div className="oi-field">
                 <span className="oi-settings-label">{WORKBENCH_STRINGS.templateContent}</span>
-                <textarea
-                  className="oi-input oi-template-content"
-                  rows={6}
-                  value={templateDraft.content}
-                  onChange={(event) =>
-                    setTemplateDraft({ ...templateDraft, content: event.target.value })
+                <TemplateContentEditor
+                  languageService={languageService}
+                  extension={templateDraft.extension}
+                  content={templateDraft.content}
+                  fontSize={editorSettings.fontSize}
+                  tabSize={editorSettings.tabSize}
+                  onChange={(content) =>
+                    setTemplateDraft((draft) =>
+                      draft === undefined ? draft : { ...draft, content },
+                    )
                   }
                 />
-              </label>
+              </div>
               <div className="oi-settings-actions">
                 <button
                   type="button"

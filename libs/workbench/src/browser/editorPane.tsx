@@ -31,6 +31,8 @@ export interface IEditorPaneProps {
   readonly languageService: ILanguageService;
   readonly onDidChangeContent: (uri: URI) => void;
   readonly onSaveRequested: () => void;
+  readonly fontSize?: number;
+  readonly tabSize?: number;
   readonly ref?: Ref<IEditorPaneHandle | null>;
 }
 
@@ -41,6 +43,8 @@ export function EditorPane({
   languageService,
   onDidChangeContent,
   onSaveRequested,
+  fontSize,
+  tabSize,
   ref,
 }: IEditorPaneProps) {
   const hostRef = useRef<HTMLDivElement>(null);
@@ -62,7 +66,12 @@ export function EditorPane({
       return;
     }
     const store = new DisposableStore();
-    const instance = createCodeEditor({ container: host, languageService });
+    const instance = createCodeEditor({
+      container: host,
+      languageService,
+      ...(fontSize === undefined ? {} : { fontSize }),
+      ...(tabSize === undefined ? {} : { tabSize }),
+    });
     store.add(instance);
     store.add(
       instance.onDidChangeContent((uri) => {
@@ -80,6 +89,14 @@ export function EditorPane({
       store.dispose();
     };
   }, [languageService]);
+
+  // 设置变更即时应用到已创建的编辑器
+  useEffect(() => {
+    if (fontSize === undefined || tabSize === undefined) {
+      return;
+    }
+    editor?.updateOptions({ fontSize, tabSize });
+  }, [editor, fontSize, tabSize]);
 
   useImperativeHandle(
     ref,

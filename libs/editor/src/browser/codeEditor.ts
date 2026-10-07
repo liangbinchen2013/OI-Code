@@ -73,6 +73,14 @@ export interface IDirtyDocument {
 export interface ICreateCodeEditorOptions {
   readonly container: HTMLElement;
   readonly languageService: ILanguageService;
+  readonly fontSize?: number;
+  readonly tabSize?: number;
+}
+
+/** 运行时可调整的编辑器显示选项。 */
+export interface ICodeEditorOptionsUpdate {
+  readonly fontSize?: number;
+  readonly tabSize?: number;
 }
 
 /**
@@ -98,6 +106,8 @@ export interface ICodeEditorHost extends IDisposable {
   markSaved(uri: URI): void;
   /** 运行时切换文档语言（如无扩展名文件按内容识别后）。 */
   setLanguage(uri: URI, languageId: string): void;
+  /** 运行时更新显示选项（字号、制表符宽度等）。 */
+  updateOptions(options: ICodeEditorOptionsUpdate): void;
   /** 设置文档诊断标记；重复调用整体替换。 */
   setMarkers(uri: URI, markers: readonly IEditorMarker[]): void;
   /** 滚动并聚焦到指定位置（1 起始）；文档已打开时生效。 */
@@ -130,8 +140,8 @@ class CodeEditorHost implements ICodeEditorHost {
       theme: themeIdFor(currentThemeKind()),
       automaticLayout: true,
       minimap: { enabled: false },
-      fontSize: EDITOR_FONT_SIZE,
-      tabSize: EDITOR_TAB_SIZE,
+      fontSize: options.fontSize ?? EDITOR_FONT_SIZE,
+      tabSize: options.tabSize ?? EDITOR_TAB_SIZE,
       scrollBeyondLastLine: false,
       renderWhitespace: 'selection',
       // 括号按嵌套层级着色并显示配对连接线
@@ -236,6 +246,10 @@ class CodeEditorHost implements ICodeEditorHost {
     if (document !== undefined) {
       monaco.editor.setModelLanguage(document.model, languageId);
     }
+  }
+
+  updateOptions(options: ICodeEditorOptionsUpdate): void {
+    this._editor.updateOptions(options);
   }
 
   setMarkers(uri: URI, markers: readonly IEditorMarker[]): void {
