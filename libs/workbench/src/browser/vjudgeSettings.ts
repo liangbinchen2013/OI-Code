@@ -1,4 +1,5 @@
 import { onUnexpectedError } from '@oi/base';
+import { WORKBENCH_STRINGS } from './strings';
 import type { ITestCase } from '@oi/platform';
 
 const VJUDGE_SETTINGS_KEY = 'oi-code.vjudge-settings';
@@ -35,7 +36,8 @@ function parseCase(value: unknown): ITestCase | undefined {
     return undefined;
   }
   return {
-    name: typeof name === 'string' && name.length > 0 ? name : '样例',
+    name:
+      typeof name === 'string' && name.length > 0 ? name : WORKBENCH_STRINGS.vjudgeCaseDefaultName,
     input,
     expectedOutput,
   };

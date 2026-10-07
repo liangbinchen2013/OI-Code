@@ -58,10 +58,6 @@ export interface IVjudgePanelProps {
   readonly vjudgeService: IVjudgeServiceClient;
 }
 
-interface IWebviewElement extends HTMLElement {
-  loadURL(url: string): Promise<void>;
-}
-
 function verdictClass(submission: IVjudgeSubmission): string {
   const verdict = toVjudgeVerdict(submission.statusCanonical);
   if (submission.processing || verdict === 'PENDING') {
@@ -119,10 +115,14 @@ export function VjudgePanel({
     undefined,
   );
   const [awaitingConfirm, setAwaitingConfirm] = useState(false);
+  const [preflightPassed, setPreflightPassed] = useState(false);
+  const [activated, setActivated] = useState(hidden !== true);
+  const currentKeyRef = useRef('');
   const markdownRef = useRef<HTMLElement | null>(null);
   const loginStageRef = useRef<HTMLDivElement | null>(null);
 
   const currentKey = problem === undefined ? '' : problemKey(problem.oj, problem.probNum);
+  currentKeyRef.current = currentKey;
 
   const addCase = useCallback((): void => {
     if (currentKey.length === 0 || caseInput.length === 0) {
@@ -165,7 +165,18 @@ export function VjudgePanel({
     }
   }, [vjudgeService]);
 
+  // 面板常驻挂载：首次真正可见时才发请求，避免从不用 VJudge 也产生外网访问
   useEffect(() => {
+    if (hidden !== false || activated) {
+      return;
+    }
+    setActivated(true);
+  }, [activated, hidden]);
+
+  useEffect(() => {
+    if (!activated) {
+      return;
+    }
     void vjudgeService.getConfig().then(
       (next) => setConfig(next),
       (error: unknown) => {
@@ -174,7 +185,7 @@ export function VjudgePanel({
       },
     );
     void refreshAccount();
-  }, [refreshAccount, vjudgeService]);
+  }, [activated, refreshAccount, vjudgeService]);
 
   // 登录后拉取通过记录，用于顶部展示与点击复用
   useEffect(() => {
@@ -210,7 +221,7 @@ export function VjudgePanel({
     if (stage === null) {
       return undefined;
     }
-    const webview = document.createElement('webview') as IWebviewElement;
+    const webview = document.createElement('webview');
     webview.className = 'oi-vjudge-login-view';
     webview.setAttribute('partition', OI_CODE_BROWSER_PARTITION);
     webview.setAttribute('src', VJUDGE_LOGIN_URL);
@@ -223,6 +234,10 @@ export function VjudgePanel({
   // 判题结果回爬更新：按 runId 合并
   useEffect(() => {
     const remove = vjudgeService.onDidSubmissionUpdate((submission) => {
+      // 后台轮询可能属于别的题目：只接收当前题目的更新
+      if (problemKey(submission.oj, submission.probNum) !== currentKeyRef.current) {
+        return;
+      }
       setSubmissions((previous) => [
         submission,
         ...previous.filter((item) => item.runId !== submission.runId),
@@ -363,6 +378,7 @@ export function VjudgePanel({
         });
         setPreflightResults(result.results);
         const passed = result.compileOk && result.results.every((item) => item.verdict === 'AC');
+        setPreflightPassed(passed);
         if (!passed) {
           setAwaitingConfirm(true);
           return;
@@ -706,11 +722,26 @@ export function VjudgePanel({
                   {WORKBENCH_STRINGS.vjudgePreflightRunning}
                 </p>
               ) : null}
-              {preflightResults !== undefined && !awaitingConfirm ? (
-                <p className="oi-vjudge-preflight-ok">
-                  <FontAwesomeIcon icon={faCircleCheck} aria-hidden="true" />{' '}
-                  {WORKBENCH_STRINGS.vjudgePreflightPassed}
-                </p>
+              {preflightResults !== undefined ? (
+                <ul className="oi-vjudge-preflight">
+                  {preflightResults.map((item, index) => (
+                    <li key={item.name + '-' + String(index)} className="oi-vjudge-preflight-row">
+                      <span className={'oi-vjudge-badge oi-vjudge-badge-' + item.verdict}>
+                        {item.verdict}
+                      </span>
+                      <span className="oi-vjudge-preflight-name">{item.name}</span>
+                      <span className="oi-vjudge-preflight-meta">
+                        {formatNumber(item.timeMs, 'ms')} · {formatNumber(item.memoryKb, 'KB')}
+                      </span>
+                    </li>
+                  ))}
+                  {preflightPassed ? (
+                    <li className="oi-vjudge-preflight-ok">
+                      <FontAwesomeIcon icon={faCircleCheck} aria-hidden="true" />{' '}
+                      {WORKBENCH_STRINGS.vjudgePreflightPassed}
+                    </li>
+                  ) : null}
+                </ul>
               ) : null}
             </>
           )}

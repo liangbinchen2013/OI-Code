@@ -2382,3 +2382,44 @@ body {
   height: auto;
   border-radius: 8px;
 }
+
+/* 预检逐点结果 */
+.oi-vjudge-preflight {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+
+.oi-vjudge-preflight-row {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  font-size: 12px;
+}
+
+.oi-vjudge-preflight-name {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.oi-vjudge-preflight-meta {
+  color: var(--muted);
+  font-family: var(--font-mono);
+}
+
+.oi-vjudge-badge-AC {
+  background: var(--success);
+}
+
+.oi-vjudge-badge-WA,
+.oi-vjudge-badge-TLE,
+.oi-vjudge-badge-MLE,
+.oi-vjudge-badge-RE,
+.oi-vjudge-badge-CE {
+  background: var(--error);
+}

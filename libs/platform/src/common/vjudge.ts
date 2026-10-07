@@ -30,7 +30,7 @@ export interface IVjudgeRemoteOj {
 
 /** 全局配置快照，来自 `GET /util/cfg`。 */
 export interface IVjudgeConfig {
-  /** 站点配置版本号（毫秒时间戳），用于缓存失效判断。 */
+  /** 站点配置版本号（毫秒时间戳）。实现侧目前为进程内一次性缓存，重启刷新。 */
   readonly version: number;
   readonly remoteOjs: readonly IVjudgeRemoteOj[];
   /** 题面语言码 → 本地名，如 `zh` → `中文`。 */
@@ -140,7 +140,7 @@ export type VjudgeVerdict = JudgeVerdict | 'PENDING' | 'UNKNOWN';
 export interface IVjudgeService {
   /** 判题结果更新（主进程后台轮询产生；渲染进程侧为 RPC 通知转发）。 */
   readonly onDidSubmissionUpdate: Event<IVjudgeSubmission>;
-  /** 取全局配置（OJ 列表、语言表、题面语言枚举），实现侧应缓存。 */
+  /** 取全局配置（OJ 列表、语言表、题面语言枚举）；实现侧进程内缓存一次。 */
   getConfig(): Promise<IVjudgeConfig>;
   /** 探测登录态；用户名在成功取过题目后会被缓存。 */
   getAccount(): Promise<IVjudgeAccount>;
