@@ -341,6 +341,21 @@ function Workbench({ services, initialTheme, onDirtyStateChange }: IWorkbenchPro
     persistEditorSettings(normalized);
   }, []);
 
+  // Ctrl+滚轮：按增量调整字号并持久化
+  const adjustFontSize = useCallback((delta: number): void => {
+    setEditorSettings((current) => {
+      const next = normalizeEditorSettings({
+        ...current,
+        fontSize: current.fontSize + delta,
+      });
+      if (next.fontSize === current.fontSize) {
+        return current;
+      }
+      persistEditorSettings(next);
+      return next;
+    });
+  }, []);
+
   // + 菜单使用的模板列表：内置模板可覆盖/隐藏，后接自定义模板
   const templates = useMemo(() => mergeTemplateStore(templateStore), [templateStore]);
 
@@ -1243,6 +1258,7 @@ function Workbench({ services, initialTheme, onDirtyStateChange }: IWorkbenchPro
                 onDidChangeContent={handleContentChange}
                 onSaveRequested={() => void saveRef.current()}
                 onDidFocus={() => setFocusedPane('primary')}
+                onAdjustFontSize={adjustFontSize}
                 fontSize={editorSettings.fontSize}
                 tabSize={editorSettings.tabSize}
               />
@@ -1264,6 +1280,7 @@ function Workbench({ services, initialTheme, onDirtyStateChange }: IWorkbenchPro
                       onDidChangeContent={handleContentChange}
                       onSaveRequested={() => void saveRef.current()}
                       onDidFocus={() => setFocusedPane('secondary')}
+                      onAdjustFontSize={adjustFontSize}
                       documentUri={splitTab?.uri}
                       documentText={
                         splitTab === undefined

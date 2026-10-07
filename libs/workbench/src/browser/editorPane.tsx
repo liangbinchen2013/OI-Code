@@ -32,6 +32,8 @@ export interface IEditorPaneProps {
   readonly onDidChangeContent: (uri: URI) => void;
   readonly onSaveRequested: () => void;
   readonly onDidFocus?: () => void;
+  /** Ctrl+滚轮缩放：携带 +1 / -1 的字号增量。 */
+  readonly onAdjustFontSize?: (delta: number) => void;
   /** 初次就绪时自动打开的文档（分屏副编辑器用）；已打开时跳过。 */
   readonly documentUri?: URI;
   readonly documentText?: string;
@@ -48,6 +50,7 @@ export function EditorPane({
   onDidChangeContent,
   onSaveRequested,
   onDidFocus,
+  onAdjustFontSize,
   documentUri,
   documentText,
   fontSize,
@@ -59,6 +62,7 @@ export function EditorPane({
   const changeHandlerRef = useRef(onDidChangeContent);
   const saveHandlerRef = useRef(onSaveRequested);
   const focusHandlerRef = useRef(onDidFocus);
+  const adjustFontSizeRef = useRef(onAdjustFontSize);
   const documentTextRef = useRef(documentText);
 
   useEffect(() => {
@@ -76,6 +80,10 @@ export function EditorPane({
   useEffect(() => {
     focusHandlerRef.current = onDidFocus;
   }, [onDidFocus]);
+
+  useEffect(() => {
+    adjustFontSizeRef.current = onAdjustFontSize;
+  }, [onAdjustFontSize]);
 
   useEffect(() => {
     const host = hostRef.current;
@@ -127,6 +135,23 @@ export function EditorPane({
     }
     editor.openDocument(documentUri, documentTextRef.current ?? '');
   }, [editor, documentUri]);
+
+  // Ctrl+滚轮调整字号（交给上层持久化到设置）
+  useEffect(() => {
+    const host = hostRef.current;
+    if (host === null) {
+      return undefined;
+    }
+    const onWheel = (event: WheelEvent): void => {
+      if (!(event.ctrlKey || event.metaKey)) {
+        return;
+      }
+      event.preventDefault();
+      adjustFontSizeRef.current?.(event.deltaY < 0 ? 1 : -1);
+    };
+    host.addEventListener('wheel', onWheel, { capture: true, passive: false });
+    return () => host.removeEventListener('wheel', onWheel, { capture: true });
+  }, []);
 
   useImperativeHandle(
     ref,

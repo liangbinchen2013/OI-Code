@@ -44,6 +44,41 @@ test('设置中可调编辑器字号与制表符宽度并持久化', async () =>
   }
 });
 
+test('编辑器 Ctrl+滚轮缩放字号并持久化', async () => {
+  test.setTimeout(120_000);
+  const directory = await mkdtemp(join(tmpdir(), 'oi-code-wheel-'));
+  const sourcePath = join(directory, 'wheel.cpp');
+  await writeFile(sourcePath, 'int main() { return 0; }\n', 'utf8');
+
+  const app = await launchApp();
+  try {
+    const page = await app.firstWindow();
+    await waitReady(page);
+    await mockOpenFileDialog(app, sourcePath);
+    await page
+      .locator('.oi-empty-state')
+      .getByRole('button', { name: '打开文件', exact: true })
+      .click();
+    await expect(page.locator('.oi-tab-active .oi-tab-name')).toHaveText('wheel.cpp');
+
+    const viewLines = page.locator('.view-lines').first();
+    await expect(viewLines).toHaveCSS('font-size', '14px');
+
+    await page.locator('.monaco-editor').click();
+    await page.keyboard.down('Control');
+    await page.mouse.wheel(0, -120);
+    await page.keyboard.up('Control');
+    await expect(viewLines).toHaveCSS('font-size', '15px');
+
+    // 设置面板同步显示并可持久化
+    await page.locator('.oi-activity-item-settings').click();
+    await expect(page.locator('#oi-editor-font-size')).toHaveValue('15');
+  } finally {
+    await app.close();
+    await rm(directory, { recursive: true, force: true });
+  }
+});
+
 test('内置模板可编辑、隐藏并通过恢复按钮还原', async () => {
   test.setTimeout(120_000);
   const app = await launchApp();
