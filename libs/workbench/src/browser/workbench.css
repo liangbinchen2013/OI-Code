@@ -364,6 +364,9 @@ body {
   min-width: 0;
   border-right: 1px solid var(--border);
   background: var(--card-bg);
+  /* 容器查询：窄宽度下内容自适应（任务 2） */
+  container-type: inline-size;
+  container-name: oi-sidebar;
 }
 
 .oi-sidebar-panels {
@@ -644,6 +647,7 @@ body {
 }
 
 .oi-search-progress {
+  min-width: 0;
   color: var(--muted);
   font-size: 13px;
 }
@@ -750,6 +754,7 @@ body {
 
 .oi-python-path {
   flex: 1;
+  min-width: 0;
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
@@ -857,6 +862,7 @@ body {
 }
 
 .oi-template-row .oi-btn-icon {
+  flex: none;
   width: 28px;
   height: 28px;
 }
@@ -1203,6 +1209,84 @@ body {
   }
   to {
     opacity: 1;
+  }
+}
+
+/* 侧边栏窄宽度自适应：按面板实际宽度生效，防止按钮丢失与文本溢出（任务 2） */
+@container oi-sidebar (max-width: 300px) {
+  .oi-settings {
+    padding: 8px;
+  }
+
+  .oi-settings-section {
+    padding: 10px 8px;
+  }
+
+  .oi-settings-rows {
+    gap: 10px;
+  }
+
+  /* 设置行改为垂直堆叠，输入控件占满整行 */
+  .oi-settings-row {
+    flex-direction: column;
+    align-items: stretch;
+    gap: 4px;
+  }
+
+  .oi-settings-row .oi-settings-label {
+    min-width: 0;
+  }
+
+  .oi-settings-row .oi-input,
+  .oi-settings-row .oi-select {
+    width: 100%;
+  }
+
+  .oi-settings-flags .oi-flags-save {
+    align-self: flex-start;
+  }
+
+  /* 搜索进度收为独立一行并省略，完整文本由 title 提供 */
+  .oi-search-progress {
+    flex-basis: 100%;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+  }
+
+  /* 模板行：名称省略，编辑/删除图标始终可见 */
+  .oi-template-row {
+    padding-left: 8px;
+  }
+
+  .oi-template-name {
+    min-width: 0;
+  }
+
+  /* 解释器行：路径省略，版本与默认徽标保留 */
+  .oi-radio-row {
+    gap: 6px;
+    padding: 8px;
+  }
+
+  .oi-python-version,
+  .oi-radio-badge {
+    flex: none;
+  }
+
+  .oi-tool-hint {
+    display: none;
+  }
+
+  /* 计时器：窄宽度下缩字号、输入换行 */
+  .oi-timer-display {
+    padding: 12px 0;
+    font-size: 28px;
+  }
+
+  .oi-timer-inputs {
+    flex-direction: column;
+    gap: 6px;
   }
 }
 

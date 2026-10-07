@@ -409,7 +409,10 @@ export function SettingsView({
               </span>
             </button>
             {cppSearching && cppProgress.length > 0 ? (
-              <span className="oi-search-progress">
+              <span
+                className="oi-search-progress"
+                title={WORKBENCH_STRINGS.settingsProbing.replace('{target}', cppProgress)}
+              >
                 {WORKBENCH_STRINGS.settingsProbing.replace('{target}', cppProgress)}
               </span>
             ) : null}
@@ -514,7 +517,10 @@ export function SettingsView({
               </span>
             </button>
             {pythonSearching && pythonProgress.length > 0 ? (
-              <span className="oi-search-progress">
+              <span
+                className="oi-search-progress"
+                title={WORKBENCH_STRINGS.settingsProbing.replace('{target}', pythonProgress)}
+              >
                 {WORKBENCH_STRINGS.settingsProbing.replace('{target}', pythonProgress)}
               </span>
             ) : null}
