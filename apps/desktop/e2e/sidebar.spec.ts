@@ -199,9 +199,11 @@ test('设置中新增自定义模板后可经 + 菜单新建', async () => {
     await page.locator('.oi-template-add').click();
     await page.locator('.oi-template-name-input').fill('我的模板');
     await page.locator('.oi-template-ext-input').fill('py');
-    await page.locator('.oi-template-content').fill('print("hello template")');
+    const contentEditor = page.locator('.oi-template-content-editor .monaco-editor');
+    await contentEditor.click();
+    await page.keyboard.type('print("hello template")');
     await page.locator('.oi-template-save').click();
-    await expect(page.locator('.oi-template-row')).toContainText('我的模板');
+    await expect(page.locator('.oi-template-row', { hasText: '我的模板' })).toBeVisible();
 
     await page.locator('.oi-tab-new').click();
     await page.locator('.oi-menu-item', { hasText: '我的模板' }).click();
