@@ -7,6 +7,7 @@ import {
   faRotate,
   faUpRightFromSquare,
 } from '@fortawesome/free-solid-svg-icons';
+import { OI_CODE_BROWSER_PARTITION } from '@oi/platform';
 import { useCallback, useEffect, useRef, useState } from 'react';
 import {
   normalizeBrowserTheme,
@@ -36,8 +37,6 @@ interface IWebviewFailLoadEvent {
   readonly errorCode?: number;
   readonly errorDescription?: string;
 }
-
-const BROWSER_PARTITION = 'persist:oi-code-browser';
 
 /** 暗色主题：整体反色 + 媒体二次反色，兼容不支持深色的站点。 */
 const DARK_THEME_CSS = [
@@ -107,7 +106,7 @@ export function BrowserTool({ hidden, appTheme }: IBrowserToolProps) {
     }
     const webview = document.createElement('webview') as IWebviewElement;
     webview.className = 'oi-browser-view';
-    webview.setAttribute('partition', BROWSER_PARTITION);
+    webview.setAttribute('partition', OI_CODE_BROWSER_PARTITION);
     webview.setAttribute('src', readStoredBrowserUrl());
 
     const refreshNavigationState = (): void => {

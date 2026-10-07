@@ -9,7 +9,7 @@ import {
   pickStatementVersion,
   problemKey,
   VJUDGE_BASE_URL,
-  VJUDGE_BROWSER_PARTITION,
+  OI_CODE_BROWSER_PARTITION,
   type IVjudgeAccount,
   type IVjudgeConfig,
   type IVjudgeProblem,
@@ -312,7 +312,7 @@ export class VjudgeService implements IVjudgeService, IDisposable {
   private async _cookieHeader(): Promise<string> {
     try {
       const cookies = await session
-        .fromPartition(VJUDGE_BROWSER_PARTITION)
+        .fromPartition(OI_CODE_BROWSER_PARTITION)
         .cookies.get({ url: VJUDGE_BASE_URL });
       return cookies.map((cookie) => `${cookie.name}=${cookie.value}`).join('; ');
     } catch (error) {

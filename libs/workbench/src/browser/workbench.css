@@ -528,6 +528,9 @@ body {
   flex: 1;
   min-width: 0;
   min-height: 0;
+  /* 供 VJudge 等主区页面按面板实际宽度响应（与侧栏同理用容器查询） */
+  container-type: inline-size;
+  container-name: oi-main;
 }
 
 .oi-editor-host {
@@ -1895,7 +1898,9 @@ body {
 }
 
 @media (prefers-reduced-motion: reduce) {
-  .oi-env-links a {
+  .oi-env-links a,
+  .oi-vjudge-chip,
+  .oi-vjudge-candidate {
     transition: none;
   }
 
@@ -1999,5 +2004,315 @@ body {
 
   .oi-status-capsule {
     animation: none;
+  }
+}
+
+/* VJudge 视图：主区覆盖式页面（题面 + 判题记录），样式全部取自设计令牌 */
+.oi-vjudge {
+  position: absolute;
+  inset: 0;
+  z-index: 2;
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+  padding: 12px 16px;
+  overflow: hidden;
+  background: var(--bg);
+}
+
+.oi-vjudge-topbar {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  font-size: 13px;
+}
+
+.oi-vjudge-account {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  color: var(--card-head);
+}
+
+.oi-vjudge-count {
+  color: var(--success);
+  font-size: 12px;
+}
+
+.oi-vjudge-spacer {
+  flex: 1;
+}
+
+.oi-btn-sm {
+  padding: 5px 12px;
+  font-size: 13px;
+}
+
+.oi-vjudge-solved {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+  max-height: 68px;
+  overflow: auto;
+  overscroll-behavior: contain;
+}
+
+.oi-vjudge-chip {
+  padding: 3px 10px;
+  border: 1px dashed var(--card-border);
+  border-radius: 999px;
+  background: var(--card-bg);
+  color: var(--muted);
+  font-family: var(--font-mono);
+  font-size: 12px;
+  cursor: pointer;
+  transition:
+    box-shadow 0.22s ease,
+    border-color 0.2s,
+    background 0.2s,
+    color 0.2s;
+}
+
+.oi-vjudge-chip:hover {
+  border-color: var(--glow-ring);
+  border-style: solid;
+  background: var(--btn-hover);
+  color: var(--text);
+  box-shadow: var(--glow-shadow);
+}
+
+.oi-vjudge-chip:focus-visible {
+  outline: 2px solid var(--glow-ring);
+  outline-offset: 2px;
+}
+
+.oi-vjudge-login {
+  display: flex;
+  flex: 1 1 320px;
+  flex-direction: column;
+  gap: 6px;
+  min-height: 0;
+  border: 1px solid var(--card-border);
+  border-radius: var(--radius-card);
+  overflow: hidden;
+}
+
+.oi-vjudge-login-hint {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+  padding: 8px 12px;
+  background: var(--card-bg);
+  color: var(--muted);
+  font-size: 12px;
+}
+
+.oi-vjudge-login-stage {
+  flex: 1;
+  min-height: 240px;
+}
+
+.oi-vjudge-login-stage webview,
+.oi-vjudge-login-view {
+  width: 100%;
+  height: 100%;
+  border: 0;
+}
+
+.oi-vjudge-query {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: flex-end;
+  gap: 8px;
+}
+
+.oi-vjudge-field {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  font-size: 13px;
+}
+
+.oi-vjudge-field .oi-input,
+.oi-vjudge-field .oi-select {
+  width: 160px;
+}
+
+.oi-vjudge-field-prob .oi-input {
+  width: 120px;
+}
+
+.oi-vjudge-field-lang {
+  flex: 1;
+  min-width: 0;
+}
+
+.oi-vjudge-field-lang .oi-select {
+  width: 100%;
+  min-width: 0;
+}
+
+.oi-vjudge-candidates {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+}
+
+.oi-vjudge-candidate {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  padding: 4px 10px;
+  border: 1px solid var(--card-border);
+  border-radius: 999px;
+  background: var(--bg);
+  color: var(--link);
+  font-size: 12px;
+  cursor: pointer;
+  transition:
+    box-shadow 0.22s ease,
+    border-color 0.2s,
+    background 0.2s;
+}
+
+.oi-vjudge-candidate:hover {
+  border-color: var(--glow-ring);
+  background: var(--btn-bg);
+  box-shadow: var(--glow-shadow);
+}
+
+.oi-vjudge-candidate:focus-visible {
+  outline: 2px solid var(--glow-ring);
+  outline-offset: 2px;
+}
+
+.oi-vjudge-offline {
+  color: var(--warn);
+  font-size: 11px;
+}
+
+.oi-vjudge-message {
+  margin: 0;
+  color: var(--error);
+  font-size: 13px;
+}
+
+.oi-vjudge-content {
+  display: flex;
+  flex: 1;
+  gap: 12px;
+  min-height: 0;
+}
+
+.oi-vjudge-statement {
+  flex: 1;
+  min-width: 0;
+  padding: 12px 16px;
+  border: 1px solid var(--card-border);
+  border-radius: var(--radius-card);
+  overflow: auto;
+  overscroll-behavior: contain;
+  background: var(--bg);
+}
+
+.oi-vjudge-problem-title {
+  margin: 0 0 4px;
+  font-size: 18px;
+  font-weight: 700;
+}
+
+.oi-vjudge-problem-meta {
+  margin: 0 0 12px;
+  color: var(--muted);
+  font-size: 12px;
+}
+
+.oi-vjudge-results {
+  display: flex;
+  flex: none;
+  flex-direction: column;
+  gap: 8px;
+  width: 260px;
+  padding: 12px;
+  border: 1px solid var(--card-border);
+  border-radius: var(--radius-card);
+  background: var(--card-bg);
+  overflow: auto;
+  overscroll-behavior: contain;
+}
+
+.oi-vjudge-results-title {
+  margin: 0;
+  color: var(--muted);
+  font-size: 12px;
+  font-weight: 600;
+  letter-spacing: 0.5px;
+  text-transform: uppercase;
+}
+
+.oi-vjudge-runs {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+
+.oi-vjudge-run {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  padding: 8px 10px;
+  border: 1px solid var(--card-border);
+  border-radius: 10px;
+  background: var(--bg);
+  font-size: 12px;
+}
+
+.oi-vjudge-run-meta {
+  color: var(--muted);
+  font-family: var(--font-mono);
+}
+
+.oi-vjudge-run-remote {
+  color: var(--muted);
+}
+
+.oi-vjudge-badge {
+  align-self: flex-start;
+  padding: 2px 10px;
+  border-radius: 999px;
+  color: var(--bg);
+  font-weight: 600;
+}
+
+.oi-vjudge-ac {
+  background: var(--success);
+}
+
+.oi-vjudge-fail {
+  background: var(--error);
+}
+
+.oi-vjudge-pending {
+  background: var(--warn);
+}
+
+.oi-vjudge-empty {
+  margin: 0;
+  color: var(--muted);
+  font-size: 13px;
+}
+
+/* 窄侧栏下判题记录换到题面下方，避免两栏互相挤压 */
+@container oi-main (max-width: 720px) {
+  .oi-vjudge-content {
+    flex-direction: column;
+  }
+
+  .oi-vjudge-results {
+    width: 100%;
   }
 }

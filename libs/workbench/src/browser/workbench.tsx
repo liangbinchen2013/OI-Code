@@ -73,6 +73,7 @@ import { SettingsView } from './settingsView';
 import { ExplorerPanel } from './sidebar';
 import { WORKBENCH_STRINGS } from './strings';
 import { TabBar } from './tabBar';
+import { VjudgePanel } from './vjudgePanel';
 import {
   BUILT_IN_TEMPLATE_IDS,
   PLAIN_TEMPLATE,
@@ -1534,6 +1535,12 @@ function Workbench({ environment, services, initialTheme, onDirtyStateChange }: 
               </>
             ) : null}
           </div>
+          <VjudgePanel
+            hidden={activityView !== 'vjudge'}
+            appTheme={theme}
+            resolveSource={resolveJudgeSource}
+            vjudgeService={services.vjudgeService}
+          />
           {tabs.length === 0 ? (
             <div className="oi-empty-state">
               <h1 className="oi-empty-title">{WORKBENCH_STRINGS.emptyTitle}</h1>

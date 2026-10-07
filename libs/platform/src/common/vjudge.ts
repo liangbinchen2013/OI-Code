@@ -5,8 +5,11 @@ import { createDecorator } from './instantiation';
 /** VJudge 站点地址：题面、配置与记录类接口均可匿名访问，提交与题目页需登录。 */
 export const VJUDGE_BASE_URL = 'https://vjudge.net';
 
-/** 内置浏览器分区：VJudge 登录态 Cookie 存放在此，主进程据此发请求。 */
-export const VJUDGE_BROWSER_PARTITION = 'persist:oi-code-browser';
+/**
+ * 内置浏览器持久化分区：站点登录态 Cookie 存放在此。
+ * VJudge 等外部服务在主进程复用该分区，应用自身不保存任何账号密码。
+ */
+export const OI_CODE_BROWSER_PARTITION = 'persist:oi-code-browser';
 
 /** 一个可选的提交语言（id 由各远端 OJ 自行编号，不可跨 OJ 复用）。 */
 export interface IVjudgeLanguageOption {
