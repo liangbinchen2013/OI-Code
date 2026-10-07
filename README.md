@@ -21,6 +21,7 @@
 
 ### 编译与运行
 
+- 首次启动自动配置环境：自动搜索本机 g++ / Python（先常规搜索，仍缺失且为安装版时全盘强力搜索）；全部检出只在右下角提示「环境已自动配置」，未检出则弹窗给出 MSYS2 / MinGW-w64 / WinLibs 与 python.org 等官方下载地址
 - 编译复用本机 g++，标准与自定义编译选项可配置；`F12` 编译、`F10` 运行、`F11` 编译并运行
 - 工具链自动搜索（PATH、常见安装目录、MSYS2 / MinGW / Dev-Cpp 等），也可「强力搜索」全盘扫描
 - 多编译器 / 多 Python 解释器候选列表，点选即切换默认
@@ -160,6 +161,15 @@ Playwright 浏览器可从 `https://cdn.npmmirror.com/binaries/playwright` 手�
 **找不到 `make`**
 
 MinGW 环境通常提供的是 `mingw32-make`，本项目自身不依赖 `make`。
+
+**重新触发首次启动环境自检**
+
+自检成功后会在渲染进程 `localStorage` 写入 `oi-code.environment-bootstrap.done`，因此只在首次启动跑一遍；清除该键（或清空用户数据目录）即可重新自检，也可随时在「设置 → C++ 编译器 / Python 解释器」手动搜索。
+
+```powershell
+$env:OI_AUTO_FORCE_SEARCH='1'   # 开发模式允许自动全盘强力搜索（打包版默认允许，无需设置）
+$env:OI_SKIP_ENV_BOOTSTRAP='1'  # 完全跳过启动自检（E2E 默认注入，避免弹窗干扰用例）
+```
 
 ---
 

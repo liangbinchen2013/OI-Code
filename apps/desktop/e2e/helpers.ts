@@ -33,6 +33,8 @@ export async function launchApp(options: ILaunchOptions = {}): Promise<ElectronA
   env['OI_CODE_AUTOSAVE_DIR'] = join(userDataDir, 'autosave');
   // E2E 中运行器不等待按键，避免遗留控制台窗口
   env['OI_RUNNER_NO_PAUSE'] = '1';
+  // 默认跳过首次启动环境自检（既有用例不依赖工具链弹窗；专项用例显式开启）
+  env['OI_SKIP_ENV_BOOTSTRAP'] = '1';
   for (const [key, value] of Object.entries(options.env ?? {})) {
     env[key] = value;
   }

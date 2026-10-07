@@ -1679,6 +1679,21 @@ body {
   color: var(--muted);
 }
 
+.oi-status-envReady {
+  border-color: var(--success);
+  color: var(--success);
+}
+
+.oi-status-envMissing {
+  border-color: var(--warn);
+  color: var(--warn);
+}
+
+.oi-status-envFailed {
+  border-color: var(--error);
+  color: var(--error);
+}
+
 /* 草稿恢复对话框：异常退出后启动时提示，处理完毕即消失 */
 .oi-recover-overlay {
   position: fixed;
@@ -1729,6 +1744,150 @@ body {
   display: flex;
   gap: 8px;
   justify-content: flex-end;
+}
+
+/* 首次启动环境自检：结果弹窗与进行中提示 */
+.oi-env-dialog {
+  width: min(480px, calc(100% - 48px));
+  max-height: calc(100vh - 48px);
+  overflow: auto;
+  overscroll-behavior: contain;
+}
+
+.oi-env-list {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+
+.oi-env-row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  padding: 8px 12px;
+  border: 1px solid var(--card-border);
+  border-radius: var(--radius-card);
+  background: var(--bg);
+  font-size: 13px;
+}
+
+.oi-env-language {
+  color: var(--card-head);
+  font-weight: 600;
+}
+
+.oi-env-found,
+.oi-env-missing {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  min-width: 0;
+}
+
+.oi-env-found {
+  color: var(--success);
+}
+
+.oi-env-missing {
+  color: var(--error);
+}
+
+.oi-env-heading {
+  margin: 0;
+  color: var(--muted);
+  font-size: 12px;
+  letter-spacing: 0.5px;
+  text-transform: uppercase;
+}
+
+.oi-env-links-block {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+
+.oi-env-links {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+
+.oi-env-links a {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  padding: 8px 12px;
+  border: 1px solid var(--card-border);
+  border-radius: 10px;
+  color: var(--link);
+  font-size: 13px;
+  text-decoration: none;
+  transition:
+    box-shadow 0.22s ease,
+    border-color 0.2s,
+    background 0.2s,
+    color 0.2s;
+}
+
+.oi-env-links a:hover {
+  border-color: var(--glow-ring);
+  background: var(--btn-bg);
+  box-shadow: var(--glow-shadow);
+}
+
+.oi-env-links a:focus-visible {
+  outline: 2px solid var(--glow-ring);
+  outline-offset: 2px;
+}
+
+.oi-env-note {
+  margin: 0;
+  color: var(--muted);
+  font-size: 12px;
+  line-height: 1.5;
+}
+
+.oi-env-progress {
+  position: fixed;
+  right: 24px;
+  bottom: 64px;
+  z-index: 21;
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  max-width: min(420px, calc(100vw - 48px));
+  padding: 8px 14px;
+  border: 1px solid var(--card-border);
+  border-radius: 999px;
+  background: var(--card-bg);
+  box-shadow: var(--card-shadow);
+  color: var(--card-head);
+  font-size: 13px;
+}
+
+.oi-env-progress-detail {
+  min-width: 0;
+  overflow: hidden;
+  color: var(--muted);
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .oi-env-links a {
+    transition: none;
+  }
+
+  .oi-env-progress .fa-beat {
+    animation: none;
+  }
 }
 
 @keyframes oi-fade-in {

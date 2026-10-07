@@ -13,6 +13,7 @@ import {
   type IMessageTransport,
   JudgeServiceClient,
   LogService,
+  type IPreloadIpcApi,
   PythonServiceClient,
   RpcChannel,
   ToolchainServiceClient,
@@ -25,11 +26,7 @@ setUnexpectedErrorHandler((error) => {
   logService.error(error instanceof Error ? error : String(error));
 });
 
-function connectToMain(): RpcChannel {
-  const preload = window.oiCode;
-  if (!preload) {
-    throw new Error('preload 未注入，无法建立 IPC 连接');
-  }
+function connectToMain(preload: IPreloadIpcApi): RpcChannel {
   const transport: IMessageTransport = {
     onMessage: (listener) => toDisposable(preload.ipc.onMessage(listener)),
     send: (message) => preload.ipc.send(message),
@@ -55,7 +52,11 @@ async function bootstrap(): Promise<void> {
     throw new Error('找不到 #root 挂载点');
   }
 
-  const channel = connectToMain();
+  const preload = window.oiCode;
+  if (!preload) {
+    throw new Error('preload 未注入，无法建立 IPC 连接');
+  }
+  const channel = connectToMain(preload);
   const pong = await channel.call<{ pong: boolean }>('ping');
   if (!pong.pong) {
     throw new Error('IPC 握手失败');
@@ -66,6 +67,7 @@ async function bootstrap(): Promise<void> {
   const judgeService = new JudgeServiceClient(channel);
   const workbench = renderWorkbench({
     container,
+    environment: preload.environment,
     services: {
       fileService: new FileServiceClient(channel),
       fileDialogService: new FileDialogServiceClient(channel),

@@ -398,6 +398,13 @@ export class MainProcess implements IDisposable {
         sandbox: true,
         // OI 工具箱内置浏览器依赖 webview；访客页面不启用 Node 能力
         webviewTag: true,
+        // 首次启动自动全盘强力搜索仅限打包版；开发/E2E 可用 OI_AUTO_FORCE_SEARCH=1 显式开启
+        additionalArguments: [
+          `--oi-allow-auto-force-search=${String(
+            app.isPackaged || process.env['OI_AUTO_FORCE_SEARCH'] === '1',
+          )}`,
+          `--oi-skip-env-bootstrap=${String(process.env['OI_SKIP_ENV_BOOTSTRAP'] === '1')}`,
+        ],
       },
     });
     window.once('ready-to-show', () => {

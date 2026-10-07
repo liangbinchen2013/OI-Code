@@ -8,8 +8,10 @@ import {
   faCircleCheck,
   faCircleInfo,
   faCircleXmark,
+  faDownload,
   faFileLines,
   faFolderOpen,
+  faGear,
   faPlay,
   faRotateLeft,
   faSpinner,
@@ -22,7 +24,9 @@ import type {
   IFileDialogService,
   IFileService,
   IJudgeServiceClient,
+  IPreloadEnvironment,
   IPythonServiceClient,
+  ISearchProgress,
   IToolchainServiceClient,
 } from '@oi/platform';
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
@@ -37,6 +41,16 @@ import {
   type IEditorSettings,
 } from './editorSettings';
 import { detectLanguageFromContent } from './languageDetection';
+import {
+  downloadLinksOf,
+  hasRunEnvironmentBootstrap,
+  markEnvironmentBootstrapDone,
+  runEnvironmentBootstrap,
+  type EnvironmentLanguage,
+  type IEnvironmentProgress,
+  type IEnvironmentState,
+  type ISearchRound,
+} from './environmentBootstrap';
 import {
   clampSidebarWidth,
   clampSplitRatio,
@@ -88,6 +102,8 @@ export interface IWorkbenchServices {
 
 export interface IWorkbenchOptions {
   readonly container: HTMLElement;
+  /** 主进程下发的环境策略（缺省视为开发模式，不自动全盘扫描）。 */
+  readonly environment?: IPreloadEnvironment;
   readonly services: IWorkbenchServices;
   /** 脏状态上报（主进程据此拦截关闭），由 Code 层提供。 */
   readonly onDirtyStateChange?: (dirty: boolean) => void;
@@ -107,7 +123,10 @@ type WorkbenchStatus =
   | 'runLaunched'
   | 'runFailed'
   | 'unsupported'
-  | 'needSave';
+  | 'needSave'
+  | 'envReady'
+  | 'envMissing'
+  | 'envFailed';
 type BusyAction = 'compile' | 'run' | undefined;
 type SourceLanguage = 'cpp' | 'python';
 
@@ -145,6 +164,9 @@ const STATUS_PRESENTATION: Record<
   runFailed: { icon: faCircleXmark, text: WORKBENCH_STRINGS.runFailed },
   unsupported: { icon: faCircleInfo, text: WORKBENCH_STRINGS.unsupported },
   needSave: { icon: faCircleInfo, text: WORKBENCH_STRINGS.needSave },
+  envReady: { icon: faCircleCheck, text: WORKBENCH_STRINGS.envStatusReady },
+  envMissing: { icon: faCircleInfo, text: WORKBENCH_STRINGS.envStatusPartial },
+  envFailed: { icon: faCircleXmark, text: WORKBENCH_STRINGS.envStatusFailed },
 };
 
 function fileNameOf(uri: URI): string {
@@ -176,13 +198,36 @@ function toEditorMarkers(diagnostics: readonly ICodeDiagnostic[]): IEditorMarker
   }));
 }
 
+/** 自检进度文案：按「语言 + 是否全盘扫描」选择提示语。 */
+const ENV_PROGRESS_TEXTS: Record<`${EnvironmentLanguage}-${'force' | 'simple'}`, string> = {
+  'cpp-force': WORKBENCH_STRINGS.envForceScanningCpp,
+  'cpp-simple': WORKBENCH_STRINGS.envCheckingCpp,
+  'python-force': WORKBENCH_STRINGS.envForceScanningPython,
+  'python-simple': WORKBENCH_STRINGS.envCheckingPython,
+};
+
+function envProgressText(progress: IEnvironmentProgress): string {
+  return ENV_PROGRESS_TEXTS[`${progress.language}-${progress.force ? 'force' : 'simple'}`];
+}
+
+function envDetailOfLanguage(language: EnvironmentLanguage, state: IEnvironmentState): string {
+  const result = language === 'cpp' ? state.cpp : state.python;
+  if (!result.found) {
+    return WORKBENCH_STRINGS.envMissing;
+  }
+  return result.version === undefined
+    ? WORKBENCH_STRINGS.envFoundPlain
+    : WORKBENCH_STRINGS.envFound.replace('{version}', result.version);
+}
+
 interface IWorkbenchProps {
+  readonly environment: IPreloadEnvironment;
   readonly services: IWorkbenchServices;
   readonly initialTheme: ThemeKind;
   readonly onDirtyStateChange?: (dirty: boolean) => void;
 }
 
-function Workbench({ services, initialTheme, onDirtyStateChange }: IWorkbenchProps) {
+function Workbench({ environment, services, initialTheme, onDirtyStateChange }: IWorkbenchProps) {
   const [store] = useState(() => new DisposableStore());
   const [tabs, setTabs] = useState<ITabState[]>([]);
   const [activeTabId, setActiveTabId] = useState<string | undefined>(undefined);
@@ -214,6 +259,9 @@ function Workbench({ services, initialTheme, onDirtyStateChange }: IWorkbenchPro
   const [problems, setProblems] = useState<IProblemItem[]>([]);
   const [problemsOpen, setProblemsOpen] = useState(false);
   const [pendingDrafts, setPendingDrafts] = useState<readonly IAutoSaveDraft[]>([]);
+  const [envProgress, setEnvProgress] = useState<IEnvironmentProgress | undefined>(undefined);
+  const [envResult, setEnvResult] = useState<IEnvironmentState | undefined>(undefined);
+  const [envDialogOpen, setEnvDialogOpen] = useState(false);
   const lastAutoSavedRef = useRef(new Map<string, string>());
   const editorPaneRef = useRef<IEditorPaneHandle | null>(null);
   const tabsRef = useRef<ITabState[]>([]);
@@ -289,6 +337,78 @@ function Workbench({ services, initialTheme, onDirtyStateChange }: IWorkbenchPro
       cancelled = true;
     };
   }, [services.autoSaveService]);
+
+  // 首次启动自动配置编译环境：缓存已配置则静默跳过，一次性标记保证只跑一遍
+  useEffect(() => {
+    if (environment.skipBootstrap || hasRunEnvironmentBootstrap()) {
+      return undefined;
+    }
+    let cancelled = false;
+    let round: ISearchRound | undefined;
+    // 搜索进度经服务的通知事件上报（RPC 客户端不消费调用级回调），需按当前轮归属展示
+    const showProgress = (progress: ISearchProgress): void => {
+      if (cancelled || round === undefined || progress.phase === 'finished') {
+        return;
+      }
+      setEnvProgress({
+        force: round.force,
+        language: round.language,
+        ...(progress.detail === undefined ? {} : { detail: progress.detail }),
+      });
+    };
+    const subscriptions = new DisposableStore();
+    subscriptions.add(services.toolchainService.onDidSearchProgress(showProgress));
+    subscriptions.add(services.pythonService.onDidSearchProgress(showProgress));
+    void runEnvironmentBootstrap({
+      allowForceSearch: environment.allowAutoForceSearch,
+      onRoundStart: (started): void => {
+        round = started;
+      },
+      services: {
+        pythonService: services.pythonService,
+        toolchainService: services.toolchainService,
+      },
+    }).then(
+      (state) => {
+        subscriptions.dispose();
+        if (cancelled) {
+          return;
+        }
+        markEnvironmentBootstrapDone();
+        setEnvProgress(undefined);
+        setEnvResult(state);
+        const missing: string[] = [];
+        if (!state.cpp.found) {
+          missing.push(WORKBENCH_STRINGS.envStatusCppMissing);
+        }
+        if (!state.python.found) {
+          missing.push(WORKBENCH_STRINGS.envStatusPythonMissing);
+        }
+        if (missing.length > 0) {
+          setEnvDialogOpen(true);
+          setStatus('envMissing');
+          setStatusDetail(missing.join(WORKBENCH_STRINGS.listSeparator));
+        } else {
+          setStatus('envReady');
+          setStatusDetail(WORKBENCH_STRINGS.envFoundHint);
+        }
+      },
+      (error: unknown) => {
+        subscriptions.dispose();
+        if (cancelled) {
+          return;
+        }
+        onUnexpectedError(error);
+        setEnvProgress(undefined);
+        setStatus('envFailed');
+        setStatusDetail(undefined);
+      },
+    );
+    return () => {
+      cancelled = true;
+      subscriptions.dispose();
+    };
+  }, [environment, services.pythonService, services.toolchainService]);
 
   // 定时静默保存脏文档；内容与上次落盘一致时跳过
   useEffect(() => {
@@ -1499,6 +1619,99 @@ function Workbench({ services, initialTheme, onDirtyStateChange }: IWorkbenchPro
           </div>
         </div>
       ) : null}
+      {envDialogOpen && envResult !== undefined ? (
+        <div
+          className="oi-recover-overlay"
+          role="dialog"
+          aria-modal="true"
+          aria-label={WORKBENCH_STRINGS.envMissingHint}
+        >
+          <div className="oi-recover-dialog oi-env-dialog">
+            <h2 className="oi-recover-title">{WORKBENCH_STRINGS.envMissingHint}</h2>
+            <ul className="oi-env-list">
+              {(['cpp', 'python'] as const).map((language) => {
+                const result = language === 'cpp' ? envResult.cpp : envResult.python;
+                return (
+                  <li key={language} className="oi-env-row">
+                    <span className="oi-env-language">
+                      {language === 'cpp'
+                        ? WORKBENCH_STRINGS.envLanguageCpp
+                        : WORKBENCH_STRINGS.envLanguagePython}
+                    </span>
+                    <span className={result.found ? 'oi-env-found' : 'oi-env-missing'}>
+                      <FontAwesomeIcon
+                        icon={result.found ? faCircleCheck : faCircleXmark}
+                        aria-hidden="true"
+                      />
+                      <span>{envDetailOfLanguage(language, envResult)}</span>
+                    </span>
+                  </li>
+                );
+              })}
+            </ul>
+            {(['cpp', 'python'] as const)
+              .filter((language) => !(language === 'cpp' ? envResult.cpp : envResult.python).found)
+              .map((language) => (
+                <div key={language} className="oi-env-links-block">
+                  <p className="oi-env-heading">
+                    {language === 'cpp'
+                      ? WORKBENCH_STRINGS.envDownloadHeadingCpp
+                      : WORKBENCH_STRINGS.envDownloadHeadingPython}
+                  </p>
+                  <ul className="oi-env-links">
+                    {downloadLinksOf(language).map((link) => (
+                      <li key={link.url}>
+                        <a href={link.url} target="_blank" rel="noreferrer">
+                          <FontAwesomeIcon icon={faDownload} aria-hidden="true" />
+                          <span>{link.label}</span>
+                        </a>
+                      </li>
+                    ))}
+                  </ul>
+                </div>
+              ))}
+            {!environment.allowAutoForceSearch ? (
+              <p className="oi-env-note">{WORKBENCH_STRINGS.envDevForceNote}</p>
+            ) : null}
+            <p className="oi-env-note">{WORKBENCH_STRINGS.envSettingsNote}</p>
+            <div className="oi-recover-actions">
+              <button
+                type="button"
+                className="oi-btn oi-btn-primary oi-env-settings"
+                onClick={() => {
+                  setActivityView('settings');
+                  setEnvDialogOpen(false);
+                }}
+              >
+                <FontAwesomeIcon icon={faGear} aria-hidden="true" />
+                <span>{WORKBENCH_STRINGS.envOpenSettings}</span>
+              </button>
+              <button
+                type="button"
+                className="oi-btn oi-btn-secondary oi-env-finish"
+                onClick={() => setEnvDialogOpen(false)}
+              >
+                <span>{WORKBENCH_STRINGS.envFinish}</span>
+              </button>
+            </div>
+          </div>
+        </div>
+      ) : null}
+      {envProgress !== undefined ? (
+        <div
+          className="oi-env-progress"
+          role="status"
+          aria-label={WORKBENCH_STRINGS.envCheckingTitle}
+        >
+          <FontAwesomeIcon icon={faSpinner} beat aria-hidden="true" />
+          <span>{envProgressText(envProgress)}</span>
+          {envProgress.detail !== undefined ? (
+            <span className="oi-env-progress-detail" title={envProgress.detail}>
+              {envProgress.detail}
+            </span>
+          ) : null}
+        </div>
+      ) : null}
     </div>
   );
 }
@@ -1513,6 +1726,7 @@ export function renderWorkbench(options: IWorkbenchOptions): { dispose(): void }
   const root = createRoot(options.container);
   root.render(
     <Workbench
+      environment={options.environment ?? { allowAutoForceSearch: false, skipBootstrap: false }}
       services={options.services}
       initialTheme={initialTheme}
       onDirtyStateChange={options.onDirtyStateChange}

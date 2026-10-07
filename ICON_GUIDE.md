@@ -98,11 +98,12 @@ export const RunButton = () => (
 
 ```powershell
 # 1) 源码中搜 emoji（无输出即通过；有输出即阻断）
-git grep -nP '[\x{1F300}-\x{1FAFF}\x{2600}-\x{27BF}\x{2B00}-\x{2BFF}\x{1F000}-\x{1F0FF}]' -- '*.ts' '*.tsx'
+# --untracked 让尚未 git add 的新文件也参与检查，否则会「假通过」
+git grep --untracked -nP '[\x{1F300}-\x{1FAFF}\x{2600}-\x{27BF}\x{2B00}-\x{2BFF}\x{1F000}-\x{1F0FF}]' -- '*.ts' '*.tsx' '*.css'
 # 退出码 1 = 无匹配（通过）；0 = 有匹配（阻断）
 
 # 2) 源码中搜非 Font Awesome 图标库
-git grep -nE '(lucide|heroicons|material-symbols|tabler|react-icons|@mdi/)' -- '*.ts' '*.tsx'
+git grep --untracked -nE '(lucide|heroicons|material-symbols|tabler|react-icons|@mdi/)' -- '*.ts' '*.tsx' '*.css'
 
 # 3) 确认已装依赖（当前应为 7.3.1 全系列）
 pnpm ls --depth 0 | Select-String fortawesome
