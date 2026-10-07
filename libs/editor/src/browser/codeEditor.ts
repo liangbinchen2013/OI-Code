@@ -94,6 +94,8 @@ export interface ICodeEditorHost extends IDisposable {
   readonly onDidFocus: Event<void>;
   /** 打开文档并设为当前；已打开时刷新内容。 */
   openDocument(uri: URI, text: string): void;
+  /** 仅注册文档（共享模型/接收变更）但不切换当前显示；已打开时跳过。 */
+  ensureDocument(uri: URI, text: string): void;
   /** 关闭文档并释放其 model；若为当前文档则清空编辑器。 */
   closeDocument(uri: URI): void;
   /** 另存为：用新 URI 重建文档（保持内容）并设为当前。 */
@@ -191,6 +193,19 @@ class CodeEditorHost implements ICodeEditorHost {
       this._editor.focus();
       return;
     }
+    this.ensureDocument(uri, text);
+    const registered = this._documents.get(key);
+    if (registered !== undefined) {
+      this._editor.setModel(registered.model);
+      this._editor.focus();
+    }
+  }
+
+  ensureDocument(uri: URI, text: string): void {
+    const key = uri.toString();
+    if (this._documents.has(key)) {
+      return;
+    }
     const modelUri = monaco.Uri.parse(key);
     const shared = monaco.editor.getModel(modelUri);
     const model = shared ?? monaco.editor.createModel(text, this._languageIdOf(uri), modelUri);
@@ -202,8 +217,6 @@ class CodeEditorHost implements ICodeEditorHost {
     });
     this._documents.set(key, { model, changeSubscription });
     MODEL_REF_COUNTS.set(key, (MODEL_REF_COUNTS.get(key) ?? 0) + 1);
-    this._editor.setModel(model);
-    this._editor.focus();
   }
 
   closeDocument(uri: URI): void {

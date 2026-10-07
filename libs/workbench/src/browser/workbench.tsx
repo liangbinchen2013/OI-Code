@@ -196,6 +196,8 @@ function Workbench({ services, initialTheme, onDirtyStateChange }: IWorkbenchPro
   const [contentVersion, setContentVersion] = useState(0);
   const splitContainerRef = useRef<HTMLDivElement | null>(null);
   const splitEditorPaneRef = useRef<IEditorPaneHandle | null>(null);
+  const splitTabIdRef = useRef<string | undefined>(undefined);
+  const splitModeRef = useRef<'preview' | 'editor' | 'none'>('none');
   const previousActiveTabIdRef = useRef<string | undefined>(undefined);
   const focusedPaneRef = useRef<'primary' | 'secondary'>('primary');
   const editingTabRef = useRef<ITabState | undefined>(undefined);
@@ -387,14 +389,46 @@ function Workbench({ services, initialTheme, onDirtyStateChange }: IWorkbenchPro
     saveTemplateStore(store);
   }, [templateStore.custom]);
 
+  /** 当前焦点所在的分屏目标；未开启双编辑器时恒为左屏。 */
+  const focusedPaneTarget = useCallback(
+    (): 'primary' | 'secondary' =>
+      focusedPaneRef.current === 'secondary' && splitModeRef.current === 'editor'
+        ? 'secondary'
+        : 'primary',
+    [],
+  );
+
+  /**
+   * 点击标签：在焦点所在分屏打开。点击的文件若正在另一屏，
+   * 则两屏内容交换，保证点击结果出现在焦点侧。
+   */
   const activateTab = useCallback((id: string): void => {
-    setActiveTabId((current) => {
-      if (current !== undefined && current !== id) {
-        previousActiveTabIdRef.current = current;
+    const currentActive = activeTabIdRef.current;
+    const currentSplit = splitTabIdRef.current;
+    if (focusedPaneRef.current === 'secondary' && splitModeRef.current === 'editor') {
+      if (id === currentSplit) {
+        return;
       }
-      return id;
-    });
+      previousActiveTabIdRef.current = currentActive;
+      setSplitTabId(id);
+      if (id === currentActive) {
+        setActiveTabId(currentSplit);
+        const leftTab = tabsRef.current.find((tab) => tab.id === currentSplit);
+        if (leftTab !== undefined) {
+          editorPaneRef.current?.setActiveDocument(leftTab.uri);
+        }
+      }
+      return;
+    }
     setFocusedPane('primary');
+    if (id === currentActive) {
+      return;
+    }
+    previousActiveTabIdRef.current = currentActive;
+    setActiveTabId(id);
+    if (id === currentSplit) {
+      setSplitTabId(currentActive);
+    }
     const tab = tabsRef.current.find((candidate) => candidate.id === id);
     if (tab) {
       editorPaneRef.current?.setActiveDocument(tab.uri);
@@ -413,17 +447,17 @@ function Workbench({ services, initialTheme, onDirtyStateChange }: IWorkbenchPro
   }, []);
 
   const openUri = useCallback(
-    async (uri: URI): Promise<void> => {
+    async (uri: URI, targetPane: 'primary' | 'secondary' = 'primary'): Promise<void> => {
       const key = uri.toString();
+      const toSecondary = targetPane === 'secondary' && splitModeRef.current === 'editor';
       const existing = tabsRef.current.find((tab) => tab.uri.toString() === key);
       if (existing) {
+        // 已打开：由 activateTab 按焦点侧决定显示/交换
         activateTab(existing.id);
         return;
       }
       try {
         const text = await services.fileService.readFile(uri);
-        editorPaneRef.current?.openDocument(uri, text);
-        applyDetectedLanguage(uri, fileNameOf(uri), text);
         const tab: ITabState = {
           id: key,
           uri,
@@ -431,8 +465,18 @@ function Workbench({ services, initialTheme, onDirtyStateChange }: IWorkbenchPro
           untitled: false,
           dirty: false,
         };
-        setTabs((previous) => [...previous, tab]);
-        setActiveTabId(tab.id);
+        if (toSecondary) {
+          // 仅注册到主编辑器（共享模型），显示交给副编辑器
+          editorPaneRef.current?.ensureDocument(uri, text);
+          applyDetectedLanguage(uri, tab.name, text);
+          setTabs((previous) => [...previous, tab]);
+          setSplitTabId(tab.id);
+        } else {
+          editorPaneRef.current?.openDocument(uri, text);
+          applyDetectedLanguage(uri, tab.name, text);
+          setTabs((previous) => [...previous, tab]);
+          setActiveTabId(tab.id);
+        }
         setStatus('idle');
         scheduleCheckRef.current(tab, 0);
       } catch (error) {
@@ -448,10 +492,13 @@ function Workbench({ services, initialTheme, onDirtyStateChange }: IWorkbenchPro
       title: WORKBENCH_STRINGS.openFile,
     });
     if (uri) {
-      await openUri(uri);
-      editorPaneRef.current?.focus();
+      const target = focusedPaneTarget();
+      await openUri(uri, target);
+      if (target === 'primary') {
+        editorPaneRef.current?.focus();
+      }
     }
-  }, [openUri, services.fileDialogService]);
+  }, [focusedPaneTarget, openUri, services.fileDialogService]);
 
   const openFolder = useCallback(async (): Promise<void> => {
     const uri = await services.fileDialogService.showOpenFolder({
@@ -470,14 +517,22 @@ function Workbench({ services, initialTheme, onDirtyStateChange }: IWorkbenchPro
       const base = `${WORKBENCH_STRINGS.untitledPrefix}-${index}`;
       const name = extension.length > 0 ? `${base}.${extension}` : base;
       const uri = URI.from({ scheme: 'untitled', path: `/${name}` });
-      editorPaneRef.current?.openDocument(uri, template.content);
-      applyDetectedLanguage(uri, name, template.content);
       const tab: ITabState = { id: uri.toString(), uri, name, untitled: true, dirty: false };
-      setTabs((previous) => [...previous, tab]);
-      setActiveTabId(tab.id);
+      if (focusedPaneTarget() === 'secondary') {
+        // 焦点在右屏：注册到主编辑器（共享模型），由副编辑器显示
+        editorPaneRef.current?.ensureDocument(uri, template.content);
+        applyDetectedLanguage(uri, name, template.content);
+        setTabs((previous) => [...previous, tab]);
+        setSplitTabId(tab.id);
+      } else {
+        editorPaneRef.current?.openDocument(uri, template.content);
+        applyDetectedLanguage(uri, name, template.content);
+        setTabs((previous) => [...previous, tab]);
+        setActiveTabId(tab.id);
+      }
       setNewMenuOpen(false);
     },
-    [applyDetectedLanguage],
+    [applyDetectedLanguage, focusedPaneTarget],
   );
 
   // + 菜单固定项：无后缀空文件
@@ -940,12 +995,16 @@ function Workbench({ services, initialTheme, onDirtyStateChange }: IWorkbenchPro
       if (problem.uri === undefined) {
         return;
       }
-      if (editorPaneRef.current?.hasDocument(problem.uri) !== true) {
-        await openUri(problem.uri);
+      const target = focusedPaneTarget();
+      const pane = target === 'secondary' ? splitEditorPaneRef.current : editorPaneRef.current;
+      if (pane?.hasDocument(problem.uri) !== true) {
+        await openUri(problem.uri, target);
       }
-      editorPaneRef.current?.revealPosition(problem.uri, problem.line, problem.column);
+      const activePane =
+        target === 'secondary' ? splitEditorPaneRef.current : editorPaneRef.current;
+      activePane?.revealPosition(problem.uri, problem.line, problem.column);
     },
-    [openUri],
+    [focusedPaneTarget, openUri],
   );
 
   useEffect(() => {
@@ -1027,6 +1086,9 @@ function Workbench({ services, initialTheme, onDirtyStateChange }: IWorkbenchPro
           ? 'editor'
           : 'preview';
   const editingTab = focusedPane === 'secondary' && splitMode === 'editor' ? splitTab : activeTab;
+  // 标签高亮跟随焦点侧文档
+  const highlightedTabId =
+    focusedPane === 'secondary' && splitMode === 'editor' ? splitTabId : activeTabId;
   const previewDocument = useMemo(
     () =>
       activeTab === undefined
@@ -1045,6 +1107,14 @@ function Workbench({ services, initialTheme, onDirtyStateChange }: IWorkbenchPro
   useEffect(() => {
     editingTabRef.current = editingTab;
   }, [editingTab]);
+
+  useEffect(() => {
+    splitTabIdRef.current = splitTabId;
+  }, [splitTabId]);
+
+  useEffect(() => {
+    splitModeRef.current = splitMode;
+  }, [splitMode]);
 
   // 保持副标签有效：当前标签或已关闭时切换到上一个标签
   useEffect(() => {
@@ -1182,7 +1252,7 @@ function Workbench({ services, initialTheme, onDirtyStateChange }: IWorkbenchPro
     <div className="oi-workbench">
       <TabBar
         tabs={tabs}
-        activeTabId={activeTabId}
+        activeTabId={highlightedTabId}
         onActivate={activateTab}
         onClose={(id) => void closeTab(id)}
         actionsEnabled={activeTab !== undefined}
@@ -1215,7 +1285,7 @@ function Workbench({ services, initialTheme, onDirtyStateChange }: IWorkbenchPro
                 treeVersion={treeVersion}
                 fileService={services.fileService}
                 hidden={activityView !== 'explorer'}
-                onOpenFile={(uri) => void openUri(uri)}
+                onOpenFile={(uri) => void openUri(uri, focusedPaneTarget())}
                 onOpenFolder={() => void openFolderRef.current()}
                 onRefresh={() => setTreeVersion((version) => version + 1)}
               />

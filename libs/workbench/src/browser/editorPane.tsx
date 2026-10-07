@@ -14,6 +14,7 @@ import { type Ref, useEffect, useImperativeHandle, useRef, useState } from 'reac
  */
 export interface IEditorPaneHandle {
   openDocument(uri: URI, text: string): void;
+  ensureDocument(uri: URI, text: string): void;
   closeDocument(uri: URI): void;
   replaceDocument(previousUri: URI, nextUri: URI, text: string): void;
   setActiveDocument(uri: URI | undefined): void;
@@ -158,6 +159,9 @@ export function EditorPane({
     () => ({
       openDocument: (uri: URI, text: string): void => {
         editor?.openDocument(uri, text);
+      },
+      ensureDocument: (uri: URI, text: string): void => {
+        editor?.ensureDocument(uri, text);
       },
       closeDocument: (uri: URI): void => {
         editor?.closeDocument(uri);

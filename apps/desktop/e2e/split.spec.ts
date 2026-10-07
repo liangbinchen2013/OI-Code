@@ -104,6 +104,44 @@ test('分屏预览：Markdown 实时渲染、拖拽比例、方向切换与持�
   }
 });
 
+test('分屏焦点感知：点击文件在焦点侧打开，重复点击另一屏则交换', async () => {
+  test.setTimeout(120_000);
+  const directory = await mkdtemp(join(tmpdir(), 'oi-code-split-focus-'));
+  const firstPath = join(directory, 'a.cpp');
+  const secondPath = join(directory, 'b.cpp');
+  const thirdPath = join(directory, 'c.cpp');
+  await writeFile(firstPath, 'int main() { return 0; }\n', 'utf8');
+  await writeFile(secondPath, 'int main() { return 0; }\n', 'utf8');
+  await writeFile(thirdPath, 'int main() { return 0; }\n', 'utf8');
+
+  const app = await launchApp();
+  try {
+    const page = await app.firstWindow();
+    await waitReady(page);
+    await openFile(app, page, firstPath); // 左屏 a
+    await openFile(app, page, secondPath); // 左屏 b，右屏待定
+
+    await page.locator('.oi-split-toggle').click();
+    const secondary = page.locator('.oi-split-secondary .monaco-editor');
+    await expect(secondary).toBeVisible();
+    await expect(secondary).toHaveAttribute('data-uri', /a\.cpp$/);
+
+    // 焦点在右屏：点击左屏文件 b → 两屏交换
+    await secondary.click();
+    await page.locator('.oi-tab', { hasText: 'b.cpp' }).locator('.oi-tab-label').click();
+    await expect(secondary).toHaveAttribute('data-uri', /b\.cpp$/);
+
+    // 焦点仍在右屏：经 Ctrl+O 打开新文件 c → 右屏切换为 c
+    await mockOpenFileDialog(app, thirdPath);
+    await page.keyboard.press('Control+o');
+    await expect(secondary).toHaveAttribute('data-uri', /c\.cpp$/);
+    await expect(page.locator('.oi-tab-active .oi-tab-name')).toHaveText('c.cpp');
+  } finally {
+    await app.close();
+    await rm(directory, { recursive: true, force: true });
+  }
+});
+
 test('两个代码标签分屏为双编辑器，保存随焦点定位文档', async () => {
   test.setTimeout(120_000);
   const directory = await mkdtemp(join(tmpdir(), 'oi-code-split-code-'));
