@@ -18,6 +18,14 @@ function extensionOf(name: string): string {
   return index >= 0 ? name.slice(index + 1).toLowerCase() : '';
 }
 
+/** 该文件是否可在分屏面板中直接预览（Markdown / HTML）。 */
+export function isPreviewableName(name: string): boolean {
+  const extension = extensionOf(name);
+  return (
+    extension === 'md' || extension === 'markdown' || extension === 'html' || extension === 'htm'
+  );
+}
+
 /**
  * 分屏预览面板：Markdown 实时渲染、HTML 沙箱预览，其余类型给出提示。
  */

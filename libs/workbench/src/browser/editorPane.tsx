@@ -31,6 +31,10 @@ export interface IEditorPaneProps {
   readonly languageService: ILanguageService;
   readonly onDidChangeContent: (uri: URI) => void;
   readonly onSaveRequested: () => void;
+  readonly onDidFocus?: () => void;
+  /** 初次就绪时自动打开的文档（分屏副编辑器用）；已打开时跳过。 */
+  readonly documentUri?: URI;
+  readonly documentText?: string;
   readonly fontSize?: number;
   readonly tabSize?: number;
   readonly ref?: Ref<IEditorPaneHandle | null>;
@@ -43,6 +47,9 @@ export function EditorPane({
   languageService,
   onDidChangeContent,
   onSaveRequested,
+  onDidFocus,
+  documentUri,
+  documentText,
   fontSize,
   tabSize,
   ref,
@@ -51,6 +58,12 @@ export function EditorPane({
   const [editor, setEditor] = useState<ICodeEditorHost | null>(null);
   const changeHandlerRef = useRef(onDidChangeContent);
   const saveHandlerRef = useRef(onSaveRequested);
+  const focusHandlerRef = useRef(onDidFocus);
+  const documentTextRef = useRef(documentText);
+
+  useEffect(() => {
+    documentTextRef.current = documentText;
+  });
 
   useEffect(() => {
     changeHandlerRef.current = onDidChangeContent;
@@ -59,6 +72,10 @@ export function EditorPane({
   useEffect(() => {
     saveHandlerRef.current = onSaveRequested;
   }, [onSaveRequested]);
+
+  useEffect(() => {
+    focusHandlerRef.current = onDidFocus;
+  }, [onDidFocus]);
 
   useEffect(() => {
     const host = hostRef.current;
@@ -83,6 +100,11 @@ export function EditorPane({
         saveHandlerRef.current();
       }),
     );
+    store.add(
+      instance.onDidFocus(() => {
+        focusHandlerRef.current?.();
+      }),
+    );
     setEditor(instance);
     return () => {
       setEditor(null);
@@ -97,6 +119,14 @@ export function EditorPane({
     }
     editor?.updateOptions({ fontSize, tabSize });
   }, [editor, fontSize, tabSize]);
+
+  // 编辑器就绪后打开指定文档（分屏副编辑器）；已打开则不重复刷新
+  useEffect(() => {
+    if (editor === null || documentUri === undefined || editor.hasDocument(documentUri)) {
+      return;
+    }
+    editor.openDocument(documentUri, documentTextRef.current ?? '');
+  }, [editor, documentUri]);
 
   useImperativeHandle(
     ref,

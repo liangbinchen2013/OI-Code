@@ -581,6 +581,8 @@ body {
 }
 
 .oi-split-secondary {
+  /* 相对定位：内部 .oi-editor-host 以本面板为包含块 */
+  position: relative;
   display: flex;
   flex: 1;
   min-width: 0;

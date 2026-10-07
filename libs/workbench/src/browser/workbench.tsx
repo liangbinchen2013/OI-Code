@@ -50,7 +50,7 @@ import {
   type SplitDirection,
 } from './layout';
 import { ToolboxPanel } from './oiToolbox';
-import { PreviewPanel } from './previewPanel';
+import { isPreviewableName, PreviewPanel } from './previewPanel';
 import { ProblemsPanel, type IProblemItem } from './problemsPanel';
 import { SettingsView } from './settingsView';
 import { ExplorerPanel } from './sidebar';
@@ -190,8 +190,14 @@ function Workbench({ services, initialTheme, onDirtyStateChange }: IWorkbenchPro
   const [templateStore, setTemplateStore] = useState<ITemplateStore>(() => loadTemplateStore());
   const [editorSettings, setEditorSettings] = useState(() => readEditorSettings());
   const [split, setSplit] = useState(() => readStoredSplit());
+  const [splitTabId, setSplitTabId] = useState<string | undefined>(undefined);
+  const [focusedPane, setFocusedPane] = useState<'primary' | 'secondary'>('primary');
   const [contentVersion, setContentVersion] = useState(0);
   const splitContainerRef = useRef<HTMLDivElement | null>(null);
+  const splitEditorPaneRef = useRef<IEditorPaneHandle | null>(null);
+  const previousActiveTabIdRef = useRef<string | undefined>(undefined);
+  const focusedPaneRef = useRef<'primary' | 'secondary'>('primary');
+  const editingTabRef = useRef<ITabState | undefined>(undefined);
   const [newMenuOpen, setNewMenuOpen] = useState(false);
   const sidebarWidthRef = useRef(sidebarWidth);
   const lastExpandedWidthRef = useRef(lastExpandedWidth);
@@ -355,7 +361,13 @@ function Workbench({ services, initialTheme, onDirtyStateChange }: IWorkbenchPro
   }, [templateStore.custom]);
 
   const activateTab = useCallback((id: string): void => {
-    setActiveTabId(id);
+    setActiveTabId((current) => {
+      if (current !== undefined && current !== id) {
+        previousActiveTabIdRef.current = current;
+      }
+      return id;
+    });
+    setFocusedPane('primary');
     const tab = tabsRef.current.find((candidate) => candidate.id === id);
     if (tab) {
       editorPaneRef.current?.setActiveDocument(tab.uri);
@@ -520,6 +532,7 @@ function Workbench({ services, initialTheme, onDirtyStateChange }: IWorkbenchPro
         }
       }
       editorPaneRef.current?.closeDocument(tab.uri);
+      splitEditorPaneRef.current?.closeDocument(tab.uri);
       clearAutoSaveDraft(tab.uri);
       const pendingTimer = checkTimersRef.current.get(tab.id);
       if (pendingTimer !== undefined) {
@@ -556,8 +569,10 @@ function Workbench({ services, initialTheme, onDirtyStateChange }: IWorkbenchPro
 
   const save = useCallback(
     async function saveLoop(): Promise<void> {
-      const tab = tabsRef.current.find((candidate) => candidate.id === activeTabIdRef.current);
-      const editor = editorPaneRef.current;
+      // 分屏时保存焦点所在编辑器的文档；单编辑器即当前标签
+      const tab = editingTabRef.current;
+      const editor =
+        focusedPaneRef.current === 'secondary' ? splitEditorPaneRef.current : editorPaneRef.current;
       if (!tab || !editor) {
         return;
       }
@@ -582,6 +597,10 @@ function Workbench({ services, initialTheme, onDirtyStateChange }: IWorkbenchPro
           const text = editor.getValue(tab.uri);
           await services.fileService.writeFile(target, text);
           editor.replaceDocument(tab.uri, target, text);
+          // 另一分屏若同样打开该文档，需要同步换绑新 URI
+          const otherPane =
+            editor === editorPaneRef.current ? splitEditorPaneRef.current : editorPaneRef.current;
+          otherPane?.replaceDocument(tab.uri, target, text);
           clearAutoSaveDraft(tab.uri);
           const updated: ITabState = {
             id: target.toString(),
@@ -716,7 +735,8 @@ function Workbench({ services, initialTheme, onDirtyStateChange }: IWorkbenchPro
 
   const compileActive = useCallback(
     async (andRun: boolean): Promise<void> => {
-      const tab = tabsRef.current.find((candidate) => candidate.id === activeTabIdRef.current);
+      // 编译目标随焦点：分屏时以焦点编辑器所在标签为准
+      const tab = editingTabRef.current;
       const editor = editorPaneRef.current;
       if (!tab || !editor || busyRef.current) {
         return;
@@ -864,7 +884,7 @@ function Workbench({ services, initialTheme, onDirtyStateChange }: IWorkbenchPro
   );
 
   const runActive = useCallback(async (): Promise<void> => {
-    const tab = tabsRef.current.find((candidate) => candidate.id === activeTabIdRef.current);
+    const tab = editingTabRef.current;
     if (!tab || busyRef.current) {
       return;
     }
@@ -967,6 +987,17 @@ function Workbench({ services, initialTheme, onDirtyStateChange }: IWorkbenchPro
   const activeTab = tabs.find((tab) => tab.id === activeTabId);
   const statusPresentation = status === 'idle' ? undefined : STATUS_PRESENTATION[status];
   const splitActive = split.direction !== null && activeTab !== undefined;
+  const splitTab = tabs.find((tab) => tab.id === splitTabId);
+  // 当前文件是 Markdown/HTML 时分屏为预览；否则若有第二标签则双编辑器并排
+  const splitMode: 'preview' | 'editor' | 'none' =
+    activeTab === undefined
+      ? 'none'
+      : isPreviewableName(activeTab.name)
+        ? 'preview'
+        : splitTab !== undefined
+          ? 'editor'
+          : 'preview';
+  const editingTab = focusedPane === 'secondary' && splitMode === 'editor' ? splitTab : activeTab;
   const previewDocument = useMemo(
     () =>
       activeTab === undefined
@@ -977,6 +1008,34 @@ function Workbench({ services, initialTheme, onDirtyStateChange }: IWorkbenchPro
           },
     [activeTab, contentVersion],
   );
+
+  useEffect(() => {
+    focusedPaneRef.current = focusedPane;
+  }, [focusedPane]);
+
+  useEffect(() => {
+    editingTabRef.current = editingTab;
+  }, [editingTab]);
+
+  // 保持副标签有效：当前标签或已关闭时切换到上一个标签
+  useEffect(() => {
+    if (!splitActive) {
+      return;
+    }
+    if (
+      splitTabId !== undefined &&
+      splitTabId !== activeTabId &&
+      tabs.some((tab) => tab.id === splitTabId)
+    ) {
+      return;
+    }
+    const previous = previousActiveTabIdRef.current;
+    const candidate =
+      previous !== undefined && previous !== activeTabId && tabs.some((tab) => tab.id === previous)
+        ? previous
+        : tabs.find((tab) => tab.id !== activeTabId)?.id;
+    setSplitTabId(candidate);
+  }, [activeTabId, splitActive, splitTabId, tabs]);
 
   const cycleSplit = useCallback((): void => {
     const direction: SplitDirection | null =
@@ -1183,6 +1242,7 @@ function Workbench({ services, initialTheme, onDirtyStateChange }: IWorkbenchPro
                 languageService={services.languageService}
                 onDidChangeContent={handleContentChange}
                 onSaveRequested={() => void saveRef.current()}
+                onDidFocus={() => setFocusedPane('primary')}
                 fontSize={editorSettings.fontSize}
                 tabSize={editorSettings.tabSize}
               />
@@ -1197,7 +1257,25 @@ function Workbench({ services, initialTheme, onDirtyStateChange }: IWorkbenchPro
                   onPointerDown={beginSplitResize}
                 />
                 <div className="oi-split-secondary">
-                  <PreviewPanel document={previewDocument} />
+                  {splitMode === 'editor' ? (
+                    <EditorPane
+                      ref={splitEditorPaneRef}
+                      languageService={services.languageService}
+                      onDidChangeContent={handleContentChange}
+                      onSaveRequested={() => void saveRef.current()}
+                      onDidFocus={() => setFocusedPane('secondary')}
+                      documentUri={splitTab?.uri}
+                      documentText={
+                        splitTab === undefined
+                          ? undefined
+                          : (editorPaneRef.current?.getValue(splitTab.uri) ?? '')
+                      }
+                      fontSize={editorSettings.fontSize}
+                      tabSize={editorSettings.tabSize}
+                    />
+                  ) : (
+                    <PreviewPanel document={previewDocument} />
+                  )}
                 </div>
               </>
             ) : null}

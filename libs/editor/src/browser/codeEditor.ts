@@ -90,6 +90,8 @@ export interface ICodeEditorOptionsUpdate {
 export interface ICodeEditorHost extends IDisposable {
   /** 用户输入导致的内容变化，携带所属文档 URI；程序性写入不触发。 */
   readonly onDidChangeContent: Event<URI>;
+  /** 编辑器获得焦点（用于分屏时判定保存/编译目标）。 */
+  readonly onDidFocus: Event<void>;
   /** 打开文档并设为当前；已打开时刷新内容。 */
   openDocument(uri: URI, text: string): void;
   /** 关闭文档并释放其 model；若为当前文档则清空编辑器。 */
@@ -122,9 +124,16 @@ interface IOpenDocument {
   readonly changeSubscription: IDisposable;
 }
 
+/**
+ * Monaco 模型按 URI 全局共享并计数：分屏双编辑器打开同一文档时
+ * 编辑实时互通，最后一个宿主关闭后才释放模型。
+ */
+const MODEL_REF_COUNTS = new Map<string, number>();
+
 class CodeEditorHost implements ICodeEditorHost {
   private readonly _disposables = new DisposableStore();
   private readonly _onDidChangeContent = new Emitter<URI>();
+  private readonly _onDidFocus = new Emitter<void>();
   private readonly _editor: monaco.editor.IStandaloneCodeEditor;
   private readonly _languageService: ILanguageService;
   private readonly _documents = new Map<string, IOpenDocument>();
@@ -149,12 +158,22 @@ class CodeEditorHost implements ICodeEditorHost {
       guides: { bracketPairs: true, bracketPairsHorizontal: true },
     });
     this._disposables.add(this._onDidChangeContent);
+    this._disposables.add(this._onDidFocus);
+    this._disposables.add(
+      this._editor.onDidFocusEditorText(() => {
+        this._onDidFocus.fire();
+      }),
+    );
     this._disposables.add(toDisposable(() => this._editor.dispose()));
     this._disposables.add(toDisposable(() => this._disposeDocuments()));
   }
 
   get onDidChangeContent(): Event<URI> {
     return this._onDidChangeContent.event;
+  }
+
+  get onDidFocus(): Event<void> {
+    return this._onDidFocus.event;
   }
 
   openDocument(uri: URI, text: string): void {
@@ -172,7 +191,9 @@ class CodeEditorHost implements ICodeEditorHost {
       this._editor.focus();
       return;
     }
-    const model = monaco.editor.createModel(text, this._languageIdOf(uri), monaco.Uri.parse(key));
+    const modelUri = monaco.Uri.parse(key);
+    const shared = monaco.editor.getModel(modelUri);
+    const model = shared ?? monaco.editor.createModel(text, this._languageIdOf(uri), modelUri);
     const changeSubscription = model.onDidChangeContent(() => {
       if (!this._isProgrammatic) {
         this._dirtyUris.add(key);
@@ -180,6 +201,7 @@ class CodeEditorHost implements ICodeEditorHost {
       }
     });
     this._documents.set(key, { model, changeSubscription });
+    MODEL_REF_COUNTS.set(key, (MODEL_REF_COUNTS.get(key) ?? 0) + 1);
     this._editor.setModel(model);
     this._editor.focus();
   }
@@ -192,11 +214,22 @@ class CodeEditorHost implements ICodeEditorHost {
     }
     const isActive = this._editor.getModel() === document.model;
     document.changeSubscription.dispose();
-    document.model.dispose();
+    this._releaseModel(key, document.model);
     this._documents.delete(key);
     this._dirtyUris.delete(key);
     if (isActive) {
       this._editor.setModel(null);
+    }
+  }
+
+  /** 递减模型引用计数，归零才真正释放（其它宿主可能仍在使用）。 */
+  private _releaseModel(key: string, model: monaco.editor.ITextModel): void {
+    const remaining = (MODEL_REF_COUNTS.get(key) ?? 1) - 1;
+    if (remaining > 0) {
+      MODEL_REF_COUNTS.set(key, remaining);
+    } else {
+      MODEL_REF_COUNTS.delete(key);
+      model.dispose();
     }
   }
 
@@ -297,9 +330,9 @@ class CodeEditorHost implements ICodeEditorHost {
   }
 
   private _disposeDocuments(): void {
-    for (const document of this._documents.values()) {
+    for (const [key, document] of this._documents) {
       document.changeSubscription.dispose();
-      document.model.dispose();
+      this._releaseModel(key, document.model);
     }
     this._documents.clear();
     this._dirtyUris.clear();
