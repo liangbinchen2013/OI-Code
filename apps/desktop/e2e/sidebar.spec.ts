@@ -96,6 +96,92 @@ test('侧边栏可拖拽调整宽度并持久化', async () => {
   }
 });
 
+test('侧边栏拖拽至最小宽度自动折叠，点击图标临时展开后移出折回', async () => {
+  const app = await launchApp();
+  try {
+    const page = await app.firstWindow();
+    await expect(page.locator('html')).toHaveAttribute('data-oi-code-ready', 'true');
+
+    const sidebar = page.locator('.oi-sidebar');
+    const handle = page.locator('.oi-resize-handle');
+    const box = await handle.boundingBox();
+    expect(box).not.toBeNull();
+    if (box === null) {
+      return;
+    }
+
+    // 向左拖过折叠阈值：吸附到 48px 仅剩活动栏
+    await page.mouse.move(box.x + box.width / 2, box.y + box.height / 2);
+    await page.mouse.down();
+    await page.mouse.move(box.x - 400, box.y + box.height / 2, { steps: 10 });
+    await page.mouse.up();
+    await expect(sidebar).toHaveClass(/collapsed/);
+    await expect(page.locator('.oi-sidebar-panels')).toBeHidden();
+    const collapsed = await sidebar.boundingBox();
+    expect(collapsed?.width).toBeLessThanOrEqual(52);
+
+    // 折叠态点击活动栏图标：临时展开面板
+    await page.locator('.oi-activity-item[aria-label="OI 工具箱"]').click();
+    await expect(sidebar).not.toHaveClass(/collapsed/);
+    await expect(page.locator('.oi-toolbox')).toBeVisible();
+
+    // 鼠标移出侧边栏区域自动折回
+    await page.mouse.move(900, 400);
+    await expect(sidebar).toHaveClass(/collapsed/);
+  } finally {
+    await app.close();
+  }
+});
+
+test('侧边栏 200px 时设置面板垂直堆叠且按钮不丢失', async () => {
+  const app = await launchApp();
+  try {
+    const page = await app.firstWindow();
+    await expect(page.locator('html')).toHaveAttribute('data-oi-code-ready', 'true');
+    await page.locator('.oi-activity-item-settings').click();
+    await expect(page.locator('.oi-settings')).toBeVisible();
+
+    const sidebar = page.locator('.oi-sidebar');
+    const handle = page.locator('.oi-resize-handle');
+    const box = await handle.boundingBox();
+    expect(box).not.toBeNull();
+    if (box === null) {
+      return;
+    }
+    await page.mouse.move(box.x + box.width / 2, box.y + box.height / 2);
+    await page.mouse.down();
+    await page.mouse.move(box.x - 60, box.y + box.height / 2, { steps: 8 });
+    await page.mouse.up();
+
+    const sidebarBox = await sidebar.boundingBox();
+    expect(sidebarBox).not.toBeNull();
+    expect(sidebarBox?.width).toBeLessThan(260);
+
+    // 设置行改为垂直堆叠：输入框占满可用宽度且完整落在侧边栏内
+    const templateAdd = page.locator('.oi-template-add');
+    await expect(templateAdd).toBeVisible();
+    const templateBox = await templateAdd.boundingBox();
+    expect(templateBox).not.toBeNull();
+    if (templateBox !== null && sidebarBox !== null) {
+      expect(templateBox.x + templateBox.width).toBeLessThanOrEqual(
+        sidebarBox.x + sidebarBox.width + 1,
+      );
+    }
+
+    await templateAdd.click();
+    const nameInput = page.locator('.oi-template-name-input');
+    await expect(nameInput).toBeVisible();
+    const inputBox = await nameInput.boundingBox();
+    expect(inputBox).not.toBeNull();
+    if (inputBox !== null && sidebarBox !== null) {
+      expect(inputBox.width).toBeGreaterThan(120);
+      expect(inputBox.x + inputBox.width).toBeLessThanOrEqual(sidebarBox.x + sidebarBox.width + 1);
+    }
+  } finally {
+    await app.close();
+  }
+});
+
 test('设置中新增自定义模板后可经 + 菜单新建', async () => {
   const app = await launchApp();
   try {
