@@ -1,5 +1,12 @@
 import { session } from 'electron';
-import { DisposableStore, toDisposable, toError, type IDisposable } from '@oi/base';
+import {
+  DisposableStore,
+  Emitter,
+  toDisposable,
+  toError,
+  type Event,
+  type IDisposable,
+} from '@oi/base';
 import {
   htmlToMarkdown,
   IConfigService,
@@ -70,6 +77,7 @@ interface IWatcher {
  */
 export class VjudgeService implements IVjudgeService, IDisposable {
   private readonly _disposables = new DisposableStore();
+  private readonly _onDidSubmissionUpdate = new Emitter<IVjudgeSubmission>();
   private readonly _watchers = new Map<number, IWatcher>();
   private _config: IVjudgeConfig | undefined;
   private _username: string | undefined;
@@ -78,12 +86,16 @@ export class VjudgeService implements IVjudgeService, IDisposable {
     @ILogService private readonly _logService: ILogService,
     @IConfigService private readonly _configService: IConfigService,
   ) {
+    this._disposables.add(this._onDidSubmissionUpdate);
     this._disposables.add(toDisposable(() => this._stopAllWatchers()));
-    void this._restoreUsername();
+    void this._restoreUsername().catch((error: unknown) => {
+      this._logService.warn(`读取 VJudge 用户名缓存失败：${toError(error).message}`);
+    });
   }
 
-  /** 判题结果更新回调，由主进程接到渲染进程通知。 */
-  public onDidUpdateSubmission: ((submission: IVjudgeSubmission) => void) | undefined;
+  get onDidSubmissionUpdate(): Event<IVjudgeSubmission> {
+    return this._onDidSubmissionUpdate.event;
+  }
 
   async getConfig(): Promise<IVjudgeConfig> {
     if (this._config !== undefined) {
@@ -107,13 +119,22 @@ export class VjudgeService implements IVjudgeService, IDisposable {
     if (response.status === 401 || response.url.includes('login=1')) {
       return { loggedIn: false };
     }
+    // Cloudflare 挑战页 / 网关故障等不能当作"已登录"，否则会把拦截误报成账号状态
+    if (response.status < 200 || response.status >= 300) {
+      throw new Error(`VJudge 登录状态查询失败（HTTP ${response.status}）`);
+    }
     const username = this._username ?? (await this._cachedUsername());
     if (username === undefined) {
       return { loggedIn: true };
     }
-    const solved = await this.getSolvedProblems(username).catch(() => undefined);
+    let acceptedCount: number | undefined;
+    try {
+      acceptedCount = (await this.getSolvedProblems(username)).accepted.length;
+    } catch (error) {
+      this._logService.warn(`读取 VJudge 通过记录失败：${toError(error).message}`);
+    }
     return {
-      acceptedCount: solved?.accepted.length,
+      ...(acceptedCount === undefined ? {} : { acceptedCount }),
       loggedIn: true,
       username,
     };
@@ -128,8 +149,11 @@ export class VjudgeService implements IVjudgeService, IDisposable {
     }
 
     const page = await this._fetch(`/problem/${encodeURIComponent(key)}`);
-    if (page.url.includes('login=1') || page.status !== 200) {
+    if (page.url.includes('login=1')) {
       throw new Error(VJUDGE_LOGIN_REQUIRED_MESSAGE);
+    }
+    if (page.status !== 200) {
+      throw new Error(`题目页获取失败（HTTP ${page.status}）：${key}`);
     }
     const data = parseProblemPageData(page.text);
     if (data === undefined) {
@@ -262,7 +286,11 @@ export class VjudgeService implements IVjudgeService, IDisposable {
     }
     try {
       const submission = await this.getSubmission(runId);
-      this.onDidUpdateSubmission?.(submission);
+      // 请求期间可能已被 unwatch / dispose：不再推送陈旧更新，也不再续排
+      if (this._watchers.get(runId) !== watcher) {
+        return;
+      }
+      this._onDidSubmissionUpdate.fire(submission);
       if (!submission.processing || Date.now() > watcher.deadline) {
         this._stopWatcher(runId);
         return;

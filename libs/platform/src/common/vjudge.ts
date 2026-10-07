@@ -138,6 +138,8 @@ export type VjudgeVerdict = JudgeVerdict | 'PENDING' | 'UNKNOWN';
  * 网络请求全部在 Code 层执行，渲染进程只经 {@link IVjudgeServiceClient} 调用。
  */
 export interface IVjudgeService {
+  /** 判题结果更新（主进程后台轮询产生；渲染进程侧为 RPC 通知转发）。 */
+  readonly onDidSubmissionUpdate: Event<IVjudgeSubmission>;
   /** 取全局配置（OJ 列表、语言表、题面语言枚举），实现侧应缓存。 */
   getConfig(): Promise<IVjudgeConfig>;
   /** 探测登录态；用户名在成功取过题目后会被缓存。 */
@@ -157,11 +159,10 @@ export interface IVjudgeService {
 }
 
 /**
- * 渲染进程侧的 VJudge 服务：额外暴露爬取到的判题更新。
+ * 渲染进程侧的 VJudge 服务：契约与主进程侧一致，
+ * 事件由主进程的通知转发而来。
  */
-export interface IVjudgeServiceClient extends IVjudgeService {
-  readonly onDidSubmissionUpdate: Event<IVjudgeSubmission>;
-}
+export type IVjudgeServiceClient = IVjudgeService;
 
 export const IVjudgeService = createDecorator<IVjudgeService>('vjudgeService');
 

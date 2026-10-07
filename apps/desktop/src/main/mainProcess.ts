@@ -39,7 +39,6 @@ import {
 import { FileLogger } from '@oi/platform/node';
 import { RPC_CHANNEL_NAME } from '../common/ipc';
 import { FileAccessGuard } from './fileAccessGuard';
-import type { VjudgeService } from './vjudgeService';
 
 const WINDOW_MIN_WIDTH = 720;
 
@@ -338,6 +337,15 @@ function readRequiredString(params: unknown, key: string): string {
   return value.trim();
 }
 
+/** 与 readRequiredString 不同：不裁剪首尾空白，用于源码等必须逐字保真的字段。 */
+function readRequiredText(params: unknown, key: string): string {
+  const value = parseParamsObject(params)[key];
+  if (typeof value !== 'string' || value.length === 0) {
+    throw new RpcError(JSON_RPC_ERROR_CODES.invalidParams, `${key} 参数不能为空`);
+  }
+  return value;
+}
+
 function readOptionalString(params: unknown, key: string): string | undefined {
   const value = parseParamsObject(params)[key];
   return typeof value === 'string' && value.length > 0 ? value : undefined;
@@ -363,7 +371,8 @@ function readOptionalBoolean(params: unknown, key: string): boolean | undefined 
 
 /**
  * 主进程：窗口生命周期、IPC 服务端与文件访问授权。
- */ export class MainProcess implements IDisposable {
+ */
+export class MainProcess implements IDisposable {
   private readonly _disposables = new DisposableStore();
   private readonly _fileAccess = new FileAccessGuard();
   private readonly _dirtyWindows = new Map<number, boolean>();
@@ -378,7 +387,7 @@ function readOptionalBoolean(params: unknown, key: string): boolean | undefined 
     @IPythonService private readonly _pythonService: IPythonService,
     @IAutoSaveService private readonly _autoSaveService: IAutoSaveService,
     @IJudgeService private readonly _judgeService: IJudgeService,
-    @IVjudgeService private readonly _vjudgeService: VjudgeService,
+    @IVjudgeService private readonly _vjudgeService: IVjudgeService,
   ) {}
 
   start(): void {
@@ -650,9 +659,11 @@ function readOptionalBoolean(params: unknown, key: string): boolean | undefined 
       this._judgeService.importArchive(this._authorizedUri(params)),
     );
 
-    this._vjudgeService.onDidUpdateSubmission = (submission) => {
+    const submissionSubscription = this._vjudgeService.onDidSubmissionUpdate((submission) => {
       channel.notify(VJUDGE_RPC_NOTIFICATIONS.submissionUpdate, submission);
-    };
+    });
+    this._disposables.add(submissionSubscription);
+    window.once('closed', () => submissionSubscription.dispose());
     channel.registerMethod(VJUDGE_RPC_METHODS.getConfig, () => this._vjudgeService.getConfig());
     channel.registerMethod(VJUDGE_RPC_METHODS.getAccount, () => this._vjudgeService.getAccount());
     channel.registerMethod(VJUDGE_RPC_METHODS.fetchProblem, (params) =>
@@ -676,7 +687,7 @@ function readOptionalBoolean(params: unknown, key: string): boolean | undefined 
           ? {}
           : { open: readOptionalNumber(params, 'open') }),
         probNum: readRequiredString(params, 'probNum'),
-        source: readRequiredString(params, 'source'),
+        source: readRequiredText(params, 'source'),
       };
       return this._vjudgeService.submit(request);
     });
