@@ -95,4 +95,32 @@ describe('htmlToMarkdown', () => {
     expect(md).not.toMatch(/\n{3,}/);
     expect(md).not.toMatch(/[ \t]$/m);
   });
+
+  it('正文片段里的 script/style 不会泄漏为可见文本', () => {
+    const md = htmlToMarkdown(
+      '<div><p>正文</p><script>var evil = 1;</script><style>p{color:red}</style><p>结尾</p></div>',
+    );
+    expect(md).toContain('正文');
+    expect(md).toContain('结尾');
+    expect(md).not.toContain('var evil');
+    expect(md).not.toContain('color:red');
+  });
+
+  it('未闭合的 script 吞掉剩余内容，不产生文本', () => {
+    expect(htmlToMarkdown('<p>正文</p><script>while(1){}')).toBe('正文');
+  });
+
+  it('代码块内的 MathJax 定界符保持原样', () => {
+    const md = htmlToMarkdown(
+      '<p>当 \\(n \\le 10\\) 时</p><pre><code>scanf(&quot;%d&quot;); \\(x+1\\)</code></pre>',
+    );
+    expect(md).toContain('$n \\le 10$');
+    expect(md).toContain('\\(x+1\\)');
+    expect(md).not.toContain('$x+1$');
+  });
+
+  it('&amp;lt; 双重转义只解一层', () => {
+    expect(htmlToMarkdown('<p>&amp;lt;x&amp;gt;</p>')).toBe('&lt;x&gt;');
+    expect(htmlToMarkdown('<p>&lt;x&gt;</p>')).toBe('<x>');
+  });
 });

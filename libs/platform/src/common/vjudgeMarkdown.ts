@@ -185,7 +185,8 @@ function parseHtml(html: string): IElement {
       const tag = openTag.toLowerCase();
       const node = element(tag, parseAttributes(attrRaw ?? ''));
       parent.children.push(node);
-      if (!VOID_TAGS.has(tag) && !token.endsWith('/>') && !DROP_TAGS.has(tag)) {
+      // 丢弃类元素也要入栈：否则其正文（如 script 里的代码）会挂到父节点泄漏为文本
+      if (!VOID_TAGS.has(tag) && !token.endsWith('/>')) {
         stack.push(node);
       }
       continue;
@@ -216,11 +217,21 @@ function collapseInline(text: string): string {
   return text.replace(/\s+/g, ' ');
 }
 
-/** 把 MathJax 定界符换成 `$` / `$$`，便于后续接入公式渲染。 */
-function normalizeMath(text: string): string {
-  return text
-    .replace(/\\\(([\s\S]*?)\\\)/g, (_, body: string) => `$${body.trim()}$`)
-    .replace(/\\\[([\s\S]*?)\\\]/g, (_, body: string) => `\n\n$$\n${body.trim()}\n$$\n\n`);
+/**
+ * 把 MathJax 定界符换成 `$` / `$$`，便于后续接入公式渲染。
+ * 围栏代码块内的内容原样保留（题面常给出 `\(x\)` 形式的输入样例）。
+ */
+function normalizeMathOutsideCode(markdown: string): string {
+  return markdown
+    .split(/(```[\s\S]*?```)/g)
+    .map((part, index) =>
+      index % 2 === 1
+        ? part
+        : part
+            .replace(/\\\(([\s\S]*?)\\\)/g, (_, body: string) => `$${body.trim()}$`)
+            .replace(/\\\[([\s\S]*?)\\\]/g, (_, body: string) => `\n\n$$\n${body.trim()}\n$$\n\n`),
+    )
+    .join('');
 }
 
 function attr(node: IElement, name: string): string {
@@ -232,6 +243,9 @@ function renderInline(nodes: readonly INode[]): string {
   for (const node of nodes) {
     if (node.kind === 'text') {
       out += collapseInline(node.text);
+      continue;
+    }
+    if (DROP_TAGS.has(node.tag)) {
       continue;
     }
     const children = renderInline(node.children);
@@ -353,6 +367,9 @@ function renderChildren(node: IElement, state: IRenderState): string {
     pending = [];
   };
   for (const child of node.children) {
+    if (child.kind === 'element' && DROP_TAGS.has(child.tag)) {
+      continue;
+    }
     if (child.kind === 'text' || !isBlockTag(child.tag)) {
       pending.push(child);
       continue;
@@ -443,7 +460,7 @@ export function htmlToMarkdown(html: string): string {
     ? html.replace(/^[\s\S]*?<body[\s\S]*?>/i, '').replace(/<\/body>[\s\S]*$/i, '')
     : html;
   const markdown = renderChildren(parseHtml(body), { listStack: [], quoteDepth: 0 });
-  return normalizeMath(markdown)
+  return normalizeMathOutsideCode(markdown)
     .replace(/[ \t]+$/gm, '')
     .replace(/\n{3,}/g, '\n\n')
     .trim();
