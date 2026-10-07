@@ -1,6 +1,7 @@
 import { FontAwesomeIcon } from '@fortawesome/react-fontawesome';
 import {
   faArrowLeft,
+  faEarthAsia,
   faHourglassHalf,
   faPause,
   faPlay,
@@ -8,9 +9,10 @@ import {
   faStopwatch,
 } from '@fortawesome/free-solid-svg-icons';
 import { useCallback, useEffect, useRef, useState } from 'react';
+import { BrowserTool } from './browserTool';
 import { WORKBENCH_STRINGS } from './strings';
 
-type ToolboxTool = 'list' | 'timer';
+type ToolboxTool = 'list' | 'timer' | 'browser';
 type TimerMode = 'stopwatch' | 'countdown';
 
 const TICK_INTERVAL_MS = 50;
@@ -199,6 +201,8 @@ export interface IToolboxPanelProps {
  */
 export function ToolboxPanel({ hidden }: IToolboxPanelProps) {
   const [tool, setTool] = useState<ToolboxTool>('list');
+  // 浏览器一经打开保持挂载：切换工具/视图不丢页面状态，登录态由持久化分区保存
+  const [browserStarted, setBrowserStarted] = useState(false);
 
   return (
     <section className="oi-panel oi-toolbox" hidden={hidden} aria-label={WORKBENCH_STRINGS.toolbox}>
@@ -217,19 +221,33 @@ export function ToolboxPanel({ hidden }: IToolboxPanelProps) {
         ) : null}
       </div>
       <div className="oi-toolbox-body">
+        {browserStarted ? <BrowserTool hidden={tool !== 'browser'} /> : null}
         {tool === 'list' ? (
-          <button
-            type="button"
-            className="oi-tool-row oi-tool-timer"
-            onClick={() => setTool('timer')}
-          >
-            <FontAwesomeIcon icon={faStopwatch} aria-hidden="true" />
-            <span className="oi-tool-name">{WORKBENCH_STRINGS.toolTimer}</span>
-            <span className="oi-tool-hint">{WORKBENCH_STRINGS.toolTimerHint}</span>
-          </button>
-        ) : (
-          <TimerTool />
-        )}
+          <div className="oi-tool-list">
+            <button
+              type="button"
+              className="oi-tool-row oi-tool-browser"
+              onClick={() => {
+                setBrowserStarted(true);
+                setTool('browser');
+              }}
+            >
+              <FontAwesomeIcon icon={faEarthAsia} aria-hidden="true" />
+              <span className="oi-tool-name">{WORKBENCH_STRINGS.toolBrowser}</span>
+              <span className="oi-tool-hint">{WORKBENCH_STRINGS.toolBrowserHint}</span>
+            </button>
+            <button
+              type="button"
+              className="oi-tool-row oi-tool-timer"
+              onClick={() => setTool('timer')}
+            >
+              <FontAwesomeIcon icon={faStopwatch} aria-hidden="true" />
+              <span className="oi-tool-name">{WORKBENCH_STRINGS.toolTimer}</span>
+              <span className="oi-tool-hint">{WORKBENCH_STRINGS.toolTimerHint}</span>
+            </button>
+          </div>
+        ) : null}
+        {tool === 'timer' ? <TimerTool /> : null}
       </div>
     </section>
   );

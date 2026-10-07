@@ -1118,7 +1118,7 @@ body {
   border-radius: 8px;
 }
 
-/* OI 工具箱：工具选择（二级）与计时器（三级） */
+/* OI 工具箱：工具选择（二级）与工具内容（三级） */
 .oi-toolbox-body {
   display: flex;
   flex: 1;
@@ -1126,6 +1126,91 @@ body {
   min-height: 0;
   overflow: auto;
   padding: 8px;
+}
+
+.oi-tool-list {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+/* 内置浏览器：工具栏 + 地址栏 + webview 舞台 */
+.oi-browser {
+  display: flex;
+  flex: 1;
+  flex-direction: column;
+  min-height: 0;
+}
+
+.oi-browser[hidden] {
+  display: none !important;
+}
+
+.oi-browser-toolbar {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+}
+
+.oi-browser-toolbar .oi-btn-icon {
+  width: 30px;
+  height: 30px;
+}
+
+.oi-browser-spacer {
+  flex: 1;
+}
+
+.oi-browser-theme {
+  height: 28px;
+  font-size: 12px;
+}
+
+.oi-browser-address-row {
+  display: flex;
+  gap: 6px;
+  margin-top: 6px;
+}
+
+.oi-browser-address {
+  flex: 1;
+  min-width: 0;
+  height: 30px;
+  font-size: 12.5px;
+}
+
+.oi-browser-go {
+  flex: none;
+  width: 30px;
+  height: 30px;
+  padding: 0;
+  justify-content: center;
+}
+
+.oi-browser-error {
+  margin: 6px 0 0;
+  color: var(--error);
+  font-size: 12px;
+  overflow-wrap: anywhere;
+}
+
+.oi-browser-stage {
+  position: relative;
+  flex: 1;
+  min-height: 220px;
+  margin-top: 6px;
+  overflow: hidden;
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  background: var(--bg);
+}
+
+.oi-browser-view {
+  position: absolute;
+  inset: 0;
+  width: 100%;
+  height: 100%;
+  border: 0;
 }
 
 .oi-tool-row {

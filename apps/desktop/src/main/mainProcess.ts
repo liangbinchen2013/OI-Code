@@ -285,6 +285,8 @@ export class MainProcess implements IDisposable {
         contextIsolation: true,
         nodeIntegration: false,
         sandbox: true,
+        // OI 工具箱内置浏览器依赖 webview；访客页面不启用 Node 能力
+        webviewTag: true,
       },
     });
     window.once('ready-to-show', () => {
