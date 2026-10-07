@@ -56,4 +56,38 @@ describe('renderMarkdown', () => {
     expect(html).not.toContain('<a ');
     expect(html).toContain('点我');
   });
+
+  it('站外链接新窗口打开，避免劫持应用主窗口', () => {
+    const html = renderMarkdown('[题面](https://codeforces.com/problemset/problem/1/A)');
+
+    expect(html).toContain('target="_blank"');
+    expect(html).toContain('rel="noreferrer noopener"');
+  });
+
+  it('站内锚点与相对链接不强制新窗口', () => {
+    const html = renderMarkdown('[跳转](#section-2)');
+
+    expect(html).toContain('<a href="#section-2"');
+    expect(html).not.toContain('target="_blank"');
+  });
+
+  it('图片按白名单渲染为 img，非法协议降级为替代文本', () => {
+    const html = renderMarkdown('![图一](https://cdn.example.com/a.png)');
+    expect(html).toContain('<img');
+    expect(html).toContain('src="https://cdn.example.com/a.png"');
+    expect(html).toContain('alt="图一"');
+
+    const blocked = renderMarkdown('![坏图](javascript:x)');
+    expect(blocked).not.toContain('<img');
+    expect(blocked).toContain('坏图');
+  });
+
+  it('图片不会被链接规则误处理，两者可并存', () => {
+    const html = renderMarkdown('![图](https://x.test/a.png) [链](https://x.test/p)');
+
+    expect(html).toContain('<img');
+    expect(html).toContain('<a href="https://x.test/p"');
+    // 不应残留未消费的 Markdown 感叹号
+    expect(html).not.toContain('!<');
+  });
 });

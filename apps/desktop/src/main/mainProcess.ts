@@ -1,6 +1,13 @@
 import { join } from 'node:path';
-import { BrowserWindow, Menu, app, dialog, ipcMain, type IpcMainEvent } from 'electron';
-import { DisposableStore, type IDisposable, URI, onUnexpectedError, toDisposable } from '@oi/base';
+import { BrowserWindow, Menu, app, dialog, ipcMain, shell, type IpcMainEvent } from 'electron';
+import {
+  DisposableStore,
+  type IDisposable,
+  URI,
+  onUnexpectedError,
+  toDisposable,
+  toError,
+} from '@oi/base';
 import {
   APP_RPC_ERROR_CODES,
   AUTOSAVE_RPC_METHODS,
@@ -462,6 +469,21 @@ export class MainProcess implements IDisposable {
     window.once('ready-to-show', () => {
       window.show();
     });
+    // 渲染内容含第三方题面等外部链接：主窗口只允许停留在应用自身页面，
+    // 其余一律交给系统浏览器，避免外部页面拿到注入了 preload 桥的窗口
+    const devServerUrl = process.env['OI_CODE_DEV_SERVER_URL'];
+    const appOrigin = devServerUrl ? new URL(devServerUrl).origin : 'file://';
+    window.webContents.on('will-navigate', (event, targetUrl) => {
+      if (this._isInternalUrl(targetUrl, appOrigin)) {
+        return;
+      }
+      event.preventDefault();
+      this._openExternally(targetUrl);
+    });
+    window.webContents.setWindowOpenHandler(({ url }) => {
+      this._openExternally(url);
+      return { action: 'deny' };
+    });
     window.on('close', (event) => {
       this._handleWindowClose(window, event);
     });
@@ -474,12 +496,35 @@ export class MainProcess implements IDisposable {
     this._disposables.add(channel);
     this._registerMethods(channel, window);
 
-    const devServerUrl = process.env['OI_CODE_DEV_SERVER_URL'];
     if (devServerUrl) {
       void window.loadURL(devServerUrl);
     } else {
       void window.loadFile(join(__dirname, 'renderer', 'index.html'));
     }
+  }
+
+  /** 应用自身页面（开发服务器同源或打包后的 file:// 页面）才允许在主窗口内导航。 */
+  private _isInternalUrl(url: string, appOrigin: string): boolean {
+    try {
+      const target = new URL(url);
+      if (target.protocol === 'about:' || target.protocol === 'data:') {
+        return true;
+      }
+      return appOrigin === 'file://' ? target.protocol === 'file:' : target.origin === appOrigin;
+    } catch {
+      return false;
+    }
+  }
+
+  /** 外部地址交给系统浏览器；非 http(s) 协议直接丢弃。 */
+  private _openExternally(url: string): void {
+    if (!/^https?:/i.test(url)) {
+      this._logService.warn(`已拒绝打开非 http(s) 地址：${url.slice(0, 120)}`);
+      return;
+    }
+    void shell.openExternal(url).catch((error: unknown) => {
+      this._logService.warn(`调用系统浏览器失败：${toError(error).message}`);
+    });
   }
 
   private _registerMethods(channel: RpcChannel, window: BrowserWindow): void {

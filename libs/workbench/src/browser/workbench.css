@@ -2375,3 +2375,10 @@ body {
   color: var(--success);
   font-size: 12px;
 }
+
+/* 题面与笔记里的外部图片：不撑破版面 */
+.oi-md-image {
+  max-width: 100%;
+  height: auto;
+  border-radius: 8px;
+}

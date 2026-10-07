@@ -17,6 +17,8 @@ const LIST_ITEM = /^\s*[-*]\s+(.+)$/;
 const FENCE = /^\s*```(.*)$/;
 const FENCE_CLOSE = /^\s*```\s*$/;
 const SAFE_HREF = /^(https?:|#|\/|\.{1,2}\/)/i;
+/** 题面与笔记里的图片只允许 http(s)、站内路径与内联 data:image。 */
+const SAFE_IMG = /^(https?:|\/|\.{1,2}\/|data:image\/)/i;
 const TABLE_SEPARATOR_CELL = /^:?-{2,}:?$/;
 
 /** 拆分表格行；无 `|` 或仅分隔线样式时返回 undefined。 */
@@ -40,9 +42,18 @@ function renderInline(escaped: string): string {
   let result = escaped.replace(/`([^`]+)`/g, '<code>$1</code>');
   result = result.replace(/\*\*([^*]+)\*\*/g, '<strong>$1</strong>');
   result = result.replace(/\*([^*]+)\*/g, '<em>$1</em>');
+  // 图片必须先于链接处理，否则 `![alt](src)` 会被链接规则吃掉剩下的 `!`
+  result = result.replace(/!\[([^\]]*)\]\(([^)\s]+)\)/g, (_match, alt: string, src: string) =>
+    SAFE_IMG.test(src)
+      ? `<img class="oi-md-image" src="${src}" alt="${alt}" loading="lazy">`
+      : `<span>${alt}</span>`,
+  );
   result = result.replace(/\[([^\]]+)\]\(([^)\s]+)\)/g, (_match, label: string, href: string) =>
+    // 站外链接一律新窗口打开：主窗口的 `a` 点击会直接劫持应用页面
     SAFE_HREF.test(href)
-      ? `<a href="${href}" rel="noreferrer">${label}</a>`
+      ? /^https?:/i.test(href)
+        ? `<a href="${href}" target="_blank" rel="noreferrer noopener">${label}</a>`
+        : `<a href="${href}" rel="noreferrer">${label}</a>`
       : `<span>${label}</span>`,
   );
   return result;
