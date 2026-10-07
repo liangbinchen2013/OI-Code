@@ -2316,3 +2316,58 @@ body {
     width: 100%;
   }
 }
+
+/* VJudge 本地测试点与提交前预检 */
+.oi-vjudge-cases {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+
+.oi-vjudge-case {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+  padding: 4px 8px;
+  border: 1px solid var(--card-border);
+  border-radius: 8px;
+  background: var(--bg);
+  font-size: 12px;
+}
+
+.oi-vjudge-case-name {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.oi-vjudge-case-input {
+  height: auto;
+  padding: 6px 10px;
+  font-family: var(--font-mono);
+  resize: vertical;
+}
+
+.oi-vjudge-confirm {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 8px;
+  padding: 8px 12px;
+  border: 1px solid var(--warn);
+  border-radius: var(--radius-card);
+  background: var(--card-bg);
+  color: var(--warn);
+  font-size: 13px;
+}
+
+.oi-vjudge-preflight-ok {
+  margin: 0;
+  color: var(--success);
+  font-size: 12px;
+}

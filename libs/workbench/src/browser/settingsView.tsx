@@ -36,6 +36,7 @@ import {
 import { WORKBENCH_STRINGS } from './strings';
 import { TemplateContentEditor } from './templateContentEditor';
 import { createTemplateId, type IFileTemplate } from './templates';
+import type { IVjudgeSettings } from './vjudgeSettings';
 
 export interface ISettingsViewProps {
   readonly theme: ThemeKind;
@@ -56,6 +57,8 @@ export interface ISettingsViewProps {
   readonly onTemplatesChange: (templates: readonly IFileTemplate[]) => void;
   readonly onResetBuiltInTemplates: () => void;
   readonly onDefaultTemplateChange: (id: string) => void;
+  readonly vjudgeSettings: IVjudgeSettings;
+  readonly onVjudgeSettingsChange: (settings: IVjudgeSettings) => void;
 }
 
 const PIP_LOG_LIMIT = 200;
@@ -102,6 +105,8 @@ export function SettingsView({
   onTemplatesChange,
   onResetBuiltInTemplates,
   onDefaultTemplateChange,
+  vjudgeSettings,
+  onVjudgeSettingsChange,
 }: ISettingsViewProps) {
   const [cppStatus, setCppStatus] = useState<IToolchainStatus | undefined>(undefined);
   const [cppSearching, setCppSearching] = useState(false);
@@ -872,6 +877,19 @@ export function SettingsView({
               {pipLog.join('')}
             </pre>
           ) : null}
+        </section>
+
+        <section className="oi-settings-section" aria-label={WORKBENCH_STRINGS.settingsVjudge}>
+          <h2 className="oi-settings-section-title">{WORKBENCH_STRINGS.settingsVjudge}</h2>
+          <label className="oi-checkbox-row">
+            <input
+              type="checkbox"
+              checked={vjudgeSettings.preflight}
+              onChange={(event) => onVjudgeSettingsChange({ preflight: event.target.checked })}
+            />
+            <span>{WORKBENCH_STRINGS.settingsVjudgePreflight}</span>
+          </label>
+          <p className="oi-settings-hint">{WORKBENCH_STRINGS.settingsVjudgePreflightHint}</p>
         </section>
       </div>
     </div>

@@ -3,14 +3,21 @@ import { colorizeCode, type ThemeKind } from '@oi/editor/browser';
 import { FontAwesomeIcon } from '@fortawesome/react-fontawesome';
 import {
   faArrowRightToBracket,
+  faCircleCheck,
   faCloudArrowUp,
   faPersonCircleCheck,
+  faPlus,
   faRightToBracket,
   faRotate,
   faSpinner,
+  faTrashCan,
+  faTriangleExclamation,
   faXmark,
 } from '@fortawesome/free-solid-svg-icons';
 import type {
+  IJudgeCaseResult,
+  IJudgeServiceClient,
+  ITestCase,
   IVjudgeAccount,
   IVjudgeConfig,
   IVjudgeProblem,
@@ -29,9 +36,14 @@ import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import type { IJudgeSource } from './judgeTool';
 import { renderMarkdown } from './markdown';
 import { WORKBENCH_STRINGS } from './strings';
+import { readVjudgeCases, saveVjudgeCases, type IVjudgeSettings } from './vjudgeSettings';
 
 /** 登录态轮询间隔：登录页在 webview 中完成后尽快感知。 */
 const ACCOUNT_POLL_INTERVAL_MS = 2_000;
+
+/** 题目未给出限制时的本地预检默认值。 */
+const DEFAULT_PREFLIGHT_TIME_MS = 1_000;
+const DEFAULT_PREFLIGHT_MEMORY_MB = 256;
 
 const VJUDGE_LOGIN_URL = `${VJUDGE_BASE_URL}/?login=1&continue=%2F`;
 
@@ -40,8 +52,9 @@ export interface IVjudgePanelProps {
   readonly resolveSource: () => IJudgeSource | undefined;
   readonly appTheme: ThemeKind;
   readonly hidden?: boolean;
-  /** 提交前的本地预检；返回 false 表示用户放弃提交。 */
-  readonly precheck?: (source: IJudgeSource, problem: IVjudgeProblem) => Promise<boolean>;
+  /** 本地评测服务：提交前用本地测试点先跑一遍。 */
+  readonly judgeService: IJudgeServiceClient;
+  readonly settings: IVjudgeSettings;
   readonly vjudgeService: IVjudgeServiceClient;
 }
 
@@ -84,7 +97,8 @@ export function VjudgePanel({
   resolveSource,
   appTheme,
   hidden,
-  precheck,
+  judgeService,
+  settings,
   vjudgeService,
 }: IVjudgePanelProps) {
   const [config, setConfig] = useState<IVjudgeConfig | undefined>(undefined);
@@ -96,10 +110,49 @@ export function VjudgePanel({
   const [problem, setProblem] = useState<IVjudgeProblem | undefined>(undefined);
   const [language, setLanguage] = useState('');
   const [submissions, setSubmissions] = useState<readonly IVjudgeSubmission[]>([]);
-  const [busy, setBusy] = useState<'fetch' | 'submit' | undefined>(undefined);
+  const [busy, setBusy] = useState<'fetch' | 'submit' | 'preflight' | undefined>(undefined);
   const [message, setMessage] = useState<string | undefined>(undefined);
+  const [cases, setCases] = useState<readonly ITestCase[]>([]);
+  const [caseInput, setCaseInput] = useState('');
+  const [caseExpected, setCaseExpected] = useState('');
+  const [preflightResults, setPreflightResults] = useState<readonly IJudgeCaseResult[] | undefined>(
+    undefined,
+  );
+  const [awaitingConfirm, setAwaitingConfirm] = useState(false);
   const markdownRef = useRef<HTMLElement | null>(null);
   const loginStageRef = useRef<HTMLDivElement | null>(null);
+
+  const currentKey = problem === undefined ? '' : problemKey(problem.oj, problem.probNum);
+
+  const addCase = useCallback((): void => {
+    if (currentKey.length === 0 || caseInput.length === 0) {
+      return;
+    }
+    const next = [
+      ...cases,
+      {
+        expectedOutput: caseExpected,
+        input: caseInput,
+        name: `${WORKBENCH_STRINGS.vjudgeCasePrefix}${cases.length + 1}`,
+      },
+    ];
+    setCases(saveVjudgeCases(currentKey, next)[currentKey] ?? []);
+    setCaseInput('');
+    setCaseExpected('');
+    setPreflightResults(undefined);
+  }, [caseExpected, caseInput, cases, currentKey]);
+
+  const removeCase = useCallback(
+    (index: number): void => {
+      if (currentKey.length === 0) {
+        return;
+      }
+      const next = cases.filter((_, position) => position !== index);
+      setCases(saveVjudgeCases(currentKey, next)[currentKey] ?? []);
+      setPreflightResults(undefined);
+    },
+    [cases, currentKey],
+  );
 
   const refreshAccount = useCallback(async (): Promise<IVjudgeAccount | undefined> => {
     try {
@@ -230,6 +283,9 @@ export function VjudgePanel({
     try {
       const next = await vjudgeService.fetchProblem(oj.name, probNum);
       setProblem(next);
+      setCases(readVjudgeCases()[problemKey(next.oj, next.probNum)] ?? []);
+      setPreflightResults(undefined);
+      setAwaitingConfirm(false);
       setSubmissions(
         next.mySubmissions.map((brief) => ({
           oj: next.oj,
@@ -252,27 +308,8 @@ export function VjudgePanel({
     }
   }, [account?.loggedIn, language, probInput, refreshAccount, resolveOj, vjudgeService]);
 
-  const submit = useCallback(async (): Promise<void> => {
-    const source = resolveSource();
-    const target = problem;
-    if (source === undefined || target === undefined) {
-      setMessage(
-        target === undefined
-          ? WORKBENCH_STRINGS.vjudgeIdleHint
-          : WORKBENCH_STRINGS.vjudgeNeedSource,
-      );
-      return;
-    }
-    if (language.length === 0) {
-      setMessage(WORKBENCH_STRINGS.vjudgeNeedLanguage);
-      return;
-    }
-    setBusy('submit');
-    setMessage(undefined);
-    try {
-      if (precheck !== undefined && !(await precheck(source, target))) {
-        return;
-      }
+  const sendToVjudge = useCallback(
+    async (source: IJudgeSource, target: IVjudgeProblem): Promise<void> => {
       const runId = await vjudgeService.submit({
         language,
         oj: target.oj,
@@ -290,12 +327,72 @@ export function VjudgePanel({
         },
         ...previous,
       ]);
+    },
+    [language, vjudgeService],
+  );
+
+  const submit = useCallback(async (): Promise<void> => {
+    const source = resolveSource();
+    const target = problem;
+    if (source === undefined || target === undefined) {
+      setMessage(
+        target === undefined
+          ? WORKBENCH_STRINGS.vjudgeIdleHint
+          : WORKBENCH_STRINGS.vjudgeNeedSource,
+      );
+      return;
+    }
+    if (language.length === 0) {
+      setMessage(WORKBENCH_STRINGS.vjudgeNeedLanguage);
+      return;
+    }
+    setMessage(undefined);
+    // 提交前本地预检：用户确认后（awaitingConfirm）可跳过拦截直接提交
+    if (settings.preflight && cases.length > 0 && !awaitingConfirm) {
+      setBusy('preflight');
+      try {
+        const result = await judgeService.run({
+          cases,
+          content: source.content,
+          language: source.language,
+          memoryLimitMb:
+            target.memoryLimitKb === undefined
+              ? DEFAULT_PREFLIGHT_MEMORY_MB
+              : Math.max(1, Math.ceil(target.memoryLimitKb / 1024)),
+          timeLimitMs: target.timeLimitMs ?? DEFAULT_PREFLIGHT_TIME_MS,
+        });
+        setPreflightResults(result.results);
+        const passed = result.compileOk && result.results.every((item) => item.verdict === 'AC');
+        if (!passed) {
+          setAwaitingConfirm(true);
+          return;
+        }
+      } catch (error) {
+        setMessage(error instanceof Error ? error.message : String(error));
+        return;
+      } finally {
+        setBusy(undefined);
+      }
+    }
+    setBusy('submit');
+    setAwaitingConfirm(false);
+    try {
+      await sendToVjudge(source, target);
     } catch (error) {
       setMessage(error instanceof Error ? error.message : String(error));
     } finally {
       setBusy(undefined);
     }
-  }, [language, precheck, problem, resolveSource, vjudgeService]);
+  }, [
+    awaitingConfirm,
+    cases,
+    judgeService,
+    language,
+    problem,
+    resolveSource,
+    sendToVjudge,
+    settings.preflight,
+  ]);
 
   const languageOptions = resolveOj()?.languages ?? [];
   const loggedIn = account?.loggedIn === true;
@@ -489,6 +586,35 @@ export function VjudgePanel({
         </p>
       ) : null}
 
+      {awaitingConfirm ? (
+        <div
+          className="oi-vjudge-confirm"
+          role="alertdialog"
+          aria-label={WORKBENCH_STRINGS.vjudgePreflightFailed}
+        >
+          <FontAwesomeIcon icon={faTriangleExclamation} aria-hidden="true" />
+          <span>{WORKBENCH_STRINGS.vjudgePreflightFailed}</span>
+          <button
+            type="button"
+            className="oi-btn oi-btn-primary oi-btn-sm oi-vjudge-confirm-submit"
+            disabled={busy !== undefined}
+            onClick={() => void submit()}
+          >
+            <span>{WORKBENCH_STRINGS.vjudgeSubmitAnyway}</span>
+          </button>
+          <button
+            type="button"
+            className="oi-btn oi-btn-secondary oi-btn-sm oi-vjudge-confirm-cancel"
+            onClick={() => {
+              setAwaitingConfirm(false);
+              setBusy(undefined);
+            }}
+          >
+            <span>{WORKBENCH_STRINGS.vjudgeCancelSubmit}</span>
+          </button>
+        </div>
+      ) : null}
+
       <div className="oi-vjudge-content">
         <article
           ref={markdownRef}
@@ -524,6 +650,70 @@ export function VjudgePanel({
         </article>
 
         <aside className="oi-vjudge-results" aria-label={WORKBENCH_STRINGS.vjudgeResults}>
+          <h2 className="oi-vjudge-results-title">{WORKBENCH_STRINGS.vjudgeCases}</h2>
+          {problem === undefined ? (
+            <p className="oi-vjudge-empty">{WORKBENCH_STRINGS.vjudgeIdleHint}</p>
+          ) : (
+            <>
+              {cases.length === 0 ? (
+                <p className="oi-vjudge-empty">{WORKBENCH_STRINGS.vjudgeCasesEmpty}</p>
+              ) : (
+                <ul className="oi-vjudge-cases">
+                  {cases.map((item, index) => (
+                    <li key={`${item.name}-${index}`} className="oi-vjudge-case">
+                      <span className="oi-vjudge-case-name">{item.name}</span>
+                      <button
+                        type="button"
+                        className="oi-btn oi-btn-icon oi-btn-secondary oi-btn-sm oi-vjudge-case-delete"
+                        onClick={() => removeCase(index)}
+                        title={WORKBENCH_STRINGS.vjudgeCaseDelete}
+                        aria-label={`${WORKBENCH_STRINGS.vjudgeCaseDelete}：${item.name}`}
+                      >
+                        <FontAwesomeIcon icon={faTrashCan} aria-hidden="true" />
+                      </button>
+                    </li>
+                  ))}
+                </ul>
+              )}
+              <textarea
+                className="oi-input oi-vjudge-case-input"
+                rows={2}
+                value={caseInput}
+                placeholder={WORKBENCH_STRINGS.vjudgeCaseInput}
+                aria-label={WORKBENCH_STRINGS.vjudgeCaseInput}
+                onChange={(event) => setCaseInput(event.target.value)}
+              />
+              <textarea
+                className="oi-input oi-vjudge-case-input"
+                rows={2}
+                value={caseExpected}
+                placeholder={WORKBENCH_STRINGS.vjudgeCaseExpected}
+                aria-label={WORKBENCH_STRINGS.vjudgeCaseExpected}
+                onChange={(event) => setCaseExpected(event.target.value)}
+              />
+              <button
+                type="button"
+                className="oi-btn oi-btn-secondary oi-btn-sm oi-vjudge-case-add"
+                onClick={addCase}
+                disabled={caseInput.length === 0}
+              >
+                <FontAwesomeIcon icon={faPlus} aria-hidden="true" />
+                <span>{WORKBENCH_STRINGS.vjudgeCaseAdd}</span>
+              </button>
+              {busy === 'preflight' ? (
+                <p className="oi-vjudge-empty">
+                  <FontAwesomeIcon icon={faSpinner} spin aria-hidden="true" />{' '}
+                  {WORKBENCH_STRINGS.vjudgePreflightRunning}
+                </p>
+              ) : null}
+              {preflightResults !== undefined && !awaitingConfirm ? (
+                <p className="oi-vjudge-preflight-ok">
+                  <FontAwesomeIcon icon={faCircleCheck} aria-hidden="true" />{' '}
+                  {WORKBENCH_STRINGS.vjudgePreflightPassed}
+                </p>
+              ) : null}
+            </>
+          )}
           <h2 className="oi-vjudge-results-title">{WORKBENCH_STRINGS.vjudgeResults}</h2>
           {submissions.length === 0 ? (
             <p className="oi-vjudge-empty">{WORKBENCH_STRINGS.vjudgeResultsEmpty}</p>
