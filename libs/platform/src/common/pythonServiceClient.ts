@@ -87,6 +87,10 @@ export class PythonServiceClient implements IPythonServiceClient, IDisposable {
     return this._channel.call<IPythonStatus>(PYTHON_RPC_METHODS.forceSearch);
   }
 
+  resolveInterpreterPath(): Promise<string | undefined> {
+    return this._channel.call<string | undefined>(PYTHON_RPC_METHODS.resolveInterpreterPath);
+  }
+
   async setDefaultInterpreter(path: string): Promise<void> {
     await this._channel.call(PYTHON_RPC_METHODS.setDefaultInterpreter, { path });
   }

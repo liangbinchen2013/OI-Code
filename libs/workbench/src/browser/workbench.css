@@ -1157,6 +1157,86 @@ body {
   gap: 8px;
 }
 
+/* 简易评测机：测试点管理 + 结果列表 */
+.oi-judge {
+  display: flex;
+  flex: 1;
+  flex-direction: column;
+  gap: 8px;
+  min-width: 0;
+}
+
+.oi-judge[hidden] {
+  display: none !important;
+}
+
+.oi-judge-editor {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  padding: 10px;
+  border: 1px solid var(--card-border);
+  border-radius: 10px;
+  background: var(--code-bg);
+}
+
+.oi-judge-input,
+.oi-judge-expected {
+  height: auto;
+  padding: 8px 10px;
+  resize: vertical;
+  font-family: var(--font-mono);
+  font-size: 12px;
+  line-height: 1.5;
+}
+
+.oi-judge-cases,
+.oi-judge-results {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+
+.oi-judge-case-row,
+.oi-judge-result-row {
+  padding: 6px 8px;
+}
+
+.oi-judge-case-name {
+  flex: 1;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  font-size: 12.5px;
+}
+
+.oi-judge-verdict {
+  flex: none;
+}
+
+.oi-judge-verdict-text {
+  flex: none;
+  font-family: var(--font-mono);
+  font-size: 11px;
+  font-weight: 700;
+}
+
+.oi-verdict-ac {
+  color: var(--success);
+}
+
+.oi-verdict-wa,
+.oi-verdict-re,
+.oi-verdict-ce {
+  color: var(--error);
+}
+
+.oi-verdict-tle,
+.oi-verdict-mle {
+  color: var(--warn);
+}
+
 /* 内置浏览器：工具栏 + 地址栏 + webview 舞台 */
 .oi-browser {
   display: flex;

@@ -11,6 +11,7 @@ import {
   FileDialogServiceClient,
   FileServiceClient,
   type IMessageTransport,
+  JudgeServiceClient,
   LogService,
   PythonServiceClient,
   RpcChannel,
@@ -62,6 +63,7 @@ async function bootstrap(): Promise<void> {
 
   const toolchainService = new ToolchainServiceClient(channel);
   const pythonService = new PythonServiceClient(channel);
+  const judgeService = new JudgeServiceClient(channel);
   const workbench = renderWorkbench({
     container,
     services: {
@@ -71,6 +73,7 @@ async function bootstrap(): Promise<void> {
       toolchainService,
       pythonService,
       autoSaveService: new AutoSaveServiceClient(channel),
+      judgeService,
     },
     onDirtyStateChange: (dirty) => {
       channel.notify(WINDOW_RPC_NOTIFICATIONS.setDirtyState, { dirty });
@@ -81,6 +84,7 @@ async function bootstrap(): Promise<void> {
   const disposables = new DisposableStore();
   disposables.add(toolchainService);
   disposables.add(pythonService);
+  disposables.add(judgeService);
   disposables.add(workbench);
   disposables.add(channel);
   disposables.add(logService);

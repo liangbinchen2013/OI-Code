@@ -21,6 +21,7 @@ import type {
   ICodeDiagnostic,
   IFileDialogService,
   IFileService,
+  IJudgeServiceClient,
   IPythonServiceClient,
   IToolchainServiceClient,
 } from '@oi/platform';
@@ -49,6 +50,7 @@ import {
   SIDEBAR_COLLAPSE_SNAP,
   type SplitDirection,
 } from './layout';
+import type { IJudgeSource } from './judgeTool';
 import { ToolboxPanel } from './oiToolbox';
 import { isPreviewableName, PreviewPanel } from './previewPanel';
 import { ProblemsPanel, type IProblemItem } from './problemsPanel';
@@ -81,6 +83,7 @@ export interface IWorkbenchServices {
   readonly toolchainService: IToolchainServiceClient;
   readonly pythonService: IPythonServiceClient;
   readonly autoSaveService: IAutoSaveServiceClient;
+  readonly judgeService: IJudgeServiceClient;
 }
 
 export interface IWorkbenchOptions {
@@ -790,6 +793,23 @@ function Workbench({ services, initialTheme, onDirtyStateChange }: IWorkbenchPro
     [services.languageService],
   );
 
+  /** 取当前焦点编辑器里可评测的源（C++ / Python）。 */
+  const resolveJudgeSource = useCallback((): IJudgeSource | undefined => {
+    const tab = editingTabRef.current;
+    if (tab === undefined) {
+      return undefined;
+    }
+    const language = languageOf(tab);
+    if (language === undefined) {
+      return undefined;
+    }
+    return {
+      name: tab.name,
+      content: editorPaneRef.current?.getValue(tab.uri) ?? '',
+      language,
+    };
+  }, [languageOf]);
+
   const runTab = useCallback(
     async (tab: ITabState, language: SourceLanguage): Promise<void> => {
       setBusy('run');
@@ -1289,7 +1309,13 @@ function Workbench({ services, initialTheme, onDirtyStateChange }: IWorkbenchPro
                 onOpenFolder={() => void openFolderRef.current()}
                 onRefresh={() => setTreeVersion((version) => version + 1)}
               />
-              <ToolboxPanel hidden={activityView !== 'toolbox'} appTheme={theme} />
+              <ToolboxPanel
+                hidden={activityView !== 'toolbox'}
+                appTheme={theme}
+                judgeService={services.judgeService}
+                fileDialogService={services.fileDialogService}
+                resolveJudgeSource={resolveJudgeSource}
+              />
               <SettingsView
                 theme={theme}
                 canSave={activeTab !== undefined}

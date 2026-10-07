@@ -54,6 +54,18 @@ export async function mockOpenFileDialog(
 }
 
 /**
+ * 替换主进程的打开文件夹对话框，模拟用户选中指定目录。
+ */
+export async function mockOpenFolderDialog(
+  app: ElectronApplication,
+  directory: string,
+): Promise<void> {
+  await app.evaluate(({ dialog }, selected) => {
+    dialog.showOpenDialog = async () => ({ canceled: false, filePaths: [selected] });
+  }, directory);
+}
+
+/**
  * 替换主进程的另存为对话框，模拟用户选定保存路径。
  */
 export async function mockSaveFileDialog(

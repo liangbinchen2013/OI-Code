@@ -9,10 +9,13 @@ import {
   IAutoSaveService,
   IFileDialogService,
   IFileService,
+  IJudgeService,
   ILogService,
   IPythonService,
   IToolchainService,
   JSON_RPC_ERROR_CODES,
+  JUDGE_RPC_METHODS,
+  JUDGE_RPC_NOTIFICATIONS,
   PYTHON_RPC_METHODS,
   PYTHON_RPC_NOTIFICATIONS,
   RpcChannel,
@@ -25,6 +28,9 @@ import {
   type IOpenFileDialogOptions,
   type IPipInstallRequest,
   type ISaveFileDialogOptions,
+  type ITestCase,
+  type IJudgeRequest,
+  type IStressRequest,
 } from '@oi/platform';
 import { FileLogger } from '@oi/platform/node';
 import { RPC_CHANNEL_NAME } from '../common/ipc';
@@ -208,6 +214,110 @@ function parsePipRequestParam(params: unknown): IPipInstallRequest {
   };
 }
 
+const MAX_JUDGE_CASES = 100;
+
+function parseTestCase(value: unknown): ITestCase | undefined {
+  if (typeof value !== 'object' || value === null) {
+    return undefined;
+  }
+  const { name, input, expectedOutput } = value as {
+    name?: unknown;
+    input?: unknown;
+    expectedOutput?: unknown;
+  };
+  if (typeof input !== 'string' || typeof expectedOutput !== 'string') {
+    return undefined;
+  }
+  return {
+    name: typeof name === 'string' && name.length > 0 ? name : '测试点',
+    input,
+    expectedOutput,
+  };
+}
+
+function parseJudgeRunRequest(params: unknown): IJudgeRequest {
+  if (typeof params !== 'object' || params === null) {
+    throw new RpcError(JSON_RPC_ERROR_CODES.invalidParams, '缺少评测参数');
+  }
+  const { content, language, timeLimitMs, memoryLimitMb, cases } = params as {
+    content?: unknown;
+    language?: unknown;
+    timeLimitMs?: unknown;
+    memoryLimitMb?: unknown;
+    cases?: unknown;
+  };
+  if (typeof content !== 'string') {
+    throw new RpcError(JSON_RPC_ERROR_CODES.invalidParams, 'content 参数非法');
+  }
+  if (language !== 'cpp' && language !== 'python') {
+    throw new RpcError(JSON_RPC_ERROR_CODES.invalidParams, 'language 参数非法');
+  }
+  const parsedCases = Array.isArray(cases)
+    ? cases.flatMap((entry) => {
+        const testCase = parseTestCase(entry);
+        return testCase === undefined ? [] : [testCase];
+      })
+    : [];
+  if (parsedCases.length === 0) {
+    throw new RpcError(JSON_RPC_ERROR_CODES.invalidParams, '至少需要一个测试点');
+  }
+  if (parsedCases.length > MAX_JUDGE_CASES) {
+    throw new RpcError(JSON_RPC_ERROR_CODES.invalidParams, `测试点过多（上限 ${MAX_JUDGE_CASES}）`);
+  }
+  const timeLimit =
+    typeof timeLimitMs === 'number' && timeLimitMs >= 100 && timeLimitMs <= 60_000
+      ? Math.round(timeLimitMs)
+      : 1000;
+  const memoryLimit =
+    typeof memoryLimitMb === 'number' && memoryLimitMb >= 0 && memoryLimitMb <= 4096
+      ? Math.round(memoryLimitMb)
+      : 256;
+  return {
+    content,
+    language,
+    timeLimitMs: timeLimit,
+    memoryLimitMb: memoryLimit,
+    cases: parsedCases,
+  };
+}
+
+function parseStressRequest(params: unknown): {
+  readonly paths: readonly [string, string, string];
+  readonly iterations: number;
+  readonly timeLimitMs: number;
+} {
+  if (typeof params !== 'object' || params === null) {
+    throw new RpcError(JSON_RPC_ERROR_CODES.invalidParams, '缺少对拍参数');
+  }
+  const { generatorUri, referenceUri, solutionUri, iterations, timeLimitMs } = params as {
+    generatorUri?: unknown;
+    referenceUri?: unknown;
+    solutionUri?: unknown;
+    iterations?: unknown;
+    timeLimitMs?: unknown;
+  };
+  if (
+    typeof generatorUri !== 'string' ||
+    typeof referenceUri !== 'string' ||
+    typeof solutionUri !== 'string'
+  ) {
+    throw new RpcError(JSON_RPC_ERROR_CODES.invalidParams, '对拍文件参数非法');
+  }
+  const iterationCount =
+    typeof iterations === 'number' && iterations >= 1 && iterations <= 10_000
+      ? Math.round(iterations)
+      : 100;
+  const timeLimit =
+    typeof timeLimitMs === 'number' && timeLimitMs >= 100 && timeLimitMs <= 60_000
+      ? Math.round(timeLimitMs)
+      : 1000;
+  return {
+    paths: [generatorUri, referenceUri, solutionUri],
+    iterations: iterationCount,
+    timeLimitMs: timeLimit,
+  };
+}
+
 /**
  * 主进程：窗口生命周期、IPC 服务端与文件访问授权。
  */
@@ -225,6 +335,7 @@ export class MainProcess implements IDisposable {
     @IToolchainService private readonly _toolchainService: IToolchainService,
     @IPythonService private readonly _pythonService: IPythonService,
     @IAutoSaveService private readonly _autoSaveService: IAutoSaveService,
+    @IJudgeService private readonly _judgeService: IJudgeService,
   ) {}
 
   start(): void {
@@ -442,6 +553,9 @@ export class MainProcess implements IDisposable {
         channel.notify(PYTHON_RPC_NOTIFICATIONS.searchProgress, progress);
       }),
     );
+    channel.registerMethod(PYTHON_RPC_METHODS.resolveInterpreterPath, () =>
+      this._pythonService.resolveInterpreterPath(),
+    );
     channel.registerMethod(PYTHON_RPC_METHODS.setDefaultInterpreter, async (params) => {
       await this._pythonService.setDefaultInterpreter(
         parseRequiredPathParam(params, 'interpreterPath'),
@@ -460,6 +574,31 @@ export class MainProcess implements IDisposable {
     channel.registerMethod(PYTHON_RPC_METHODS.run, (params) =>
       this._pythonService.run(this._authorizedUri(params)),
     );
+
+    channel.registerMethod(JUDGE_RPC_METHODS.run, (params) =>
+      this._judgeService.run(parseJudgeRunRequest(params)),
+    );
+    channel.registerMethod(JUDGE_RPC_METHODS.stress, (params) => {
+      const request = parseStressRequest(params);
+      const [generator, reference, solution] = request.paths;
+      const stressRequest: IStressRequest = {
+        generatorUri: this._authorizedUriString(generator),
+        referenceUri: this._authorizedUriString(reference),
+        solutionUri: this._authorizedUriString(solution),
+        iterations: request.iterations,
+        timeLimitMs: request.timeLimitMs,
+      };
+      return this._judgeService.stress(stressRequest, (progress) => {
+        channel.notify(JUDGE_RPC_NOTIFICATIONS.stressProgress, progress);
+      });
+    });
+    channel.registerMethod(JUDGE_RPC_METHODS.cancelStress, () => this._judgeService.cancelStress());
+    channel.registerMethod(JUDGE_RPC_METHODS.importDirectory, (params) =>
+      this._judgeService.importDirectory(this._authorizedUri(params)),
+    );
+    channel.registerMethod(JUDGE_RPC_METHODS.importArchive, (params) =>
+      this._judgeService.importArchive(this._authorizedUri(params)),
+    );
   }
 
   private _authorizedUri(params: unknown): URI {
@@ -472,6 +611,10 @@ export class MainProcess implements IDisposable {
       throw new RpcError(APP_RPC_ERROR_CODES.accessDenied, '该路径未经用户选择，已拒绝访问');
     }
     return uri;
+  }
+
+  private _authorizedUriString(value: string): URI {
+    return this._authorizedUri({ uri: value });
   }
 
   private _handleWindowClose(window: BrowserWindow, event: { preventDefault(): void }): void {

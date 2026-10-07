@@ -218,6 +218,10 @@ export class PythonService implements IPythonService {
     return this._commitInterpreters(merged, onProgress);
   }
 
+  async resolveInterpreterPath(): Promise<string | undefined> {
+    return this._ensureInterpreter();
+  }
+
   async setDefaultInterpreter(path: string): Promise<void> {
     if (!existsSync(path)) {
       throw new Error(`解释器不存在：${path}`);

@@ -6,6 +6,7 @@ import {
   IConfigService,
   IFileDialogService,
   IFileService,
+  IJudgeService,
   ILogService,
   IPythonService,
   IRunnerService,
@@ -18,6 +19,7 @@ import {
 import { JsonConfigService, NodeFileService } from '@oi/platform/node';
 import { AutoSaveService } from './autoSaveService';
 import { FileDialogService } from './fileDialogService';
+import { JudgeService } from './judgeService';
 import { MainProcess } from './mainProcess';
 import { PythonService } from './pythonService';
 import { RunnerService } from './runnerService';
@@ -52,6 +54,7 @@ function main(): void {
   const autoSaveDirectory =
     process.env['OI_CODE_AUTOSAVE_DIR'] ?? join(app.getPath('temp'), 'oi-code-autosave');
   services.set(IAutoSaveService, new SyncDescriptor(AutoSaveService, [autoSaveDirectory]));
+  services.set(IJudgeService, new SyncDescriptor(JudgeService));
   const instantiationService = new InstantiationService(services);
   const mainProcess = instantiationService.createInstance(MainProcess);
 

@@ -1,6 +1,9 @@
+import type { IFileDialogService, IJudgeServiceClient } from '@oi/platform';
+import type { ThemeKind } from '@oi/editor/browser';
 import { FontAwesomeIcon } from '@fortawesome/react-fontawesome';
 import {
   faArrowLeft,
+  faClipboardCheck,
   faEarthAsia,
   faHourglassHalf,
   faPause,
@@ -9,11 +12,11 @@ import {
   faStopwatch,
 } from '@fortawesome/free-solid-svg-icons';
 import { useCallback, useEffect, useRef, useState } from 'react';
-import type { ThemeKind } from '@oi/editor/browser';
 import { BrowserTool } from './browserTool';
+import { JudgeTool, type IJudgeSource } from './judgeTool';
 import { WORKBENCH_STRINGS } from './strings';
 
-type ToolboxTool = 'list' | 'timer' | 'browser';
+type ToolboxTool = 'list' | 'judge' | 'timer' | 'browser';
 type TimerMode = 'stopwatch' | 'countdown';
 
 const TICK_INTERVAL_MS = 50;
@@ -196,13 +199,23 @@ export interface IToolboxPanelProps {
   readonly hidden?: boolean;
   /** OI-Code 当前主题，透传给内置浏览器。 */
   readonly appTheme: ThemeKind;
+  readonly judgeService: IJudgeServiceClient;
+  readonly fileDialogService: IFileDialogService;
+  /** 取当前焦点编辑器的可评测源。 */
+  readonly resolveJudgeSource: () => IJudgeSource | undefined;
 }
 
 /**
  * OI 工具箱面板（侧边栏二级）：工具选择 → 工具内容（三级）。
  * 保持挂载以便切换视图时计时器继续运行。
  */
-export function ToolboxPanel({ hidden, appTheme }: IToolboxPanelProps) {
+export function ToolboxPanel({
+  hidden,
+  appTheme,
+  judgeService,
+  fileDialogService,
+  resolveJudgeSource,
+}: IToolboxPanelProps) {
   const [tool, setTool] = useState<ToolboxTool>('list');
   // 浏览器一经打开保持挂载：切换工具/视图不丢页面状态，登录态由持久化分区保存
   const [browserStarted, setBrowserStarted] = useState(false);
@@ -229,6 +242,15 @@ export function ToolboxPanel({ hidden, appTheme }: IToolboxPanelProps) {
           <div className="oi-tool-list">
             <button
               type="button"
+              className="oi-tool-row oi-tool-judge"
+              onClick={() => setTool('judge')}
+            >
+              <FontAwesomeIcon icon={faClipboardCheck} aria-hidden="true" />
+              <span className="oi-tool-name">{WORKBENCH_STRINGS.toolJudge}</span>
+              <span className="oi-tool-hint">{WORKBENCH_STRINGS.toolJudgeHint}</span>
+            </button>
+            <button
+              type="button"
               className="oi-tool-row oi-tool-browser"
               onClick={() => {
                 setBrowserStarted(true);
@@ -249,6 +271,13 @@ export function ToolboxPanel({ hidden, appTheme }: IToolboxPanelProps) {
               <span className="oi-tool-hint">{WORKBENCH_STRINGS.toolTimerHint}</span>
             </button>
           </div>
+        ) : null}
+        {tool === 'judge' ? (
+          <JudgeTool
+            judgeService={judgeService}
+            fileDialogService={fileDialogService}
+            resolveSource={resolveJudgeSource}
+          />
         ) : null}
         {tool === 'timer' ? <TimerTool /> : null}
       </div>

@@ -84,10 +84,29 @@ export const PYTHON_RPC_METHODS = {
   getStatus: 'python.getStatus',
   search: 'python.search',
   forceSearch: 'python.forceSearch',
+  resolveInterpreterPath: 'python.resolveInterpreterPath',
   setDefaultInterpreter: 'python.setDefaultInterpreter',
   pipInstall: 'python.pipInstall',
   run: 'python.run',
   check: 'python.check',
+} as const;
+
+/**
+ * 评测/对拍服务的 RPC 方法名。
+ */
+export const JUDGE_RPC_METHODS = {
+  run: 'judge.run',
+  stress: 'judge.stress',
+  cancelStress: 'judge.cancelStress',
+  importDirectory: 'judge.importDirectory',
+  importArchive: 'judge.importArchive',
+} as const;
+
+/**
+ * 评测/对拍的服务端通知方法名。
+ */
+export const JUDGE_RPC_NOTIFICATIONS = {
+  stressProgress: 'judge.stressProgress',
 } as const;
 
 /**
