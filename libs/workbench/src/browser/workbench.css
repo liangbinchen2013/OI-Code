@@ -349,6 +349,13 @@ body {
   color: var(--link);
 }
 
+/* 侧边栏区域：活动栏 + 面板 + 拖拽手柄（折叠态临时展开后移出即折回） */
+.oi-sidebar-region {
+  display: flex;
+  flex: none;
+  min-height: 0;
+}
+
 /* 侧边栏：宽度可拖拽（inline style），内部承载二级面板 */
 .oi-sidebar {
   display: flex;
@@ -363,6 +370,11 @@ body {
   display: flex;
   flex: 1;
   min-height: 0;
+}
+
+/* 完全折叠：仅保留活动栏图标列 */
+.oi-sidebar.collapsed .oi-sidebar-panels {
+  display: none;
 }
 
 .oi-panel {

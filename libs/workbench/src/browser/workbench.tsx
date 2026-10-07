@@ -26,7 +26,15 @@ import type { PointerEvent as ReactPointerEvent } from 'react';
 import { createRoot } from 'react-dom/client';
 import { ActivityBar, type ActivityView } from './activityBar';
 import { EditorPane, type IEditorPaneHandle } from './editorPane';
-import { clampSidebarWidth, persistSidebarWidth, readStoredSidebarWidth } from './layout';
+import {
+  clampSidebarWidth,
+  isCollapsedWidth,
+  persistSidebarWidth,
+  readStoredLastExpandedWidth,
+  readStoredSidebarWidth,
+  SIDEBAR_COLLAPSED_WIDTH,
+  SIDEBAR_COLLAPSE_SNAP,
+} from './layout';
 import { ToolboxPanel } from './oiToolbox';
 import { ProblemsPanel, type IProblemItem } from './problemsPanel';
 import { SettingsView } from './settingsView';
@@ -144,11 +152,14 @@ function Workbench({ services, initialTheme, onDirtyStateChange }: IWorkbenchPro
   const [treeVersion, setTreeVersion] = useState(0);
   const [activityView, setActivityView] = useState<ActivityView>('explorer');
   const [sidebarWidth, setSidebarWidth] = useState(() => readStoredSidebarWidth());
+  const [lastExpandedWidth, setLastExpandedWidth] = useState(() => readStoredLastExpandedWidth());
   const [customTemplates, setCustomTemplates] = useState<readonly IFileTemplate[]>(() =>
     loadCustomTemplates(),
   );
   const [newMenuOpen, setNewMenuOpen] = useState(false);
   const sidebarWidthRef = useRef(sidebarWidth);
+  const lastExpandedWidthRef = useRef(lastExpandedWidth);
+  const sidebarHoverExpandedRef = useRef(false);
   const [theme, setTheme] = useState<ThemeKind>(initialTheme);
   const [status, setStatus] = useState<WorkbenchStatus>('idle');
   const [statusDetail, setStatusDetail] = useState<string | undefined>(undefined);
@@ -186,8 +197,21 @@ function Workbench({ services, initialTheme, onDirtyStateChange }: IWorkbenchPro
   }, [sidebarWidth]);
 
   useEffect(() => {
+    lastExpandedWidthRef.current = lastExpandedWidth;
+  }, [lastExpandedWidth]);
+
+  useEffect(() => {
     applyTheme(theme);
   }, [theme]);
+
+  // 窗口缩小时同步收缩侧边栏，保证编辑器最小宽度
+  useEffect(() => {
+    const onResize = (): void => {
+      setSidebarWidth((current) => clampSidebarWidth(current, window.innerWidth));
+    };
+    window.addEventListener('resize', onResize);
+    store.add(toDisposable(() => window.removeEventListener('resize', onResize)));
+  }, [store]);
 
   // 用户未显式选择过主题时，跟随系统亮暗变化
   useEffect(() => {
@@ -757,23 +781,51 @@ function Workbench({ services, initialTheme, onDirtyStateChange }: IWorkbenchPro
   const activeTab = tabs.find((tab) => tab.id === activeTabId);
   const statusPresentation = status === 'idle' ? undefined : STATUS_PRESENTATION[status];
 
+  const selectActivityView = useCallback((view: ActivityView): void => {
+    setActivityView(view);
+    // 折叠态点击活动栏图标：临时展开至上次非折叠宽度，移出后自动折回
+    if (isCollapsedWidth(sidebarWidthRef.current)) {
+      setSidebarWidth(clampSidebarWidth(lastExpandedWidthRef.current));
+      sidebarHoverExpandedRef.current = true;
+    }
+  }, []);
+
+  const handleSidebarRegionLeave = useCallback((): void => {
+    if (sidebarHoverExpandedRef.current) {
+      sidebarHoverExpandedRef.current = false;
+      setSidebarWidth(SIDEBAR_COLLAPSED_WIDTH);
+    }
+  }, []);
+
   const beginResize = useCallback(
     (event: ReactPointerEvent<HTMLDivElement>): void => {
       event.preventDefault();
+      sidebarHoverExpandedRef.current = false;
       const startX = event.clientX;
       const startWidth = sidebarWidthRef.current;
+      let latestWidth = startWidth;
       const onMove = (moveEvent: PointerEvent): void => {
-        setSidebarWidth(clampSidebarWidth(startWidth + moveEvent.clientX - startX));
+        latestWidth = clampSidebarWidth(startWidth + moveEvent.clientX - startX);
+        setSidebarWidth(latestWidth);
       };
-      const removeMove = toDisposable(() => window.removeEventListener('pointermove', onMove));
-      const removeUp = toDisposable(() => window.removeEventListener('pointerup', onUp));
       const onUp = (): void => {
         removeMove.dispose();
         removeUp.dispose();
         store.delete(removeMove);
         store.delete(removeUp);
-        persistSidebarWidth(sidebarWidthRef.current);
+        // 拖拽到折叠阈值内直接吸附为完全折叠
+        const finalWidth =
+          latestWidth < SIDEBAR_COLLAPSE_SNAP ? SIDEBAR_COLLAPSED_WIDTH : latestWidth;
+        setSidebarWidth(finalWidth);
+        if (isCollapsedWidth(finalWidth)) {
+          persistSidebarWidth(finalWidth);
+        } else {
+          setLastExpandedWidth(finalWidth);
+          persistSidebarWidth(finalWidth);
+        }
       };
+      const removeMove = toDisposable(() => window.removeEventListener('pointermove', onMove));
+      const removeUp = toDisposable(() => window.removeEventListener('pointerup', onUp));
       window.addEventListener('pointermove', onMove);
       window.addEventListener('pointerup', onUp);
       store.add(removeMove);
@@ -781,6 +833,16 @@ function Workbench({ services, initialTheme, onDirtyStateChange }: IWorkbenchPro
     },
     [store],
   );
+
+  const restoreSidebarWidth = useCallback((): void => {
+    if (!isCollapsedWidth(sidebarWidthRef.current)) {
+      return;
+    }
+    const restored = clampSidebarWidth(lastExpandedWidthRef.current);
+    setLastExpandedWidth(restored);
+    setSidebarWidth(restored);
+    persistSidebarWidth(restored);
+  }, []);
 
   return (
     <div className="oi-workbench">
@@ -804,41 +866,48 @@ function Workbench({ services, initialTheme, onDirtyStateChange }: IWorkbenchPro
         onCreateFromTemplate={createFromTemplate}
       />
       <div className="oi-body">
-        <ActivityBar activeView={activityView} onSelect={setActivityView} />
-        <div className="oi-sidebar" style={{ width: sidebarWidth }}>
-          <div className="oi-sidebar-panels">
-            <ExplorerPanel
-              rootUri={rootUri}
-              treeVersion={treeVersion}
-              fileService={services.fileService}
-              hidden={activityView !== 'explorer'}
-              onOpenFile={(uri) => void openUri(uri)}
-              onOpenFolder={() => void openFolderRef.current()}
-              onRefresh={() => setTreeVersion((version) => version + 1)}
-            />
-            <ToolboxPanel hidden={activityView !== 'toolbox'} />
-            <SettingsView
-              theme={theme}
-              canSave={activeTab !== undefined}
-              hidden={activityView !== 'settings'}
-              onToggleTheme={toggleTheme}
-              onOpenFile={() => void openFileRef.current()}
-              onOpenFolder={() => void openFolderRef.current()}
-              onSave={() => void saveRef.current()}
-              toolchainService={services.toolchainService}
-              pythonService={services.pythonService}
-              templates={customTemplates}
-              onTemplatesChange={updateCustomTemplates}
-            />
+        <div className="oi-sidebar-region" onMouseLeave={handleSidebarRegionLeave}>
+          <ActivityBar activeView={activityView} onSelect={selectActivityView} />
+          <div
+            className={`oi-sidebar${isCollapsedWidth(sidebarWidth) ? ' collapsed' : ''}`}
+            style={{ width: sidebarWidth }}
+          >
+            <div className="oi-sidebar-panels">
+              <ExplorerPanel
+                rootUri={rootUri}
+                treeVersion={treeVersion}
+                fileService={services.fileService}
+                hidden={activityView !== 'explorer'}
+                onOpenFile={(uri) => void openUri(uri)}
+                onOpenFolder={() => void openFolderRef.current()}
+                onRefresh={() => setTreeVersion((version) => version + 1)}
+              />
+              <ToolboxPanel hidden={activityView !== 'toolbox'} />
+              <SettingsView
+                theme={theme}
+                canSave={activeTab !== undefined}
+                hidden={activityView !== 'settings'}
+                onToggleTheme={toggleTheme}
+                onOpenFile={() => void openFileRef.current()}
+                onOpenFolder={() => void openFolderRef.current()}
+                onSave={() => void saveRef.current()}
+                toolchainService={services.toolchainService}
+                pythonService={services.pythonService}
+                templates={customTemplates}
+                onTemplatesChange={updateCustomTemplates}
+              />
+            </div>
           </div>
+          <div
+            className="oi-resize-handle"
+            role="separator"
+            aria-orientation="vertical"
+            aria-label={WORKBENCH_STRINGS.resizeSidebar}
+            title={WORKBENCH_STRINGS.resizeSidebar}
+            onPointerDown={beginResize}
+            onDoubleClick={restoreSidebarWidth}
+          />
         </div>
-        <div
-          className="oi-resize-handle"
-          role="separator"
-          aria-orientation="vertical"
-          aria-label={WORKBENCH_STRINGS.resizeSidebar}
-          onPointerDown={beginResize}
-        />
         <main className="oi-main">
           <EditorPane
             ref={editorPaneRef}
