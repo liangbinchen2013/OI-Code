@@ -4,7 +4,7 @@ import { mkdtemp, rm, writeFile } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { basename, dirname, join } from 'node:path';
 import { expect, test, type Page } from '@playwright/test';
-import { launchApp, mockOpenFileDialog } from './helpers';
+import { launchApp, mockCloseDialog, mockOpenFileDialog } from './helpers';
 
 function hasCommand(name: string): boolean {
   try {
@@ -68,6 +68,8 @@ test('编辑时实时诊断在防抖后标记错误并更新问题角标', async
     await expect(page.locator('.squiggly-error').first()).toBeAttached({ timeout: 20_000 });
     await expect(page.locator('.oi-problems-badge')).toBeVisible();
   } finally {
+    // 文档仍为脏：关闭时自动确认放弃修改
+    await mockCloseDialog(app, 0).catch(() => undefined);
     await app.close();
     await rm(directory, { recursive: true, force: true });
   }

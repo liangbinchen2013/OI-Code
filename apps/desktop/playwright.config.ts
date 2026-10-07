@@ -6,5 +6,7 @@ export default defineConfig({
   expect: {
     timeout: 15_000,
   },
+  // Electron + g++ 探测资源占用高，串行执行保证稳定性
+  workers: 1,
   reporter: [['list']],
 });

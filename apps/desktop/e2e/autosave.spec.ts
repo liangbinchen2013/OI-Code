@@ -3,7 +3,7 @@ import { mkdtemp, readdir, readFile, rm, writeFile } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { expect, test, type ElectronApplication, type Page } from '@playwright/test';
-import { launchApp, mockOpenFileDialog } from './helpers';
+import { launchApp, mockCloseDialog, mockOpenFileDialog } from './helpers';
 
 async function waitReady(page: Page): Promise<void> {
   await expect(page.locator('html')).toHaveAttribute('data-oi-code-ready', 'true');
@@ -96,7 +96,8 @@ test('自动保存的草稿在进程强杀后重启可恢复，正常退出则�
     await expect(page.locator('.view-lines')).toContainText('crashed draft');
     await expect(page.locator('.oi-tab-active .oi-dirty-dot')).toBeAttached();
 
-    // 正常退出应清理全部草稿
+    // 正常退出应清理全部草稿（恢复后的文档仍为脏，关闭时自动确认放弃）
+    await mockCloseDialog(second, 0);
     await second.close();
     const remaining = (await readdir(autoSaveDir).catch(() => [])).filter((entry) =>
       entry.endsWith('.oi-autosave'),
