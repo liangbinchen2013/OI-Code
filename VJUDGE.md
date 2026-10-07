@@ -2,9 +2,10 @@
 
 > 目的：为 OI-Code 集成 Virtual Judge（<https://vjudge.net>）的**题面获取 / 题面翻译 / 在线提交 / 判题记录爬取**能力提供接口级参考。
 >
-> **重要前提：VJudge 没有官方公开 API 文档。** 本文内容来自两类取证：
+> **重要前提：VJudge 没有官方公开 API 文档。** 本文内容来自三类取证：
 >
 > - **实测**：直接对公开端点发请求并记录真实响应（本文标注 `[实测]`）。
+> - **登录态抓包**：浏览器 DevTools 导出的 HAR，含真实提交与判题轮询全过程（标注 `[实测]`，见 §6）。
 > - **前端逆向**：从其静态 JS 包（`https://vjudge.net/static/bundle/<hash>.js`，共 12 个入口块 + 33 个异步块）中提取的调用代码（标注 `[bundle]`）。
 >
 > 未标注或标注 `[待验证]` 的条目需在登录态下复核后才能依赖。接口随时可能变动，**集成必须做好失败降级**。
@@ -34,7 +35,7 @@ VJudge 不是传统 OJ：**它把 50+ 个远端 OJ 的题目抓取到本地库�
 |----|-----------|
 | Base URL | `https://vjudge.net`；前端用全局 `basePath`（通常为**空串**）拼路径 |
 | 认证 | **Session Cookie**（登录后由服务端下发），无 Bearer / API Key 机制 `[bundle]` |
-| CSRF | 写操作需带页面注入的 `token` 字段（如登录、提交）`[bundle]` |
+| CSRF | 登录需要页面注入的 `token` 字段 `[bundle]`；**提交接口实测不需要 token**（`[实测]` 见 §6.1） |
 | 列表接口 | 走 **DataTables** 协议：请求 `draw,start,length,...`，响应 `{draw, recordsTotal, recordsFiltered, data}` `[实测]` |
 | 写操作体 | 提交类为 **form-urlencoded**（jQuery 默认）；抓取任务为 **JSON**（`contentType: "application/json"`）`[bundle]` |
 | 未登录（API） | `401` + `{"error":{"i18nKey":"user.error.login_required","trustable":false}}` `[实测]` |
@@ -167,43 +168,93 @@ bundle 中与翻译相关的仅有 i18n 键（多语言文案齐全，说明是�
 
 ## 6. 提交 API
 
-### 6.1 提交代码 `[bundle]`
+### 6.1 提交代码 `[实测]`
 
 ```
 POST {basePath}/problem/submit/{OJ}-{probNum}
+Content-Type: application/x-www-form-urlencoded; charset=UTF-8
+```
+
+抓包实测（对 `POJ-1182` 的一次真实提交，最终 Accepted）：
+
+```
+method=0&language=0&open=1&source=<源码原文，URL 编码>
+→ 200 {"runId":73166362}
+```
+
+| 字段 | 取值 / 含义 | 可信度 |
+|------|-------------|--------|
+| `source` | 源码原文（URL 编码后整体作为表单值，含换行与中文注释） | `[实测]` |
+| `language` | 语言 id，**按远端 OJ 各自编号**：POJ 的 `0` = `C++98 (MinGW GCC 4.4.0)` | `[实测]` |
+| `method` | `0` = 走 VJudge 服务账号；`1` / `2` = 用用户绑定的远端账号（配合 `bindingId`） | `[实测=0]` / `[bundle]` |
+| `open` | 提交记录可见性，实测 `1`；响应回显为 `isOpen` | `[实测]` |
+| `bindingId` | 仅 `method` 为 1/2 且选择了绑定账号时携带 | `[bundle]` |
+
+> **不需要 CSRF `token`**：bundle 里提交体带有 `token` 字段，但实测请求中并无该字段也能成功——登录 Cookie 是唯一凭据。集成时不要去找页面抠 token。
+
+失败响应带 `errorCode`，前端据此分支 `[bundle]`：
+
+- `errorCode` 以 `bind_account` 开头 → 引导用户去 `{basePath}/user/remoteAccounts?oj={OJ}` 绑定远端账号；
+- 其余按 `error.i18nKey` 提示（兜底文案键 `submit.unknown_error`）。
+
+其他提交入口：
+
+```
+POST {basePath}/contest/submit/{contestId}/{num}   // 比赛内提交，额外带 accessCode、version
+GET  {basePath}/solution/edit/{runId}              // 取回已有提交用于编辑重交
+```
+
+### 6.2 轮询单条提交结果 `[实测]`
+
+```
+POST {basePath}/solution/data/{runId}
 Content-Type: application/x-www-form-urlencoded
+body: showCode=false        // true 时响应额外带回源码
 ```
 
-请求字段（bundle 原样还原）：
+同一 `runId` 的两次实测响应：
 
-| 字段 | 取值 / 含义 |
+```json
+// 判题中（提交后约 0–4s，抓包连续 3 次都是这个状态）
+{"runId":73166362,"status":"Submitted","statusCanonical":"PENDING","statusType":2,
+ "processing":true,"refreshing":true,"memory":0,"runtime":0,
+ "oj":"POJ","probNum":"1182","remoteRunId":"25215486",
+ "language":"C++98 (MinGW GCC 4.4.0)","prismClass":"cpp","length":1737,
+ "code":true,"isOpen":1,"editable":false,"hasSubmissionOriginViewer":true,
+ "author":"<用户名>","authorId":1338149,"submitTime":1791380164000}
+
+// 判题完成
+{"runId":73166362,"status":"Accepted","statusCanonical":"AC","statusType":0,
+ "processing":false,"refreshing":false,"memory":632,"runtime":50,
+ "oj":"POJ","probNum":"1182","remoteRunId":"25215486", ... }
+```
+
+| 字段 | 含义 / 用法 |
 |------|-------------|
-| `source` | 源码正文 |
-| `language` | 语言 id（下拉框 `[name=language]` 的值，如 `GNU G++23 14.2 (64 bit, msys2)` 对应的数字 id） |
-| `method` | 提交方式：`0` = VJudge 服务账号；`1` / `2` = 使用**用户绑定的远端账号**（此时可带 `bindingId`） |
-| `bindingId` | 远端账号绑定 id（`method` 为 1/2 且用户选了账号时） |
-| `open` | 提交记录可见性（`[name=open]:checked`） |
-| `token` | 页面注入的 CSRF token |
+| `statusCanonical` | **机器可读结果码**（实测 `PENDING`、`AC`），集成一律用它，不要用 `status` 文案 |
+| `status` | 展示用文本（`Submitted` / `Accepted` …） |
+| `statusType` | 结果分类数值；实测 `2` = 待判、`0` = Accepted（完整枚举待补） |
+| `processing` / `refreshing` | true 表示结果未定，**必须继续轮询**；两者同时转 false 即为终态 |
+| `runtime` / `memory` | 耗时(ms) / 内存(KB)，POJ 实测 `50` / `632` |
+| `remoteRunId` | **远端 OJ 的提交号**（用于跳远端查详情） |
+| `submitTime` | 提交时间戳（毫秒） |
+| `code` | **二义字段**：`showCode=true` 时为源码字符串；否则为布尔（表示"有源码可看"） |
+| `length` / `prismClass` | 源码长度 / 高亮语言类名 |
+| `isOpen` / `editable` / `hasSubmissionOriginViewer` | 可见性 / 可否编辑 / 是否有远端原始记录入口 |
 
-成功响应含 **`runId`**（VJudge 侧提交号）；失败时前端会引导去 `/user/remoteAccounts?oj={OJ}` 绑定账号。
+轮询节奏（抓包观测）：提交后前几次为 `PENDING`，约 4–6s 内转终态；建议 1s 起、指数退火到 5s，并设总超时。
 
-比赛内提交（另一条路径）：
+### 6.3 结果映射到 OI-Code 的 `JudgeVerdict`
 
-```
-POST {basePath}/contest/submit/{contestId}/{num}   // 额外带 accessCode、version
-```
+| `statusCanonical` | OI-Code 判定 | 可信度 |
+|-------------------|--------------|--------|
+| `PENDING` | 继续轮询（非终态） | `[实测]` |
+| `AC` | `AC` | `[实测]` |
+| 其余（WA / TLE / MLE / RE / CE / PE 等） | 需抓包补全取值后映射 | `[待验证]` |
 
-修改并重交已有提交：
+映射应实现为 Platform 层纯函数 + 单测（见 §7），未知码一律降级为"未知/需人工查看"，不得静默当作 AC。
 
-```
-GET {basePath}/solution/edit/{runId}
-```
-
-### 6.2 可选语言列表 `[待验证]`
-
-提交弹窗的语言下拉由题目页初始化时取得；需在登录态确认具体端点（候选：题目页内联数据或 `/problem/lang` 类接口）。**不要**在集成里写死语言 id 表——不同远端 OJ 完全不同。
-
-### 6.3 判题记录与结果 `[实测]`
+### 6.4 提交记录列表（爬取记录）`[实测]`
 
 ```
 GET /status/data?draw=1&start=0&length=N[&其他过滤参数]
@@ -224,7 +275,7 @@ GET /status/data?draw=1&start=0&length=N[&其他过滤参数]
       "runtime": 0, "memory": 0, "time": 1791379511000,
       "language": "C++23 (GCC 15.2.0)", "languageCanonical": "CPP",
       "sourceLength": 159, "access": 2,
-      "userId": 1336862, "userName": "hagerwael", "avatarUrl": "..."
+      "userId": 1336862, "userName": "<用户名>", "avatarUrl": "..."
     }
   ]
 }
@@ -233,24 +284,39 @@ GET /status/data?draw=1&start=0&length=N[&其他过滤参数]
 | 字段 | 用途 |
 |------|------|
 | `runId` | 提交号；轮询与详情都靠它 |
-| `status` | 判题结果文本（`Submitted` / `Accepted` / `Wrong Answer` …） |
+| `status` / `statusType` | 结果文本 / 分类 |
 | `processing` | **true 表示结果未定，必须继续轮询** |
-| `statusType` | 结果分类（数值），适合做颜色映射（待补全枚举表） |
-| `runtime` / `memory` | 耗时 / 内存（远端返回值，单位随 OJ） |
+| `runtime` / `memory` | 耗时 / 内存（单位随远端 OJ） |
 | `languageCanonical` | 语言规范名（`CPP` 等），比 `language` 稳定 |
 | `time` | 提交时间戳（毫秒） |
 
-另有按 id 批量取记录：`GET/POST {basePath}/status/dataById` `[bundle]`。
-单条提交在远端的原始记录：`{basePath}/solution/{runId}/origin` `[bundle]`。
-重判：`POST {basePath}/problem/rejudge/{OJ}-{probNum}` `[bundle]`。
+按 id 批量取记录：`{basePath}/status/dataById` `[bundle]`。
 
-### 6.4 典型提交—取结果时序
+### 6.5 可选语言列表 `[待验证]`
+
+提交弹窗的语言下拉取自运行时按 OJ 索引的映射（bundle 里形如 `E[oj].languages`），**未在 JS 中找到静态语言表，也没有找到独立端点**；候选来源是题目页服务端渲染的数据。集成时**不要写死语言 id**——各远端 OJ 编号完全不同（POJ `0` = C++98 GCC 4.4.0 即为实测例）。
+
+### 6.6 其他提交相关端点 `[bundle]`
+
+| 路径 | 用途 |
+|------|------|
+| `POST {basePath}/solution/delete/{runId}` | 删除提交记录 |
+| `POST {basePath}/solution/toggleOpen/{runId}` | 切换记录可见性 |
+| `GET {basePath}/solution/shareText/{runId}` | 生成分享文本 |
+| `GET {basePath}/solution/{runId}/origin` | 远端原始记录入口（配合响应里的 `hasSubmissionOriginViewer`） |
+| `GET {basePath}/problem/{OJ}-{probNum}/origin` | 题目在远端 OJ 的原始页 |
+| `POST {basePath}/problem/rejudge/{OJ}-{probNum}` | 请求重判 |
+
+### 6.7 典型提交—取结果时序（全链路 `[实测]`）
 
 ```
-1. (可选) GET /problem/info/{OJ}-{id}      → 确认题目存在、crawling=false
-2. POST /problem/submit/{OJ}-{id}          → { runId }
-3. 轮询 status（/status/data 或 dataById）  → 直到 processing=false
-4. 读 status / runtime / memory            → 映射为 OI-Code 的 AC/WA/TLE/MLE/RE/CE
+1. (可选) GET  /problem/info/{OJ}-{id}        → 题目存在且 crawling=false
+2. POST    /problem/submit/{OJ}-{id}          → { "runId": 73166362 }
+3. POST    /solution/data/{runId}  (showCode=false)
+      ├─ statusCanonical=PENDING / processing=true   → 继续轮询（退火 1s→5s）
+      └─ processing=false                            → 终态
+4. 读 statusCanonical + runtime + memory      → 映射为 AC/WA/TLE/MLE/RE/CE
+5. (可选) GET /status/data?...                → 批量记录 / 题单进度统计
 ```
 
 ---
@@ -277,7 +343,7 @@ GET /status/data?draw=1&start=0&length=N[&其他过滤参数]
 2. **Cloudflare 反爬**：高频请求会触发挑战页；务必限速（建议：题面查询 ≥1 req/s，状态轮询前 5s 每 2s 一次、之后退火到 5–10s）。
 3. **真实远端提交**：VJudge 的提交会打到远端 OJ 并计入其记录，**消耗用户/服务账号配额**，不可用于压测或批量刷提交。
 4. **账号风险**：脚本化登录/提交可能触发风控甚至封号；优先"人在浏览器里操作、程序只读结果"的模式。
-5. **凭据安全**：绝不在代码、配置、日志、Git 历史中写入 VJudge 或远端 OJ 的账号密码；会话 Cookie 只存系统用户数据目录，且不入版本库。
+5. **凭据安全**：绝不在代码、配置、日志、Git 历史中写入 VJudge 或远端 OJ 的账号密码；会话 Cookie 只存系统用户数据目录，且不入版本库。**HAR / 抓包文件默认包含 Cookie 请求头**，分析完即删，仓库已用 `.gitignore` 兜底排除 `*.har`。
 6. **题面版权**：抓取到的题面仅作本地个人学习展示，不要二次分发或缓存进仓库。
 7. **礼仪**：集成上线前建议查阅 VJudge 站点说明/联系作者确认自动化使用边界。
 
@@ -285,16 +351,24 @@ GET /status/data?draw=1&start=0&length=N[&其他过滤参数]
 
 ## 9. 待验证清单（需登录态抓包）
 
+已验证（本轮 HAR 抓包）：
+
+- [x] 提交端点、请求体字段与响应（§6.1，含"不需要 token"这一反直觉结论）。
+- [x] 结果轮询端点 `POST /solution/data/{runId}` 与全部响应字段（§6.2）。
+- [x] `PENDING → AC` 的终态判定路径与耗时量级（§6.7）。
+
+仍待补全：
+
 - [ ] 题面正文的取回方式：题目页里承载题面的容器/接口（HTML 结构 + 是否有 JSON 端点）。
-- [ ] AI 翻译的真实端点、请求体（是否复用 `crawl/tasks`）与结果轮询方式。
-- [ ] 提交弹窗的**语言列表端点**与各 OJ 的语言 id 映射。
-- [ ] `method` 三个取值的准确语义、`open` 的取值范围。
-- [ ] `statusType` 枚举与判题结果的完整对照表。
+- [ ] AI 翻译的真实端点、请求体（是否复用 `crawl/tasks`）与结果轮询方式 —— JS 里**只有 i18n 文案键，没有端点字面量**，说明端点由服务端渲染的页面决定，必须抓包。
+- [ ] 语言列表的数据来源（题目页内联数据？独立端点？）与各 OJ 的 id 映射（§6.5）。
+- [ ] `method=1/2` 与 `open` 其他取值的准确语义与允许值。
+- [ ] `statusCanonical` / `statusType` 的完整枚举（WA/TLE/MLE/RE/CE/PE/SE 等），只需对同一题故意交错/超时/越界各抓一次。
 - [ ] `/problem/suggestions` 的请求参数与响应结构。
 - [ ] 提交失败的错误信封样例（远端 OJ 不可用、账号未绑定、题面未抓取）。
-- [ ] `/status/data` 的过滤参数（按 `problemId` / `userName` / `oj` 过滤的字段名）。
+- [ ] `/status/data` 的过滤参数名（按 `problemId` / `userName` / `oj` 过滤）。
 
-复核方法：登录 → 打开题目页 → DevTools Network 面板记录上述操作的实际请求，把 URL / 请求体 / 响应样例回填本文对应小节，并把 `[待验证]` 改为 `[实测]`。
+复核方法：登录 → 打开题目页 → DevTools Network 面板记录上述操作的实际请求，把 URL / 请求体 / 响应样例回填本文对应小节，并把 `[待验证]` 改为 `[实测]`。导出 HAR 时**注意里面会带 Cookie 请求头**（Chrome 默认导出可能包含），分析完请删除，不要提交进仓库。
 
 ---
 
@@ -317,6 +391,18 @@ curl -i https://vjudge.net/problem/info/CodeForces-1748E
 curl -i "https://vjudge.net/status/data?draw=1&start=0&length=1"
 curl -i https://vjudge.net/problem/suggestions?q=1748E        # 401 login_required
 curl -i https://vjudge.net/problem/CodeForces-1748E           # 303 → /?login=1&continue=...
+
+# 5) 解析登录态 HAR（只看 xhr/fetch，避免打印任何请求头）
+node -e '
+const fs=require("fs");const h=JSON.parse(fs.readFileSync("vjudge.net.har","utf8"));
+const safe=s=>{try{return decodeURIComponent(s)}catch{return s}};
+for(const x of h.log.entries){
+  const rt=x._resourceType||""; if(rt!=="xhr"&&rt!=="fetch")continue;
+  const u=new URL(x.request.url);
+  console.log("=== "+x.request.method+" "+u.pathname+" -> "+x.response.status);
+  if(x.request.postData) console.log("  BODY: "+safe(x.request.postData.text||"").replace(/\s+/g," ").slice(0,200));
+  console.log("  RESP: "+safe(x.response.content.text||"").replace(/\s+/g," ").slice(0,500));
+}'
 ```
 
 > 本文档不含任何账号凭据。测试账号与会话信息一律不得写入仓库。
