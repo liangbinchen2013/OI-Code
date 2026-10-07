@@ -5,13 +5,16 @@ import {
   faCode,
   faFileCode,
   faFileLines,
+  faGripLines,
   faHammer,
   faPlay,
   faPlus,
+  faTableColumns,
   faTriangleExclamation,
   faXmark,
 } from '@fortawesome/free-solid-svg-icons';
 import type { IconDefinition } from '@fortawesome/fontawesome-svg-core';
+import type { SplitDirection } from './layout';
 import { WORKBENCH_STRINGS } from './strings';
 import type { IFileTemplate } from './templates';
 
@@ -40,6 +43,10 @@ export interface ITabBarProps {
   readonly onRun: () => void;
   readonly onCompileRun: () => void;
   readonly onToggleProblems: () => void;
+  /** 当前分屏方向；null 表示未开启分屏。 */
+  readonly splitDirection: SplitDirection | null;
+  /** 分屏按钮：关闭 → 左右 → 上下 → 关闭循环切换。 */
+  readonly onCycleSplit: () => void;
   readonly templates: readonly IFileTemplate[];
   readonly newMenuOpen: boolean;
   readonly onToggleNewMenu: () => void;
@@ -73,6 +80,8 @@ export function TabBar({
   onRun,
   onCompileRun,
   onToggleProblems,
+  splitDirection,
+  onCycleSplit,
   templates,
   newMenuOpen,
   onToggleNewMenu,
@@ -80,6 +89,12 @@ export function TabBar({
   onCreateFromTemplate,
 }: ITabBarProps) {
   const actionDisabled = !actionsEnabled || busy;
+  const splitTitle =
+    splitDirection === null
+      ? WORKBENCH_STRINGS.splitEnable
+      : splitDirection === 'horizontal'
+        ? WORKBENCH_STRINGS.splitToVertical
+        : WORKBENCH_STRINGS.splitDisable;
 
   return (
     <div className="oi-tabbar">
@@ -189,6 +204,22 @@ export function TabBar({
         >
           <FontAwesomeIcon icon={faTriangleExclamation} aria-hidden="true" />
           {problemCount > 0 ? <span className="oi-problems-badge">{problemCount}</span> : null}
+        </button>
+        <span className="oi-tabbar-separator" aria-hidden="true" />
+        <button
+          type="button"
+          className={`oi-btn oi-btn-icon oi-split-toggle${
+            splitDirection !== null ? ' oi-split-toggle-active' : ''
+          }`}
+          onClick={onCycleSplit}
+          disabled={!actionsEnabled}
+          title={splitTitle}
+          aria-label={WORKBENCH_STRINGS.split}
+        >
+          <FontAwesomeIcon
+            icon={splitDirection === 'vertical' ? faGripLines : faTableColumns}
+            aria-hidden="true"
+          />
         </button>
       </div>
     </div>

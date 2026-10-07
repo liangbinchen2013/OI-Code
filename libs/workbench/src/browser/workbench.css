@@ -529,6 +529,193 @@ body {
   inset: 0;
 }
 
+/* 分屏：编辑器与预览面板共享主区，中间手柄拖拽调节比例 */
+.oi-split {
+  position: absolute;
+  inset: 0;
+  display: flex;
+}
+
+.oi-split-horizontal {
+  flex-direction: row;
+}
+
+.oi-split-vertical {
+  flex-direction: column;
+}
+
+.oi-split-primary {
+  position: relative;
+  flex: 1;
+  min-width: 0;
+  min-height: 0;
+}
+
+.oi-split-active .oi-split-primary {
+  flex: none;
+}
+
+.oi-split-handle {
+  position: relative;
+  z-index: 2;
+  flex: none;
+  background: transparent;
+  transition: background 0.15s;
+}
+
+.oi-split-horizontal > .oi-split-handle {
+  width: 5px;
+  margin-right: -3px;
+  cursor: col-resize;
+}
+
+.oi-split-vertical > .oi-split-handle {
+  height: 5px;
+  margin-bottom: -3px;
+  cursor: row-resize;
+}
+
+.oi-split-handle:hover,
+.oi-split-handle:active {
+  background: var(--glow-soft);
+}
+
+.oi-split-secondary {
+  display: flex;
+  flex: 1;
+  min-width: 0;
+  min-height: 0;
+}
+
+.oi-split-horizontal > .oi-split-secondary {
+  border-left: 1px solid var(--border);
+}
+
+.oi-split-vertical > .oi-split-secondary {
+  border-top: 1px solid var(--border);
+}
+
+.oi-split-toggle-active {
+  border-color: var(--glow-ring);
+  background: var(--btn-hover);
+}
+
+/* 预览面板：Markdown 实时渲染 / HTML 沙箱 / 不支持提示 */
+.oi-preview {
+  display: flex;
+  flex: 1;
+  flex-direction: column;
+  min-width: 0;
+  min-height: 0;
+  background: var(--code-bg);
+}
+
+.oi-preview-header {
+  display: flex;
+  flex: none;
+  align-items: center;
+  gap: 8px;
+  padding: 6px 12px;
+  border-bottom: 1px solid var(--border);
+  color: var(--muted);
+  font-size: 11px;
+  letter-spacing: 0.05em;
+  text-transform: uppercase;
+}
+
+.oi-preview-file {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  font-family: var(--font-mono);
+  font-size: 12px;
+  letter-spacing: 0;
+  text-transform: none;
+}
+
+.oi-preview-body {
+  flex: 1;
+  min-height: 0;
+  overflow: auto;
+  padding: 16px;
+}
+
+.oi-preview-empty {
+  margin: 0;
+  color: var(--muted);
+  font-size: 13px;
+}
+
+.oi-preview-frame {
+  width: 100%;
+  height: 100%;
+  border: 0;
+  background: var(--bg);
+}
+
+.oi-preview-markdown {
+  color: var(--text);
+  font-size: 14px;
+  line-height: 1.7;
+  overflow-wrap: anywhere;
+}
+
+.oi-preview-markdown h1,
+.oi-preview-markdown h2,
+.oi-preview-markdown h3,
+.oi-preview-markdown h4,
+.oi-preview-markdown h5,
+.oi-preview-markdown h6 {
+  margin: 1em 0 0.5em;
+}
+
+.oi-preview-markdown h1 {
+  font-size: 24px;
+}
+
+.oi-preview-markdown h2 {
+  font-size: 20px;
+}
+
+.oi-preview-markdown h3 {
+  font-size: 17px;
+}
+
+.oi-preview-markdown p {
+  margin: 0.6em 0;
+}
+
+.oi-preview-markdown ul {
+  margin: 0.6em 0;
+  padding-left: 22px;
+}
+
+.oi-preview-markdown code {
+  padding: 1px 5px;
+  border-radius: 6px;
+  background: var(--btn-bg);
+  font-family: var(--font-mono);
+  font-size: 0.9em;
+}
+
+.oi-preview-markdown .oi-md-code {
+  margin: 0.8em 0;
+  padding: 12px;
+  overflow: auto;
+  border: 1px solid var(--border);
+  border-radius: 10px;
+  background: var(--bg);
+}
+
+.oi-preview-markdown .oi-md-code code {
+  padding: 0;
+  background: transparent;
+}
+
+.oi-preview-markdown a {
+  color: var(--link);
+}
+
 .oi-empty-state {
   position: absolute;
   inset: 0;

@@ -2,6 +2,7 @@ import { onUnexpectedError } from '@oi/base';
 
 const SIDEBAR_WIDTH_KEY = 'oi-code.sidebar-width';
 const SIDEBAR_LAST_EXPANDED_KEY = 'oi-code.sidebar-last-expanded-width';
+const SPLIT_KEY = 'oi-code.split';
 
 export const SIDEBAR_DEFAULT_WIDTH = 260;
 /** 折叠态宽度：仅保留活动栏图标列。 */
@@ -79,6 +80,67 @@ export function persistSidebarWidth(width: number): void {
     if (!isCollapsedWidth(clamped)) {
       window.localStorage.setItem(SIDEBAR_LAST_EXPANDED_KEY, String(clamped));
     }
+  } catch (error) {
+    onUnexpectedError(error);
+  }
+}
+
+/** 分屏方向：左右（horizontal）或上下（vertical）。 */
+export type SplitDirection = 'horizontal' | 'vertical';
+
+export const SPLIT_DEFAULT_RATIO = 0.5;
+export const SPLIT_RATIO_MIN = 0.2;
+export const SPLIT_RATIO_MAX = 0.8;
+
+export interface ISplitState {
+  readonly direction: SplitDirection | null;
+  readonly ratio: number;
+}
+
+export function clampSplitRatio(ratio: number): number {
+  return Math.min(SPLIT_RATIO_MAX, Math.max(SPLIT_RATIO_MIN, ratio));
+}
+
+/**
+ * 读取持久化的分屏状态；缺失或非法时关闭分屏并恢复默认比例。
+ */
+export function readStoredSplit(): ISplitState {
+  const fallback: ISplitState = { direction: null, ratio: SPLIT_DEFAULT_RATIO };
+  let raw: string | null;
+  try {
+    raw = window.localStorage.getItem(SPLIT_KEY);
+  } catch (error) {
+    onUnexpectedError(error);
+    return fallback;
+  }
+  if (raw === null) {
+    return fallback;
+  }
+  let parsed: unknown;
+  try {
+    parsed = JSON.parse(raw);
+  } catch {
+    return fallback;
+  }
+  if (typeof parsed !== 'object' || parsed === null) {
+    return fallback;
+  }
+  const { direction, ratio } = parsed as { direction?: unknown; ratio?: unknown };
+  return {
+    direction: direction === 'horizontal' || direction === 'vertical' ? direction : null,
+    ratio:
+      typeof ratio === 'number' && Number.isFinite(ratio)
+        ? clampSplitRatio(ratio)
+        : SPLIT_DEFAULT_RATIO,
+  };
+}
+
+export function persistSplit(state: ISplitState): void {
+  try {
+    window.localStorage.setItem(
+      SPLIT_KEY,
+      JSON.stringify({ direction: state.direction, ratio: clampSplitRatio(state.ratio) }),
+    );
   } catch (error) {
     onUnexpectedError(error);
   }

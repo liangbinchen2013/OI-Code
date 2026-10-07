@@ -24,21 +24,26 @@ import type {
   IPythonServiceClient,
   IToolchainServiceClient,
 } from '@oi/platform';
-import { useCallback, useEffect, useRef, useState } from 'react';
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import type { PointerEvent as ReactPointerEvent } from 'react';
 import { createRoot } from 'react-dom/client';
 import { ActivityBar, type ActivityView } from './activityBar';
 import { EditorPane, type IEditorPaneHandle } from './editorPane';
 import {
   clampSidebarWidth,
+  clampSplitRatio,
   isCollapsedWidth,
   persistSidebarWidth,
+  persistSplit,
   readStoredLastExpandedWidth,
   readStoredSidebarWidth,
+  readStoredSplit,
   SIDEBAR_COLLAPSED_WIDTH,
   SIDEBAR_COLLAPSE_SNAP,
+  type SplitDirection,
 } from './layout';
 import { ToolboxPanel } from './oiToolbox';
+import { PreviewPanel } from './previewPanel';
 import { ProblemsPanel, type IProblemItem } from './problemsPanel';
 import { SettingsView } from './settingsView';
 import { ExplorerPanel } from './sidebar';
@@ -170,6 +175,9 @@ function Workbench({ services, initialTheme, onDirtyStateChange }: IWorkbenchPro
   const [customTemplates, setCustomTemplates] = useState<readonly IFileTemplate[]>(() =>
     loadCustomTemplates(),
   );
+  const [split, setSplit] = useState(() => readStoredSplit());
+  const [contentVersion, setContentVersion] = useState(0);
+  const splitContainerRef = useRef<HTMLDivElement | null>(null);
   const [newMenuOpen, setNewMenuOpen] = useState(false);
   const sidebarWidthRef = useRef(sidebarWidth);
   const lastExpandedWidthRef = useRef(lastExpandedWidth);
@@ -484,6 +492,7 @@ function Workbench({ services, initialTheme, onDirtyStateChange }: IWorkbenchPro
     setTabs((previous) =>
       previous.map((tab) => (tab.uri.toString() === key ? { ...tab, dirty: true } : tab)),
     );
+    setContentVersion((version) => version + 1);
     setStatus('idle');
     const tab = tabsRef.current.find((candidate) => candidate.uri.toString() === key);
     if (tab !== undefined) {
@@ -895,6 +904,64 @@ function Workbench({ services, initialTheme, onDirtyStateChange }: IWorkbenchPro
 
   const activeTab = tabs.find((tab) => tab.id === activeTabId);
   const statusPresentation = status === 'idle' ? undefined : STATUS_PRESENTATION[status];
+  const splitActive = split.direction !== null && activeTab !== undefined;
+  const previewDocument = useMemo(
+    () =>
+      activeTab === undefined
+        ? undefined
+        : {
+            name: activeTab.name,
+            content: editorPaneRef.current?.getValue(activeTab.uri) ?? '',
+          },
+    [activeTab, contentVersion],
+  );
+
+  const cycleSplit = useCallback((): void => {
+    const direction: SplitDirection | null =
+      split.direction === null
+        ? 'horizontal'
+        : split.direction === 'horizontal'
+          ? 'vertical'
+          : null;
+    const next = { direction, ratio: split.ratio };
+    setSplit(next);
+    persistSplit(next);
+  }, [split.direction, split.ratio]);
+
+  const beginSplitResize = useCallback(
+    (event: ReactPointerEvent<HTMLDivElement>): void => {
+      event.preventDefault();
+      const container = splitContainerRef.current;
+      const direction = split.direction;
+      if (container === null || direction === null) {
+        return;
+      }
+      const rect = container.getBoundingClientRect();
+      let latestRatio = split.ratio;
+      const onMove = (moveEvent: PointerEvent): void => {
+        const raw =
+          direction === 'vertical'
+            ? (moveEvent.clientY - rect.top) / rect.height
+            : (moveEvent.clientX - rect.left) / rect.width;
+        latestRatio = clampSplitRatio(raw);
+        setSplit((current) => ({ ...current, ratio: latestRatio }));
+      };
+      const onUp = (): void => {
+        removeMove.dispose();
+        removeUp.dispose();
+        store.delete(removeMove);
+        store.delete(removeUp);
+        persistSplit({ direction, ratio: latestRatio });
+      };
+      const removeMove = toDisposable(() => window.removeEventListener('pointermove', onMove));
+      const removeUp = toDisposable(() => window.removeEventListener('pointerup', onUp));
+      window.addEventListener('pointermove', onMove);
+      window.addEventListener('pointerup', onUp);
+      store.add(removeMove);
+      store.add(removeUp);
+    },
+    [split.direction, split.ratio, store],
+  );
 
   const selectActivityView = useCallback((view: ActivityView): void => {
     setActivityView(view);
@@ -974,6 +1041,8 @@ function Workbench({ services, initialTheme, onDirtyStateChange }: IWorkbenchPro
         onRun={() => void runRef.current()}
         onCompileRun={() => void compileRunRef.current()}
         onToggleProblems={() => setProblemsOpen((open) => !open)}
+        splitDirection={split.direction}
+        onCycleSplit={cycleSplit}
         templates={[...BUILT_IN_TEMPLATES, ...customTemplates]}
         newMenuOpen={newMenuOpen}
         onToggleNewMenu={() => setNewMenuOpen((open) => !open)}
@@ -1024,12 +1093,44 @@ function Workbench({ services, initialTheme, onDirtyStateChange }: IWorkbenchPro
           />
         </div>
         <main className="oi-main">
-          <EditorPane
-            ref={editorPaneRef}
-            languageService={services.languageService}
-            onDidChangeContent={handleContentChange}
-            onSaveRequested={() => void saveRef.current()}
-          />
+          <div
+            ref={splitContainerRef}
+            className={`oi-split${
+              split.direction === null ? '' : ` oi-split-${split.direction}`
+            }${splitActive ? ' oi-split-active' : ''}`}
+          >
+            <div
+              className="oi-split-primary"
+              style={
+                splitActive
+                  ? split.direction === 'vertical'
+                    ? { height: `${split.ratio * 100}%` }
+                    : { width: `${split.ratio * 100}%` }
+                  : undefined
+              }
+            >
+              <EditorPane
+                ref={editorPaneRef}
+                languageService={services.languageService}
+                onDidChangeContent={handleContentChange}
+                onSaveRequested={() => void saveRef.current()}
+              />
+            </div>
+            {splitActive ? (
+              <>
+                <div
+                  className="oi-split-handle"
+                  role="separator"
+                  aria-orientation={split.direction === 'horizontal' ? 'vertical' : 'horizontal'}
+                  aria-label={WORKBENCH_STRINGS.split}
+                  onPointerDown={beginSplitResize}
+                />
+                <div className="oi-split-secondary">
+                  <PreviewPanel document={previewDocument} />
+                </div>
+              </>
+            ) : null}
+          </div>
           {tabs.length === 0 ? (
             <div className="oi-empty-state">
               <h1 className="oi-empty-title">{WORKBENCH_STRINGS.emptyTitle}</h1>
