@@ -96,6 +96,8 @@ test('VJudge 取题失败时给出可见提示而非静默', async () => {
     await waitReady(page);
     await openVjudge(page);
 
+    // 点击前不应已有提示条，避免把"挂载期就报错"误判为用例通过
+    await expect(page.locator('.oi-vjudge-message')).toHaveCount(0);
     await page.locator('.oi-vjudge-field input').first().fill('POJ');
     await page.locator('.oi-vjudge-field-prob input').fill('1000');
     await page.locator('.oi-vjudge-fetch').click();
@@ -104,6 +106,8 @@ test('VJudge 取题失败时给出可见提示而非静默', async () => {
     const message = page.locator('.oi-vjudge-message');
     await expect(message).toBeVisible({ timeout: 60_000 });
     expect((await message.innerText()).trim().length).toBeGreaterThan(0);
+    // 取题失败不得留下半截界面：题面区仍是空态
+    await expect(page.locator('.oi-vjudge-statement')).toContainText('输入 OJ 与题号');
   } finally {
     await app.close();
   }

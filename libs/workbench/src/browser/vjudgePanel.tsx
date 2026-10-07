@@ -311,6 +311,12 @@ export function VjudgePanel({
           statusCanonical: brief.statusCanonical,
         })),
       );
+      // 历史提交里仍有未定论的（如刚在别处提交过），继续爬取到终态
+      for (const brief of next.mySubmissions) {
+        if (brief.statusCanonical.length === 0 || brief.statusCanonical === 'PENDING') {
+          void vjudgeService.watch(brief.runId).catch((error: unknown) => onUnexpectedError(error));
+        }
+      }
       const options = oj.languages;
       setLanguage(options.some((item) => item.id === language) ? language : (options[0]?.id ?? ''));
       if (account?.loggedIn !== true) {
