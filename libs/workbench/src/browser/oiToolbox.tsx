@@ -9,6 +9,7 @@ import {
   faStopwatch,
 } from '@fortawesome/free-solid-svg-icons';
 import { useCallback, useEffect, useRef, useState } from 'react';
+import type { ThemeKind } from '@oi/editor/browser';
 import { BrowserTool } from './browserTool';
 import { WORKBENCH_STRINGS } from './strings';
 
@@ -193,13 +194,15 @@ function TimerTool() {
 
 export interface IToolboxPanelProps {
   readonly hidden?: boolean;
+  /** OI-Code 当前主题，透传给内置浏览器。 */
+  readonly appTheme: ThemeKind;
 }
 
 /**
  * OI 工具箱面板（侧边栏二级）：工具选择 → 工具内容（三级）。
  * 保持挂载以便切换视图时计时器继续运行。
  */
-export function ToolboxPanel({ hidden }: IToolboxPanelProps) {
+export function ToolboxPanel({ hidden, appTheme }: IToolboxPanelProps) {
   const [tool, setTool] = useState<ToolboxTool>('list');
   // 浏览器一经打开保持挂载：切换工具/视图不丢页面状态，登录态由持久化分区保存
   const [browserStarted, setBrowserStarted] = useState(false);
@@ -221,7 +224,7 @@ export function ToolboxPanel({ hidden }: IToolboxPanelProps) {
         ) : null}
       </div>
       <div className="oi-toolbox-body">
-        {browserStarted ? <BrowserTool hidden={tool !== 'browser'} /> : null}
+        {browserStarted ? <BrowserTool hidden={tool !== 'browser'} appTheme={appTheme} /> : null}
         {tool === 'list' ? (
           <div className="oi-tool-list">
             <button

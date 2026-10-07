@@ -28,6 +28,7 @@ describe('normalizeBrowserUrl', () => {
 describe('normalizeBrowserTheme', () => {
   it('非法主题回退跟随系统', () => {
     expect(normalizeBrowserTheme('dark')).toBe('dark');
+    expect(normalizeBrowserTheme('app')).toBe('app');
     expect(normalizeBrowserTheme('blue')).toBe('system');
     expect(normalizeBrowserTheme(null)).toBe('system');
   });

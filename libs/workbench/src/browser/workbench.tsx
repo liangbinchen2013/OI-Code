@@ -1289,7 +1289,7 @@ function Workbench({ services, initialTheme, onDirtyStateChange }: IWorkbenchPro
                 onOpenFolder={() => void openFolderRef.current()}
                 onRefresh={() => setTreeVersion((version) => version + 1)}
               />
-              <ToolboxPanel hidden={activityView !== 'toolbox'} />
+              <ToolboxPanel hidden={activityView !== 'toolbox'} appTheme={theme} />
               <SettingsView
                 theme={theme}
                 canSave={activeTab !== undefined}

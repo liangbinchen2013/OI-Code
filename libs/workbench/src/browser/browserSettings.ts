@@ -6,9 +6,9 @@ const BROWSER_URL_KEY = 'oi-code.browser-last-url';
 /** 内置浏览器首页：洛谷（OI 刷题常用）。 */
 export const BROWSER_DEFAULT_HOME = 'https://www.luogu.com.cn/';
 
-export type BrowserTheme = 'system' | 'light' | 'dark';
+export type BrowserTheme = 'system' | 'app' | 'light' | 'dark';
 
-const THEMES: ReadonlySet<BrowserTheme> = new Set(['system', 'light', 'dark']);
+const THEMES: ReadonlySet<BrowserTheme> = new Set(['system', 'app', 'light', 'dark']);
 
 export function normalizeBrowserTheme(value: unknown): BrowserTheme {
   return typeof value === 'string' && THEMES.has(value as BrowserTheme)

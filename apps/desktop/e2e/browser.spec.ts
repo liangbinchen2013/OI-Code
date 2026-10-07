@@ -31,6 +31,9 @@ test('OI 工具箱内置浏览器：webview 挂载、地址栏导航与主题持
     await page.locator('.oi-tool-browser').click();
     await expect(page.locator('.oi-browser-address')).toHaveValue('about:blank');
 
+    // 主题含「跟随 OI-Code」选项
+    await expect(page.locator('.oi-browser-theme option[value="app"]')).toHaveText('跟随 OI-Code');
+
     // 主题选择持久化：刷新后仍为暗色
     await page.locator('.oi-browser-theme').selectOption('dark');
     await page.reload();

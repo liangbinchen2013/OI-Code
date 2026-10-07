@@ -129,6 +129,7 @@ export const WORKBENCH_STRINGS = {
   browserReload: '刷新',
   browserTheme: '浏览器主题',
   browserThemeSystem: '跟随系统',
+  browserThemeApp: '跟随 OI-Code',
   browserThemeLight: '亮色',
   browserThemeDark: '暗色',
   browserAddressPlaceholder: '输入网址',

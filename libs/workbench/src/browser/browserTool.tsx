@@ -1,4 +1,5 @@
 import { onUnexpectedError } from '@oi/base';
+import type { ThemeKind } from '@oi/editor/browser';
 import { FontAwesomeIcon } from '@fortawesome/react-fontawesome';
 import {
   faArrowLeft,
@@ -47,17 +48,20 @@ const DARK_THEME_CSS = [
 
 export interface IBrowserToolProps {
   readonly hidden?: boolean;
+  /** OI-Code 当前主题，供「跟随 OI-Code」选项使用。 */
+  readonly appTheme: ThemeKind;
 }
 
 /**
  * OI 工具箱内置浏览器：持久化分区（Cookie/登录态保留在 userData），
- * 支持地址栏导航与亮/暗主题切换。
+ * 支持地址栏导航与主题切换（跟随系统 / 跟随 OI-Code / 亮 / 暗）。
  */
-export function BrowserTool({ hidden }: IBrowserToolProps) {
+export function BrowserTool({ hidden, appTheme }: IBrowserToolProps) {
   const stageRef = useRef<HTMLDivElement | null>(null);
   const webviewRef = useRef<IWebviewElement | null>(null);
   const insertedCssKeyRef = useRef<string | undefined>(undefined);
   const themeRef = useRef<BrowserTheme>(readStoredBrowserTheme());
+  const appThemeRef = useRef<ThemeKind>(appTheme);
   const [theme, setTheme] = useState<BrowserTheme>(themeRef.current);
   const [address, setAddress] = useState(readStoredBrowserUrl());
   const [failed, setFailed] = useState<string | undefined>(undefined);
@@ -70,8 +74,13 @@ export function BrowserTool({ hidden }: IBrowserToolProps) {
     }
     const selected = themeRef.current;
     const dark =
-      selected === 'dark' ||
-      (selected === 'system' && window.matchMedia('(prefers-color-scheme: dark)').matches);
+      selected === 'dark'
+        ? true
+        : selected === 'light'
+          ? false
+          : selected === 'app'
+            ? appThemeRef.current === 'dark'
+            : window.matchMedia('(prefers-color-scheme: dark)').matches;
     const previousKey = insertedCssKeyRef.current;
     if (previousKey !== undefined) {
       insertedCssKeyRef.current = undefined;
@@ -146,6 +155,14 @@ export function BrowserTool({ hidden }: IBrowserToolProps) {
     persistBrowserTheme(theme);
     void applyTheme();
   }, [applyTheme, theme]);
+
+  // 跟随 OI-Code 时响应应用主题切换
+  useEffect(() => {
+    appThemeRef.current = appTheme;
+    if (themeRef.current === 'app') {
+      void applyTheme();
+    }
+  }, [appTheme, applyTheme]);
 
   // 跟随系统主题时响应系统亮暗切换
   useEffect(() => {
@@ -222,6 +239,7 @@ export function BrowserTool({ hidden }: IBrowserToolProps) {
           aria-label={WORKBENCH_STRINGS.browserTheme}
         >
           <option value="system">{WORKBENCH_STRINGS.browserThemeSystem}</option>
+          <option value="app">{WORKBENCH_STRINGS.browserThemeApp}</option>
           <option value="light">{WORKBENCH_STRINGS.browserThemeLight}</option>
           <option value="dark">{WORKBENCH_STRINGS.browserThemeDark}</option>
         </select>
