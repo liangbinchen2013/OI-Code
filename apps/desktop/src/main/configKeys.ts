@@ -11,4 +11,5 @@ export const CONFIG_KEYS = {
   pythonPath: 'python.interpreterPath',
   pythonInterpreters: 'python.interpreters',
   runnerHash: 'runner.sourceHash',
+  vjudgeUsername: 'vjudge.username',
 } as const;

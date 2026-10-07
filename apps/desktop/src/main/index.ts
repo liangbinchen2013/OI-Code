@@ -11,6 +11,7 @@ import {
   IPythonService,
   IRunnerService,
   IToolchainService,
+  IVjudgeService,
   InstantiationService,
   LogService,
   ServiceCollection,
@@ -24,6 +25,7 @@ import { MainProcess } from './mainProcess';
 import { PythonService } from './pythonService';
 import { RunnerService } from './runnerService';
 import { ToolchainService } from './toolchainService';
+import { VjudgeService } from './vjudgeService';
 
 function main(): void {
   const userDataPath = process.env['OI_CODE_USER_DATA'];
@@ -55,6 +57,7 @@ function main(): void {
     process.env['OI_CODE_AUTOSAVE_DIR'] ?? join(app.getPath('temp'), 'oi-code-autosave');
   services.set(IAutoSaveService, new SyncDescriptor(AutoSaveService, [autoSaveDirectory]));
   services.set(IJudgeService, new SyncDescriptor(JudgeService));
+  services.set(IVjudgeService, new SyncDescriptor(VjudgeService));
   const instantiationService = new InstantiationService(services);
   const mainProcess = instantiationService.createInstance(MainProcess);
 

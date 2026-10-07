@@ -13,6 +13,7 @@ import {
   ILogService,
   IPythonService,
   IToolchainService,
+  IVjudgeService,
   JSON_RPC_ERROR_CODES,
   JUDGE_RPC_METHODS,
   JUDGE_RPC_NOTIFICATIONS,
@@ -22,6 +23,8 @@ import {
   RpcError,
   TOOLCHAIN_RPC_METHODS,
   TOOLCHAIN_RPC_NOTIFICATIONS,
+  VJUDGE_RPC_METHODS,
+  VJUDGE_RPC_NOTIFICATIONS,
   WINDOW_RPC_NOTIFICATIONS,
   serializeDiagnostic,
   type IMessageTransport,
@@ -31,10 +34,12 @@ import {
   type ITestCase,
   type IJudgeRequest,
   type IStressRequest,
+  type IVjudgeSubmitRequest,
 } from '@oi/platform';
 import { FileLogger } from '@oi/platform/node';
 import { RPC_CHANNEL_NAME } from '../common/ipc';
 import { FileAccessGuard } from './fileAccessGuard';
+import type { VjudgeService } from './vjudgeService';
 
 const WINDOW_MIN_WIDTH = 720;
 
@@ -318,10 +323,47 @@ function parseStressRequest(params: unknown): {
   };
 }
 
+function parseParamsObject(params: unknown): Record<string, unknown> {
+  if (typeof params !== 'object' || params === null) {
+    throw new RpcError(JSON_RPC_ERROR_CODES.invalidParams, '缺少参数对象');
+  }
+  return params as Record<string, unknown>;
+}
+
+function readRequiredString(params: unknown, key: string): string {
+  const value = parseParamsObject(params)[key];
+  if (typeof value !== 'string' || value.trim().length === 0) {
+    throw new RpcError(JSON_RPC_ERROR_CODES.invalidParams, `${key} 参数必须是非空字符串`);
+  }
+  return value.trim();
+}
+
+function readOptionalString(params: unknown, key: string): string | undefined {
+  const value = parseParamsObject(params)[key];
+  return typeof value === 'string' && value.length > 0 ? value : undefined;
+}
+
+function readRequiredNumber(params: unknown, key: string): number {
+  const value = parseParamsObject(params)[key];
+  if (typeof value !== 'number' || !Number.isFinite(value)) {
+    throw new RpcError(JSON_RPC_ERROR_CODES.invalidParams, `${key} 参数必须是数字`);
+  }
+  return value;
+}
+
+function readOptionalNumber(params: unknown, key: string): number | undefined {
+  const value = parseParamsObject(params)[key];
+  return typeof value === 'number' && Number.isFinite(value) ? value : undefined;
+}
+
+function readOptionalBoolean(params: unknown, key: string): boolean | undefined {
+  const value = parseParamsObject(params)[key];
+  return typeof value === 'boolean' ? value : undefined;
+}
+
 /**
  * 主进程：窗口生命周期、IPC 服务端与文件访问授权。
- */
-export class MainProcess implements IDisposable {
+ */ export class MainProcess implements IDisposable {
   private readonly _disposables = new DisposableStore();
   private readonly _fileAccess = new FileAccessGuard();
   private readonly _dirtyWindows = new Map<number, boolean>();
@@ -336,6 +378,7 @@ export class MainProcess implements IDisposable {
     @IPythonService private readonly _pythonService: IPythonService,
     @IAutoSaveService private readonly _autoSaveService: IAutoSaveService,
     @IJudgeService private readonly _judgeService: IJudgeService,
+    @IVjudgeService private readonly _vjudgeService: VjudgeService,
   ) {}
 
   start(): void {
@@ -605,6 +648,52 @@ export class MainProcess implements IDisposable {
     );
     channel.registerMethod(JUDGE_RPC_METHODS.importArchive, (params) =>
       this._judgeService.importArchive(this._authorizedUri(params)),
+    );
+
+    this._vjudgeService.onDidUpdateSubmission = (submission) => {
+      channel.notify(VJUDGE_RPC_NOTIFICATIONS.submissionUpdate, submission);
+    };
+    channel.registerMethod(VJUDGE_RPC_METHODS.getConfig, () => this._vjudgeService.getConfig());
+    channel.registerMethod(VJUDGE_RPC_METHODS.getAccount, () => this._vjudgeService.getAccount());
+    channel.registerMethod(VJUDGE_RPC_METHODS.fetchProblem, (params) =>
+      this._vjudgeService.fetchProblem(
+        readRequiredString(params, 'oj'),
+        readRequiredString(params, 'probNum'),
+        readOptionalString(params, 'lang') ?? 'zh',
+      ),
+    );
+    channel.registerMethod(VJUDGE_RPC_METHODS.submit, (params): Promise<number> => {
+      const request: IVjudgeSubmitRequest = {
+        ...(readOptionalNumber(params, 'bindingId') === undefined
+          ? {}
+          : { bindingId: readOptionalNumber(params, 'bindingId') }),
+        language: readRequiredString(params, 'language'),
+        ...(readOptionalNumber(params, 'method') === undefined
+          ? {}
+          : { method: readOptionalNumber(params, 'method') }),
+        oj: readRequiredString(params, 'oj'),
+        ...(readOptionalNumber(params, 'open') === undefined
+          ? {}
+          : { open: readOptionalNumber(params, 'open') }),
+        probNum: readRequiredString(params, 'probNum'),
+        source: readRequiredString(params, 'source'),
+      };
+      return this._vjudgeService.submit(request);
+    });
+    channel.registerMethod(VJUDGE_RPC_METHODS.getSubmission, (params) =>
+      this._vjudgeService.getSubmission(
+        readRequiredNumber(params, 'runId'),
+        readOptionalBoolean(params, 'showCode') ?? false,
+      ),
+    );
+    channel.registerMethod(VJUDGE_RPC_METHODS.watch, async (params) => {
+      await this._vjudgeService.watch(readRequiredNumber(params, 'runId'));
+    });
+    channel.registerMethod(VJUDGE_RPC_METHODS.unwatch, async (params) => {
+      await this._vjudgeService.unwatch(readRequiredNumber(params, 'runId'));
+    });
+    channel.registerMethod(VJUDGE_RPC_METHODS.getSolvedProblems, (params) =>
+      this._vjudgeService.getSolvedProblems(readRequiredString(params, 'username')),
     );
   }
 

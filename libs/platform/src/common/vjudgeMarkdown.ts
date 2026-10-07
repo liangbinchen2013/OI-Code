@@ -124,7 +124,8 @@ const NAMED_ENTITIES: Readonly<Record<string, string>> = {
   quot: '"',
 };
 
-function decodeEntities(text: string): string {
+/** 解码 HTML 文本与属性中的实体（单次扫描，`&amp;lt;` 不会被二次解码）。 */
+export function decodeHtmlEntities(text: string): string {
   return text.replace(/&(#[xX][0-9a-fA-F]+|#\d+|[a-zA-Z]+);/g, (match, entity: string) => {
     if (entity.startsWith('#')) {
       const codePoint =
@@ -146,7 +147,7 @@ function parseAttributes(raw: string): Readonly<Record<string, string>> {
     const value = match[2] ?? match[3] ?? match[4] ?? '';
     const name = match[1];
     if (name !== undefined) {
-      attrs[name.toLowerCase()] = decodeEntities(value);
+      attrs[name.toLowerCase()] = decodeHtmlEntities(value);
     }
   }
   return attrs;
@@ -190,7 +191,7 @@ function parseHtml(html: string): IElement {
       continue;
     }
     if (text !== undefined) {
-      parent.children.push({ kind: 'text', text: decodeEntities(text) });
+      parent.children.push({ kind: 'text', text: decodeHtmlEntities(text) });
     }
   }
   return root;
