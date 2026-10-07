@@ -166,7 +166,7 @@ test(editor): 补充语法高亮单元测试
 ```bash
 pnpm lint                    # ESLint + Prettier
 npm run valid-layers-check   # 分层校验
-nx affected:test             # 受影响项目单元测试
+nx affected:test             # 受影响项目单元测试（全量用 npx nx run-many -t test --all）
 pnpm typecheck               # 全仓 TypeScript 类型检查
 ```
 
@@ -240,8 +240,6 @@ pnpm typecheck               # 全仓 TypeScript 类型检查
 ---
 
 ## 9. 常用命令
-
-> 以下命令在阶段 1（Monorepo 脚手架）完成后方可执行；当前仅依赖安装类命令（`pnpm install` 等）可用。
 
 ```bash
 nx run desktop:serve         # 开发模式启动

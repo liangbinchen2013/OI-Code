@@ -109,7 +109,7 @@ pnpm ls --depth 0 | Select-String fortawesome
 ```
 
 > bash 等价：去掉 PowerShell 差异即可，`git grep` 参数一致；`Select-String` 换成 `grep`。
-> 当前仓库无 `.ts/.tsx` 源码，1、2 实测均返回"无匹配"。
+> 截至 2026-10，仓库已有 TypeScript 源码，1、2 检查均为必跑项；最近一次实测无匹配。
 
 `reviewer` 审查时：以上 1、2 任一有输出 → 🔴 阻断。
 
