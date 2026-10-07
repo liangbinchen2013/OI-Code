@@ -206,6 +206,33 @@ test('Python 语法检查经 F12 触发并标记错误，正确代码通过', as
   }
 });
 
+test('无扩展名 C++ 文件按内容识别语言并可编译', async () => {
+  test.setTimeout(120_000);
+  test.skip(!hasCommand('g++'), '未安装 g++');
+  const directory = await mkdtemp(join(tmpdir(), 'oi-e2e-extless-'));
+  const sourcePath = join(directory, 'solution');
+  await writeFile(
+    sourcePath,
+    '#include <cstdio>\nint main() { printf("ok"); return 0; }\n',
+    'utf8',
+  );
+  const app = await launchApp();
+  try {
+    const page = await app.firstWindow();
+    await waitReady(page);
+    await openFile(app, page, sourcePath);
+    await expect(page.locator('.oi-tab-active .oi-tab-name')).toHaveText('solution');
+
+    await page.keyboard.press('F12');
+    await expect(page.locator('.oi-status-capsule')).toContainText('编译成功', {
+      timeout: 60_000,
+    });
+  } finally {
+    await app.close();
+    await rm(directory, { recursive: true, force: true });
+  }
+});
+
 test('强力搜索在限定根目录内发现 g++ 并支持点选为默认', async () => {
   test.setTimeout(180_000);
   test.skip(!hasCommand('g++'), '未安装 g++');

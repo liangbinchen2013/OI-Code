@@ -21,6 +21,7 @@ export interface IEditorPaneHandle {
   hasDocument(uri: URI): boolean;
   getDirtyDocuments(): readonly IDirtyDocument[];
   markSaved(uri: URI): void;
+  setLanguage(uri: URI, languageId: string): void;
   setMarkers(uri: URI, markers: readonly IEditorMarker[]): void;
   revealPosition(uri: URI, line: number, column: number): void;
   focus(): void;
@@ -100,6 +101,9 @@ export function EditorPane({
       getDirtyDocuments: (): readonly IDirtyDocument[] => editor?.getDirtyDocuments() ?? [],
       markSaved: (uri: URI): void => {
         editor?.markSaved(uri);
+      },
+      setLanguage: (uri: URI, languageId: string): void => {
+        editor?.setLanguage(uri, languageId);
       },
       setMarkers: (uri: URI, markers: readonly IEditorMarker[]): void => {
         editor?.setMarkers(uri, markers);

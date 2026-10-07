@@ -96,6 +96,8 @@ export interface ICodeEditorHost extends IDisposable {
   getDirtyDocuments(): readonly IDirtyDocument[];
   /** 标记文档已落盘（保存成功后调用），从脏集合移除。 */
   markSaved(uri: URI): void;
+  /** 运行时切换文档语言（如无扩展名文件按内容识别后）。 */
+  setLanguage(uri: URI, languageId: string): void;
   /** 设置文档诊断标记；重复调用整体替换。 */
   setMarkers(uri: URI, markers: readonly IEditorMarker[]): void;
   /** 滚动并聚焦到指定位置（1 起始）；文档已打开时生效。 */
@@ -227,6 +229,13 @@ class CodeEditorHost implements ICodeEditorHost {
 
   markSaved(uri: URI): void {
     this._dirtyUris.delete(uri.toString());
+  }
+
+  setLanguage(uri: URI, languageId: string): void {
+    const document = this._documents.get(uri.toString());
+    if (document !== undefined) {
+      monaco.editor.setModelLanguage(document.model, languageId);
+    }
   }
 
   setMarkers(uri: URI, markers: readonly IEditorMarker[]): void {

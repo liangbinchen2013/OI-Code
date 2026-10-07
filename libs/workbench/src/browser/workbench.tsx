@@ -29,6 +29,7 @@ import type { PointerEvent as ReactPointerEvent } from 'react';
 import { createRoot } from 'react-dom/client';
 import { ActivityBar, type ActivityView } from './activityBar';
 import { EditorPane, type IEditorPaneHandle } from './editorPane';
+import { detectLanguageFromContent } from './languageDetection';
 import {
   clampSidebarWidth,
   clampSplitRatio,
@@ -144,6 +145,11 @@ function draftDisplayName(uri: string): string {
   } catch {
     return uri;
   }
+}
+
+/** 无法识别语言时的补充说明：无扩展名提示补后缀。 */
+function unsupportedLanguageDetail(tab: ITabState): string | undefined {
+  return getFileExtension(tab.name) === undefined ? WORKBENCH_STRINGS.needExtension : undefined;
 }
 
 function toEditorMarkers(diagnostics: readonly ICodeDiagnostic[]): IEditorMarker[] {
@@ -323,6 +329,17 @@ function Workbench({ services, initialTheme, onDirtyStateChange }: IWorkbenchPro
     }
   }, []);
 
+  /** 无扩展名文件：按内容识别语言后应用到编辑器高亮。 */
+  const applyDetectedLanguage = useCallback((uri: URI, name: string, text: string): void => {
+    if (getFileExtension(name) !== undefined) {
+      return;
+    }
+    const detected = detectLanguageFromContent(text);
+    if (detected !== undefined) {
+      editorPaneRef.current?.setLanguage(uri, detected);
+    }
+  }, []);
+
   const openUri = useCallback(
     async (uri: URI): Promise<void> => {
       const key = uri.toString();
@@ -334,6 +351,7 @@ function Workbench({ services, initialTheme, onDirtyStateChange }: IWorkbenchPro
       try {
         const text = await services.fileService.readFile(uri);
         editorPaneRef.current?.openDocument(uri, text);
+        applyDetectedLanguage(uri, fileNameOf(uri), text);
         const tab: ITabState = {
           id: key,
           uri,
@@ -350,7 +368,7 @@ function Workbench({ services, initialTheme, onDirtyStateChange }: IWorkbenchPro
         onUnexpectedError(error);
       }
     },
-    [activateTab, services.fileService],
+    [activateTab, applyDetectedLanguage, services.fileService],
   );
 
   const openFile = useCallback(async (): Promise<void> => {
@@ -373,18 +391,22 @@ function Workbench({ services, initialTheme, onDirtyStateChange }: IWorkbenchPro
     }
   }, [services.fileDialogService]);
 
-  const createFromTemplate = useCallback((template: IFileTemplate): void => {
-    const index = nextUntitledRef.current++;
-    const extension = template.extension.trim().replace(/^\./, '');
-    const base = `${WORKBENCH_STRINGS.untitledPrefix}-${index}`;
-    const name = extension.length > 0 ? `${base}.${extension}` : base;
-    const uri = URI.from({ scheme: 'untitled', path: `/${name}` });
-    editorPaneRef.current?.openDocument(uri, template.content);
-    const tab: ITabState = { id: uri.toString(), uri, name, untitled: true, dirty: false };
-    setTabs((previous) => [...previous, tab]);
-    setActiveTabId(tab.id);
-    setNewMenuOpen(false);
-  }, []);
+  const createFromTemplate = useCallback(
+    (template: IFileTemplate): void => {
+      const index = nextUntitledRef.current++;
+      const extension = template.extension.trim().replace(/^\./, '');
+      const base = `${WORKBENCH_STRINGS.untitledPrefix}-${index}`;
+      const name = extension.length > 0 ? `${base}.${extension}` : base;
+      const uri = URI.from({ scheme: 'untitled', path: `/${name}` });
+      editorPaneRef.current?.openDocument(uri, template.content);
+      applyDetectedLanguage(uri, name, template.content);
+      const tab: ITabState = { id: uri.toString(), uri, name, untitled: true, dirty: false };
+      setTabs((previous) => [...previous, tab]);
+      setActiveTabId(tab.id);
+      setNewMenuOpen(false);
+    },
+    [applyDetectedLanguage],
+  );
 
   const newDefaultFile = useCallback((): void => {
     createFromTemplate(DEFAULT_TEMPLATE);
@@ -622,7 +644,14 @@ function Workbench({ services, initialTheme, onDirtyStateChange }: IWorkbenchPro
         (extension === undefined
           ? undefined
           : services.languageService.getLanguageByExtension(extension));
-      return languageId === 'cpp' || languageId === 'python' ? languageId : undefined;
+      if (languageId === 'cpp' || languageId === 'python') {
+        return languageId;
+      }
+      // 无扩展名时按内容特征识别，支持无后缀源文件的编译运行
+      if (extension === undefined) {
+        return detectLanguageFromContent(editorPaneRef.current?.getValue(tab.uri) ?? '');
+      }
+      return undefined;
     },
     [services.languageService],
   );
@@ -668,7 +697,7 @@ function Workbench({ services, initialTheme, onDirtyStateChange }: IWorkbenchPro
       const language = languageOf(tab);
       if (language === undefined) {
         setStatus('unsupported');
-        setStatusDetail(undefined);
+        setStatusDetail(unsupportedLanguageDetail(tab));
         return;
       }
       const content = editor.getValue(tab.uri);
@@ -815,7 +844,7 @@ function Workbench({ services, initialTheme, onDirtyStateChange }: IWorkbenchPro
     const language = languageOf(tab);
     if (language === undefined) {
       setStatus('unsupported');
-      setStatusDetail(undefined);
+      setStatusDetail(unsupportedLanguageDetail(tab));
       return;
     }
     busyRef.current = true;

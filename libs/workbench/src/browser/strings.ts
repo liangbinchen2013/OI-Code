@@ -42,6 +42,7 @@ export const WORKBENCH_STRINGS = {
   runLaunched: '已启动运行',
   runFailed: '无法启动',
   unsupported: '当前文件不支持编译运行',
+  needExtension: '无扩展名：请另存为 .cpp / .py 文件',
   needSave: '请先保存文件',
   recoverTitle: '恢复未保存的草稿',
   recoverHint: '检测到上次异常退出留下的 {count} 个未保存草稿，是否恢复？',
