@@ -359,6 +359,7 @@ function Workbench({ services, initialTheme, onDirtyStateChange }: IWorkbenchPro
     });
     if (uri) {
       await openUri(uri);
+      editorPaneRef.current?.focus();
     }
   }, [openUri, services.fileDialogService]);
 
@@ -521,6 +522,7 @@ function Workbench({ services, initialTheme, onDirtyStateChange }: IWorkbenchPro
           });
           if (!target) {
             setStatus('idle');
+            editor.focus();
             return;
           }
           const text = editor.getValue(tab.uri);

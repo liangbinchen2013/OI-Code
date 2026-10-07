@@ -13,6 +13,18 @@ import type {
 } from '@oi/platform';
 
 /**
+ * 恢复主窗口与 webContents 焦点。
+ * Windows 上原生对话框关闭后偶尔不归还焦点，导致编辑器光标消失或无法输入。
+ */
+function restoreWindowFocus(window: BrowserWindow | undefined): void {
+  if (window === undefined || window.isDestroyed()) {
+    return;
+  }
+  window.focus();
+  window.webContents.focus();
+}
+
+/**
  * Electron 原生对话框实现（Code 层装配）：对话框是获得文件访问授权的唯一入口。
  */
 export class FileDialogService implements IFileDialogService {
@@ -29,6 +41,7 @@ export class FileDialogService implements IFileDialogService {
     const result = window
       ? await dialog.showOpenDialog(window, dialogOptions)
       : await dialog.showOpenDialog(dialogOptions);
+    restoreWindowFocus(window);
     if (result.canceled || result.filePaths.length === 0) {
       return undefined;
     }
@@ -45,6 +58,7 @@ export class FileDialogService implements IFileDialogService {
     const result = window
       ? await dialog.showOpenDialog(window, dialogOptions)
       : await dialog.showOpenDialog(dialogOptions);
+    restoreWindowFocus(window);
     if (result.canceled || result.filePaths.length === 0) {
       return undefined;
     }
@@ -61,6 +75,7 @@ export class FileDialogService implements IFileDialogService {
     const result = window
       ? await dialog.showSaveDialog(window, dialogOptions)
       : await dialog.showSaveDialog(dialogOptions);
+    restoreWindowFocus(window);
     if (result.canceled || result.filePath === undefined || result.filePath.length === 0) {
       return undefined;
     }
@@ -80,6 +95,7 @@ export class FileDialogService implements IFileDialogService {
     const result = window
       ? await dialog.showMessageBox(window, options)
       : await dialog.showMessageBox(options);
+    restoreWindowFocus(window);
     return result.response === 0;
   }
 }

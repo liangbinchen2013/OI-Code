@@ -23,6 +23,7 @@ export interface IEditorPaneHandle {
   markSaved(uri: URI): void;
   setMarkers(uri: URI, markers: readonly IEditorMarker[]): void;
   revealPosition(uri: URI, line: number, column: number): void;
+  focus(): void;
 }
 
 export interface IEditorPaneProps {
@@ -105,6 +106,9 @@ export function EditorPane({
       },
       revealPosition: (uri: URI, line: number, column: number): void => {
         editor?.revealPosition(uri, line, column);
+      },
+      focus: (): void => {
+        editor?.focus();
       },
     }),
     [editor],
