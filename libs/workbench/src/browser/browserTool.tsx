@@ -29,7 +29,6 @@ interface IWebviewElement extends HTMLElement {
   canGoForward(): boolean;
   insertCSS(css: string): Promise<string>;
   removeInsertedCSS(key: string): Promise<void>;
-  setBackgroundColor(color: string): void;
 }
 
 interface IWebviewFailLoadEvent {
@@ -38,8 +37,6 @@ interface IWebviewFailLoadEvent {
 }
 
 const BROWSER_PARTITION = 'persist:oi-code-browser';
-const DARK_BACKGROUND = '#0d1117';
-const LIGHT_BACKGROUND = '#ffffff';
 
 /** 暗色主题：整体反色 + 媒体二次反色，兼容不支持深色的站点。 */
 const DARK_THEME_CSS = [
@@ -75,7 +72,6 @@ export function BrowserTool({ hidden }: IBrowserToolProps) {
     const dark =
       selected === 'dark' ||
       (selected === 'system' && window.matchMedia('(prefers-color-scheme: dark)').matches);
-    webview.setBackgroundColor(dark ? DARK_BACKGROUND : LIGHT_BACKGROUND);
     const previousKey = insertedCssKeyRef.current;
     if (previousKey !== undefined) {
       insertedCssKeyRef.current = undefined;
