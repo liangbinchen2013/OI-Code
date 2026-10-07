@@ -117,6 +117,27 @@ export const PYTHON_RPC_NOTIFICATIONS = {
   pipOutput: 'python.pipOutput',
 } as const;
 
+/**
+ * VJudge 服务的 RPC 方法名。
+ */
+export const VJUDGE_RPC_METHODS = {
+  getConfig: 'vjudge.getConfig',
+  getAccount: 'vjudge.getAccount',
+  fetchProblem: 'vjudge.fetchProblem',
+  submit: 'vjudge.submit',
+  getSubmission: 'vjudge.getSubmission',
+  watch: 'vjudge.watch',
+  unwatch: 'vjudge.unwatch',
+  getSolvedProblems: 'vjudge.getSolvedProblems',
+} as const;
+
+/**
+ * VJudge 的服务端通知方法名：判题结果爬取更新。
+ */
+export const VJUDGE_RPC_NOTIFICATIONS = {
+  submissionUpdate: 'vjudge.submissionUpdate',
+} as const;
+
 export type JsonRpcId = number | string;
 
 export interface JsonRpcRequest {

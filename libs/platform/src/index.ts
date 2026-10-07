@@ -20,3 +20,5 @@ export * from './common/runner';
 export * from './common/testData';
 export * from './common/toolchain';
 export * from './common/toolchainServiceClient';
+export * from './common/vjudge';
+export * from './common/vjudgeMarkdown';
