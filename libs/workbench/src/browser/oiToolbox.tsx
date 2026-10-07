@@ -9,14 +9,16 @@ import {
   faPause,
   faPlay,
   faRotateLeft,
+  faScaleBalanced,
   faStopwatch,
 } from '@fortawesome/free-solid-svg-icons';
 import { useCallback, useEffect, useRef, useState } from 'react';
 import { BrowserTool } from './browserTool';
 import { JudgeTool, type IJudgeSource } from './judgeTool';
+import { StressTool } from './stressTool';
 import { WORKBENCH_STRINGS } from './strings';
 
-type ToolboxTool = 'list' | 'judge' | 'timer' | 'browser';
+type ToolboxTool = 'list' | 'judge' | 'stress' | 'timer' | 'browser';
 type TimerMode = 'stopwatch' | 'countdown';
 
 const TICK_INTERVAL_MS = 50;
@@ -251,6 +253,15 @@ export function ToolboxPanel({
             </button>
             <button
               type="button"
+              className="oi-tool-row oi-tool-stress"
+              onClick={() => setTool('stress')}
+            >
+              <FontAwesomeIcon icon={faScaleBalanced} aria-hidden="true" />
+              <span className="oi-tool-name">{WORKBENCH_STRINGS.toolStress}</span>
+              <span className="oi-tool-hint">{WORKBENCH_STRINGS.toolStressHint}</span>
+            </button>
+            <button
+              type="button"
               className="oi-tool-row oi-tool-browser"
               onClick={() => {
                 setBrowserStarted(true);
@@ -278,6 +289,9 @@ export function ToolboxPanel({
             fileDialogService={fileDialogService}
             resolveSource={resolveJudgeSource}
           />
+        ) : null}
+        {tool === 'stress' ? (
+          <StressTool judgeService={judgeService} fileDialogService={fileDialogService} />
         ) : null}
         {tool === 'timer' ? <TimerTool /> : null}
       </div>

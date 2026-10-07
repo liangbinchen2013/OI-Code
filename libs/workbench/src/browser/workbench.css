@@ -1237,6 +1237,62 @@ body {
   color: var(--warn);
 }
 
+/* 对拍：三件套选择 + 进度 + 差异输出 */
+.oi-stress {
+  display: flex;
+  flex: 1;
+  flex-direction: column;
+  gap: 10px;
+  min-width: 0;
+}
+
+.oi-stress[hidden] {
+  display: none !important;
+}
+
+.oi-stress-targets {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+.oi-stress-target {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+
+.oi-stress-pick {
+  width: 100%;
+  justify-content: flex-start;
+  height: 32px;
+}
+
+.oi-stress-target-name {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.oi-stress-summary {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+}
+
+.oi-stress-output {
+  max-height: 160px;
+  margin: 2px 0 6px;
+  padding: 8px 10px;
+  overflow: auto;
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  background: var(--code-bg);
+  font-family: var(--font-mono);
+  font-size: 12px;
+  white-space: pre-wrap;
+}
+
 /* 内置浏览器：工具栏 + 地址栏 + webview 舞台 */
 .oi-browser {
   display: flex;
