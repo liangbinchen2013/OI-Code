@@ -1380,7 +1380,7 @@ function Workbench({ services, initialTheme, onDirtyStateChange }: IWorkbenchPro
                       tabSize={editorSettings.tabSize}
                     />
                   ) : (
-                    <PreviewPanel document={previewDocument} />
+                    <PreviewPanel document={previewDocument} theme={theme} />
                   )}
                 </div>
               </>

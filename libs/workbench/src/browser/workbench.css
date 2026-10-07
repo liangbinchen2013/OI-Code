@@ -698,6 +698,23 @@ body {
   padding-left: 22px;
 }
 
+.oi-preview-markdown table {
+  margin: 0.8em 0;
+  border-collapse: collapse;
+}
+
+.oi-preview-markdown th,
+.oi-preview-markdown td {
+  padding: 6px 10px;
+  border: 1px solid var(--border);
+  text-align: left;
+}
+
+.oi-preview-markdown th {
+  background: var(--btn-bg);
+  font-weight: 600;
+}
+
 .oi-preview-markdown code {
   padding: 1px 5px;
   border-radius: 6px;

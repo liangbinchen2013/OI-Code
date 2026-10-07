@@ -28,6 +28,21 @@ describe('renderMarkdown', () => {
     expect(html).toContain('int main() {}');
   });
 
+  it('渲染 GitHub 风格表格', () => {
+    const html = renderMarkdown(
+      '| 复杂度 | 值 |\n| --- | :--: |\n| 时间 | O(n) |\n| 空间 | O(1) |\n\n结束',
+    );
+
+    expect(html).toContain('<table><thead><tr>');
+    expect(html).toContain('<th>复杂度</th>');
+    expect(html).toContain('<th>值</th>');
+    expect(html).toContain('<td>时间</td>');
+    expect(html).toContain('<td>O(n)</td>');
+    expect(html).toContain('<td>空间</td>');
+    expect(html).toContain('<td>O(1)</td>');
+    expect(html).toContain('<p>结束</p>');
+  });
+
   it('文本先转义，脚本不会进入输出', () => {
     const html = renderMarkdown('<script>alert(1)</script>');
 

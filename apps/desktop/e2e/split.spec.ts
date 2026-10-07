@@ -34,7 +34,24 @@ test('分屏预览：Markdown 实时渲染、拖拽比例、方向切换与持�
   test.setTimeout(120_000);
   const directory = await mkdtemp(join(tmpdir(), 'oi-code-split-'));
   const markdownPath = join(directory, 'solution.md');
-  await writeFile(markdownPath, '# 题解\n\n**核心**思路\n', 'utf8');
+  await writeFile(
+    markdownPath,
+    [
+      '# 题解',
+      '',
+      '**核心**思路',
+      '',
+      '| 复杂度 | 值 |',
+      '| --- | --- |',
+      '| 时间 | O(n) |',
+      '',
+      '```cpp',
+      'int main() { return 0; }',
+      '```',
+      '',
+    ].join('\n'),
+    'utf8',
+  );
 
   const app = await launchApp();
   try {
@@ -52,6 +69,13 @@ test('分屏预览：Markdown 实时渲染、拖拽比例、方向切换与持�
     await expect(page.locator('.oi-split-horizontal')).toBeAttached();
     await expect(page.locator('.oi-split-secondary')).toBeVisible();
     await expect(page.locator('.oi-preview-markdown h1')).toHaveText('题解');
+
+    // 表格与代码块高亮（Monaco 词法着色）
+    await expect(page.locator('.oi-preview-markdown table th').first()).toHaveText('复杂度');
+    await expect(page.locator('.oi-preview-markdown table td', { hasText: 'O(n)' })).toBeVisible();
+    await expect(
+      page.locator('.oi-preview-markdown pre.oi-md-code span[class*="mtk"]').first(),
+    ).toBeAttached();
 
     // 编辑内容实时反映到预览
     await page.locator('.monaco-editor').click();

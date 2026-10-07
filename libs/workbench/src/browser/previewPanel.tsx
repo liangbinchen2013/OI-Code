@@ -1,6 +1,9 @@
+import { onUnexpectedError } from '@oi/base';
+import type { ThemeKind } from '@oi/editor/browser';
+import { colorizeCode } from '@oi/editor/browser';
 import { FontAwesomeIcon } from '@fortawesome/react-fontawesome';
 import { faEye } from '@fortawesome/free-solid-svg-icons';
-import type { ReactElement } from 'react';
+import { useEffect, useRef, type ReactElement } from 'react';
 import { renderMarkdown } from './markdown';
 import { WORKBENCH_STRINGS } from './strings';
 
@@ -11,6 +14,8 @@ export interface IPreviewDocument {
 
 export interface IPreviewPanelProps {
   readonly document: IPreviewDocument | undefined;
+  /** 主题变化时重新着色代码块。 */
+  readonly theme?: ThemeKind;
 }
 
 function extensionOf(name: string): string {
@@ -27,9 +32,38 @@ export function isPreviewableName(name: string): boolean {
 }
 
 /**
- * 分屏预览面板：Markdown 实时渲染、HTML 沙箱预览，其余类型给出提示。
+ * 分屏预览面板：Markdown 实时渲染（表格 + Monaco 代码高亮）、HTML 沙箱预览，
+ * 其余类型给出提示。
  */
-export function PreviewPanel({ document }: IPreviewPanelProps) {
+export function PreviewPanel({ document, theme }: IPreviewPanelProps) {
+  const markdownRef = useRef<HTMLElement | null>(null);
+  const markdownContent = document?.content;
+
+  // 代码块二次处理：用 Monaco 词法着色替换纯文本
+  useEffect(() => {
+    const root = markdownRef.current;
+    if (root === null || markdownContent === undefined) {
+      return undefined;
+    }
+    let cancelled = false;
+    const blocks = root.querySelectorAll<HTMLElement>('pre.oi-md-code[data-language]');
+    for (const block of blocks) {
+      const language = block.dataset['language'] ?? 'plaintext';
+      const code = block.textContent ?? '';
+      void colorizeCode(code, language).then(
+        (highlighted) => {
+          if (!cancelled) {
+            block.innerHTML = highlighted;
+          }
+        },
+        (error: unknown) => onUnexpectedError(error),
+      );
+    }
+    return () => {
+      cancelled = true;
+    };
+  }, [markdownContent, theme]);
+
   let body: ReactElement;
   if (document === undefined) {
     body = <p className="oi-preview-empty">{WORKBENCH_STRINGS.previewNoDocument}</p>;
@@ -38,6 +72,7 @@ export function PreviewPanel({ document }: IPreviewPanelProps) {
     if (extension === 'md' || extension === 'markdown') {
       body = (
         <article
+          ref={markdownRef}
           className="oi-preview-markdown"
           // 内容已经 renderMarkdown 转义，仅生成受控标签
           dangerouslySetInnerHTML={{ __html: renderMarkdown(document.content) }}

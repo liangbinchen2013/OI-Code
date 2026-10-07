@@ -17,6 +17,24 @@ const LIST_ITEM = /^\s*[-*]\s+(.+)$/;
 const FENCE = /^\s*```(.*)$/;
 const FENCE_CLOSE = /^\s*```\s*$/;
 const SAFE_HREF = /^(https?:|#|\/|\.{1,2}\/)/i;
+const TABLE_SEPARATOR_CELL = /^:?-{2,}:?$/;
+
+/** 拆分表格行；无 `|` 或仅分隔线样式时返回 undefined。 */
+function splitTableRow(line: string): string[] | undefined {
+  const trimmed = line.trim();
+  if (!trimmed.includes('|')) {
+    return undefined;
+  }
+  return trimmed
+    .replace(/^\|/, '')
+    .replace(/\|$/, '')
+    .split('|')
+    .map((cell) => cell.trim());
+}
+
+function isTableSeparator(row: readonly string[]): boolean {
+  return row.length > 0 && row.every((cell) => TABLE_SEPARATOR_CELL.test(cell));
+}
 
 function renderInline(escaped: string): string {
   let result = escaped.replace(/`([^`]+)`/g, '<code>$1</code>');
@@ -49,7 +67,9 @@ export function renderMarkdown(source: string): string {
     }
   };
 
-  for (const line of source.split(/\r?\n/)) {
+  const lines = source.split(/\r?\n/);
+  for (let index = 0; index < lines.length; index += 1) {
+    const line = lines[index] ?? '';
     if (fenceOpen) {
       if (FENCE_CLOSE.test(line)) {
         html.push('</code></pre>');
@@ -57,6 +77,39 @@ export function renderMarkdown(source: string): string {
       } else {
         html.push(`${escapeHtml(line)}\n`);
       }
+      continue;
+    }
+    // GitHub 风格表格：表头行 + 分隔行（|---|:--:|）触发
+    const headerCells = splitTableRow(line);
+    const separatorCells =
+      headerCells === undefined ? undefined : splitTableRow(lines[index + 1] ?? '');
+    if (
+      headerCells !== undefined &&
+      separatorCells !== undefined &&
+      isTableSeparator(separatorCells)
+    ) {
+      flushParagraph();
+      closeList();
+      html.push('<table><thead><tr>');
+      for (const cell of headerCells) {
+        html.push(`<th>${renderInline(escapeHtml(cell))}</th>`);
+      }
+      html.push('</tr></thead><tbody>');
+      index += 2;
+      while (index < lines.length) {
+        const bodyCells = splitTableRow(lines[index] ?? '');
+        if (bodyCells === undefined) {
+          index -= 1;
+          break;
+        }
+        html.push('<tr>');
+        for (let column = 0; column < headerCells.length; column += 1) {
+          html.push(`<td>${renderInline(escapeHtml(bodyCells[column] ?? ''))}</td>`);
+        }
+        html.push('</tr>');
+        index += 1;
+      }
+      html.push('</tbody></table>');
       continue;
     }
     const fence = FENCE.exec(line);
