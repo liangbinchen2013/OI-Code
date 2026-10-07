@@ -11,11 +11,14 @@ import {
   type ICompileResult,
   type IRunResult,
   type ISearchProgress,
+  type IToolchainCandidate,
   type IToolchainService,
   type IToolchainStatus,
+  type ToolchainCandidateSource,
 } from '@oi/platform';
 import { CONFIG_KEYS } from './configKeys';
 import { parseCppDiagnostics, type IMapSourceFileResult } from './cppDiagnostics';
+import { defaultSearchRoots, findFiles } from './fileSearch';
 import { runProcess, withPrependedPath } from './processRunner';
 
 const VERSION_TIMEOUT_MS = 5_000;
@@ -25,6 +28,8 @@ const COMPILE_TIMEOUT_MS = 60_000;
 const MAX_DIAGNOSTICS = 100;
 const PROBE_SOURCE = 'int main() { return 0; }\n';
 const MAX_CUSTOM_FLAGS_LENGTH = 2000;
+/** 强力搜索进度上报的最小间隔，避免 IPC 消息过密。 */
+const SCAN_DETAIL_INTERVAL_MS = 150;
 
 const BASE_STANDARDS = ['c++98', 'c++03', 'c++11', 'c++14', 'c++17', 'c++20', 'c++23'];
 const FIRST_FUTURE_STANDARD_YEAR = 26;
@@ -167,8 +172,60 @@ function commonGppCandidates(): string[] {
   return candidates;
 }
 
+function gppExecutableName(): string {
+  return process.platform === 'win32' ? 'g++.exe' : 'g++';
+}
+
 /**
- * g++ 工具链实现：候选去重 → 版本探测（取最高版本）→ 标准逐个探测 → 配置持久化。
+ * 归类常规定位候选的来源：MSYS2 / MinGW / 其它视为 PATH 系。
+ */
+export function classifyKnownSource(path: string): ToolchainCandidateSource {
+  const lower = path.toLowerCase();
+  if (lower.includes('msys')) {
+    return 'msys2';
+  }
+  if (lower.includes('mingw') || lower.includes('dev-cpp')) {
+    return 'mingw';
+  }
+  return 'path';
+}
+
+const CANDIDATE_SOURCES: ReadonlySet<ToolchainCandidateSource> = new Set([
+  'path',
+  'msys2',
+  'mingw',
+  'global',
+]);
+
+/**
+ * 校验持久化的候选列表；结构不符的条目直接丢弃。
+ */
+export function parseCandidates(value: unknown): IToolchainCandidate[] {
+  if (!Array.isArray(value)) {
+    return [];
+  }
+  return value.flatMap((entry) => {
+    if (typeof entry !== 'object' || entry === null) {
+      return [];
+    }
+    const { path, version, source } = entry as {
+      path?: unknown;
+      version?: unknown;
+      source?: unknown;
+    };
+    if (typeof path !== 'string' || typeof version !== 'string') {
+      return [];
+    }
+    if (typeof source !== 'string' || !CANDIDATE_SOURCES.has(source as ToolchainCandidateSource)) {
+      return [];
+    }
+    return [{ path, version, source: source as ToolchainCandidateSource }];
+  });
+}
+
+/**
+ * g++ 工具链实现：候选去重 → 版本探测 → 标准逐个探测 → 配置持久化。
+ * 支持常规定位与全盘强力搜索；多候选可由用户选择默认编译器。
  * 编译走同目录临时源文件，不覆盖用户文件；可执行文件与源文件同目录同名。
  */
 export class ToolchainService implements IToolchainService {
@@ -192,6 +249,7 @@ export class ToolchainService implements IToolchainService {
       : [];
     const defaultStandard = await this._configService.get(CONFIG_KEYS.cppStandard);
     const customFlags = await this._configService.get(CONFIG_KEYS.cppCustomFlags);
+    const candidates = parseCandidates(await this._configService.get(CONFIG_KEYS.cppCandidates));
     return {
       found: true,
       compilerPath,
@@ -199,30 +257,37 @@ export class ToolchainService implements IToolchainService {
       supportedStandards,
       ...(typeof defaultStandard === 'string' ? { defaultStandard } : {}),
       ...(typeof customFlags === 'string' && customFlags.length > 0 ? { customFlags } : {}),
+      ...(candidates.length > 0 ? { candidates } : {}),
     };
   }
 
   async search(onProgress?: (progress: ISearchProgress) => void): Promise<IToolchainStatus> {
     onProgress?.({ phase: 'searching' });
-    const compiler = await this._findCompiler(onProgress);
-    if (compiler === undefined) {
-      onProgress?.({ phase: 'finished' });
-      return { found: false, supportedStandards: [] };
+    const candidates = await this._collectCandidates(false, onProgress);
+    return this._applySearchResult(candidates, onProgress);
+  }
+
+  async forceSearch(onProgress?: (progress: ISearchProgress) => void): Promise<IToolchainStatus> {
+    onProgress?.({ phase: 'searching', detail: '正在扫描磁盘…' });
+    const candidates = await this._collectCandidates(true, onProgress);
+    return this._applySearchResult(candidates, onProgress);
+  }
+
+  async setDefaultCompiler(path: string): Promise<IToolchainStatus> {
+    if (!isAbsolutePath(path) || !existsSync(path)) {
+      throw new Error(`编译器不存在：${path}`);
     }
-    const supportedStandards = await this._detectStandards(compiler.path, onProgress);
+    const version = await this._probeVersion(path);
+    if (version === undefined) {
+      throw new Error(`无法识别的 g++ 编译器：${path}`);
+    }
+    const supportedStandards = await this._detectStandards(path);
     const defaultStandard = await this._chooseDefaultStandard(supportedStandards);
-    await this._configService.set(CONFIG_KEYS.gppPath, compiler.path);
-    await this._configService.set(CONFIG_KEYS.gppVersion, compiler.version);
+    await this._configService.set(CONFIG_KEYS.gppPath, path);
+    await this._configService.set(CONFIG_KEYS.gppVersion, version);
     await this._configService.set(CONFIG_KEYS.cppStandards, supportedStandards);
     await this._configService.set(CONFIG_KEYS.cppStandard, defaultStandard);
-    onProgress?.({ phase: 'finished' });
-    return {
-      found: true,
-      compilerPath: compiler.path,
-      compilerVersion: compiler.version,
-      supportedStandards,
-      defaultStandard,
-    };
+    return this.getStatus();
   }
 
   async setDefaultStandard(standard: string): Promise<void> {
@@ -406,38 +471,118 @@ export class ToolchainService implements IToolchainService {
     }
   }
 
-  private async _findCompiler(
+  /**
+   * 收集编译器候选：PATH 与常见安装位置，可选全盘强力扫描；
+   * 逐个探测版本并按版本降序排列。
+   */
+  private async _collectCandidates(
+    includeGlobal: boolean,
     onProgress?: (progress: ISearchProgress) => void,
-  ): Promise<{ path: string; version: string } | undefined> {
-    const candidates: string[] = [];
+  ): Promise<IToolchainCandidate[]> {
+    const entries: { path: string; source: ToolchainCandidateSource }[] = [];
     const seen = new Set<string>();
-    const push = (path: string): void => {
+    const push = (path: string, source: ToolchainCandidateSource): void => {
       const key = normalizeForCompare(path);
       if (!seen.has(key)) {
         seen.add(key);
-        candidates.push(path);
+        entries.push({ path, source });
       }
     };
     for (const path of await findGppOnPath()) {
-      push(path);
+      push(path, 'path');
     }
     for (const path of commonGppCandidates()) {
-      push(path);
+      push(path, classifyKnownSource(path));
+    }
+    if (includeGlobal) {
+      let lastReportedAt = 0;
+      const globalPaths = await findFiles({
+        roots: defaultSearchRoots(),
+        fileNames: new Set([gppExecutableName()]),
+        onDirectory: (directory) => {
+          const now = Date.now();
+          if (now - lastReportedAt >= SCAN_DETAIL_INTERVAL_MS) {
+            lastReportedAt = now;
+            onProgress?.({ phase: 'searching', detail: directory });
+          }
+        },
+        onError: (directory, error) => {
+          this._logService.debug(`强力搜索跳过目录：${directory}`, error.message);
+        },
+      });
+      for (const path of globalPaths) {
+        push(path, 'global');
+      }
     }
 
-    const compilers: { path: string; version: string }[] = [];
-    for (const candidate of candidates) {
-      if (!existsSync(candidate)) {
+    const candidates: IToolchainCandidate[] = [];
+    const probed = new Set<string>();
+    for (const entry of entries) {
+      if (!existsSync(entry.path)) {
         continue;
       }
-      onProgress?.({ phase: 'probing', detail: candidate });
-      const version = await this._probeVersion(candidate);
+      const key = normalizeForCompare(entry.path);
+      if (probed.has(key)) {
+        continue;
+      }
+      probed.add(key);
+      onProgress?.({ phase: 'probing', detail: entry.path });
+      const version = await this._probeVersion(entry.path);
       if (version !== undefined) {
-        compilers.push({ path: candidate, version });
+        candidates.push({ path: entry.path, version, source: entry.source });
       }
     }
-    compilers.sort((left, right) => compareVersions(right.version, left.version));
-    return compilers[0];
+    candidates.sort(
+      (left, right) =>
+        compareVersions(right.version, left.version) || left.path.localeCompare(right.path),
+    );
+    return candidates;
+  }
+
+  /**
+   * 搜索结果落地：保留用户已选编译器（仍可用时），否则取版本最高者；
+   * 实测默认编译器支持的标准后持久化。
+   */
+  private async _applySearchResult(
+    candidates: readonly IToolchainCandidate[],
+    onProgress?: (progress: ISearchProgress) => void,
+  ): Promise<IToolchainStatus> {
+    const compiler = await this._chooseCompiler(candidates);
+    if (compiler === undefined) {
+      onProgress?.({ phase: 'finished' });
+      return { found: false, supportedStandards: [] };
+    }
+    const supportedStandards = await this._detectStandards(compiler.path, onProgress);
+    const defaultStandard = await this._chooseDefaultStandard(supportedStandards);
+    await this._configService.set(CONFIG_KEYS.gppPath, compiler.path);
+    await this._configService.set(CONFIG_KEYS.gppVersion, compiler.version);
+    await this._configService.set(CONFIG_KEYS.cppStandards, supportedStandards);
+    await this._configService.set(CONFIG_KEYS.cppStandard, defaultStandard);
+    await this._configService.set(CONFIG_KEYS.cppCandidates, candidates);
+    onProgress?.({ phase: 'finished' });
+    return {
+      found: true,
+      compilerPath: compiler.path,
+      compilerVersion: compiler.version,
+      supportedStandards,
+      defaultStandard,
+      candidates,
+    };
+  }
+
+  private async _chooseCompiler(
+    candidates: readonly IToolchainCandidate[],
+  ): Promise<IToolchainCandidate | undefined> {
+    const configured = await this._configService.get(CONFIG_KEYS.gppPath);
+    if (typeof configured === 'string') {
+      const match = candidates.find(
+        (candidate) => normalizeForCompare(candidate.path) === normalizeForCompare(configured),
+      );
+      if (match !== undefined) {
+        return match;
+      }
+    }
+    return candidates[0];
   }
 
   private async _probeVersion(path: string): Promise<string | undefined> {

@@ -9,6 +9,7 @@ import {
   PythonService,
   TSINGHUA_PYPI_INDEX,
   buildPipArguments,
+  mergeInterpreters,
   parsePyLauncherOutput,
   parseSyntaxCheckOutput,
   validatePackageSpec,
@@ -41,6 +42,28 @@ class MemoryConfigService implements IConfigService {
 const runnerStub: IRunnerService = {
   run: () => Promise.resolve({ launched: false }),
 };
+
+describe('mergeInterpreters', () => {
+  it('按路径去重并保持版本降序，新探测结果覆盖旧条目', () => {
+    const merged = mergeInterpreters(
+      [
+        { path: 'C:\\Python311\\python.exe', version: '3.11.9', versionText: 'Python 3.11.9' },
+        { path: 'C:\\msys64\\python.exe', version: '3.12.0', versionText: 'Python 3.12.0' },
+      ],
+      [
+        { path: 'c:/PYTHON311/python.exe', version: '3.11.9', versionText: 'Python 3.11.9' },
+        { path: 'C:\\Python313\\python.exe', version: '3.13.1', versionText: 'Python 3.13.1' },
+      ],
+    );
+
+    expect(merged.map((interpreter) => interpreter.version)).toEqual([
+      '3.13.1',
+      '3.12.0',
+      '3.11.9',
+    ]);
+    expect(merged).toHaveLength(3);
+  });
+});
 
 describe('parsePyLauncherOutput', () => {
   it('提取含空格的解释器路径', () => {

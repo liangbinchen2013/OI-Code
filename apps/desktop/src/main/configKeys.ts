@@ -7,6 +7,7 @@ export const CONFIG_KEYS = {
   cppStandards: 'cpp.supportedStandards',
   cppStandard: 'cpp.standard',
   cppCustomFlags: 'cpp.customFlags',
+  cppCandidates: 'cpp.candidates',
   pythonPath: 'python.interpreterPath',
   pythonInterpreters: 'python.interpreters',
   runnerHash: 'runner.sourceHash',

@@ -17,12 +17,35 @@ import {
   type ISearchProgress,
 } from '@oi/platform';
 import { CONFIG_KEYS } from './configKeys';
+import { defaultSearchRoots, findFiles } from './fileSearch';
 import { runProcess } from './processRunner';
 import { compareVersions } from './toolchainService';
 
 const PROBE_TIMEOUT_MS = 5_000;
 const CHECK_TIMEOUT_MS = 10_000;
 const PIP_TIMEOUT_MS = 600_000;
+/** 强力搜索进度上报的最小间隔，避免 IPC 消息过密。 */
+const SCAN_DETAIL_INTERVAL_MS = 150;
+
+function pythonExecutableNames(): ReadonlySet<string> {
+  return process.platform === 'win32'
+    ? new Set(['python.exe', 'python3.exe'])
+    : new Set(['python3', 'python']);
+}
+
+/**
+ * 合并已有与新发现的解释器：同一路径只保留一条，新探测结果优先。
+ */
+export function mergeInterpreters(
+  existing: readonly IPythonInterpreter[],
+  discovered: readonly IPythonInterpreter[],
+): IPythonInterpreter[] {
+  const merged = new Map<string, IPythonInterpreter>();
+  for (const interpreter of [...existing, ...discovered]) {
+    merged.set(interpreter.path.replace(/\//g, '\\').toLowerCase(), interpreter);
+  }
+  return [...merged.values()].sort((left, right) => compareVersions(right.version, left.version));
+}
 
 /** 清华 PyPI 镜像。 */
 export const TSINGHUA_PYPI_INDEX = 'https://pypi.tuna.tsinghua.edu.cn/simple';
@@ -166,35 +189,33 @@ export class PythonService implements IPythonService {
   async search(onProgress?: (progress: ISearchProgress) => void): Promise<IPythonStatus> {
     onProgress?.({ phase: 'searching' });
     const candidates = await this._findCandidates();
-    const interpreters: IPythonInterpreter[] = [];
-    const seen = new Set<string>();
-    for (const candidate of candidates) {
-      onProgress?.({ phase: 'probing', detail: candidate });
-      const interpreter = await this._probeInterpreter(candidate);
-      if (interpreter === undefined) {
-        continue;
-      }
-      const key = interpreter.path.replace(/\//g, '\\').toLowerCase();
-      if (seen.has(key)) {
-        continue;
-      }
-      seen.add(key);
-      interpreters.push(interpreter);
-    }
-    interpreters.sort((left, right) => compareVersions(right.version, left.version));
+    const interpreters = await this._probeAll(candidates, onProgress);
+    return this._commitInterpreters(interpreters, onProgress);
+  }
 
-    const previousDefault = await this._configService.get(CONFIG_KEYS.pythonPath);
-    const defaultPath =
-      typeof previousDefault === 'string' &&
-      interpreters.some((interpreter) => interpreter.path === previousDefault)
-        ? previousDefault
-        : interpreters[0]?.path;
-    if (defaultPath !== undefined) {
-      await this._configService.set(CONFIG_KEYS.pythonPath, defaultPath);
-    }
-    await this._configService.set(CONFIG_KEYS.pythonInterpreters, interpreters);
-    onProgress?.({ phase: 'finished' });
-    return { interpreters, ...(defaultPath === undefined ? {} : { defaultPath }) };
+  async forceSearch(onProgress?: (progress: ISearchProgress) => void): Promise<IPythonStatus> {
+    onProgress?.({ phase: 'searching', detail: '正在扫描磁盘…' });
+    const candidates = await this._findCandidates();
+    let lastReportedAt = 0;
+    const scanned = await findFiles({
+      roots: defaultSearchRoots(),
+      fileNames: pythonExecutableNames(),
+      onDirectory: (directory) => {
+        const now = Date.now();
+        if (now - lastReportedAt >= SCAN_DETAIL_INTERVAL_MS) {
+          lastReportedAt = now;
+          onProgress?.({ phase: 'searching', detail: directory });
+        }
+      },
+      onError: (directory, error) => {
+        this._logService.debug(`强力搜索跳过目录：${directory}`, error.message);
+      },
+    });
+    candidates.push(...scanned);
+    const discovered = await this._probeAll(candidates, onProgress);
+    const cached = await this._readCachedInterpreters();
+    const merged = mergeInterpreters(cached, discovered);
+    return this._commitInterpreters(merged, onProgress);
   }
 
   async setDefaultInterpreter(path: string): Promise<void> {
@@ -288,6 +309,56 @@ export class PythonService implements IPythonService {
         uri,
       },
     ];
+  }
+
+  /**
+   * 逐个探测候选并去重（以解释器自报的 sys.executable 为准）。
+   */
+  private async _probeAll(
+    candidates: readonly string[],
+    onProgress?: (progress: ISearchProgress) => void,
+  ): Promise<IPythonInterpreter[]> {
+    const interpreters: IPythonInterpreter[] = [];
+    const seen = new Set<string>();
+    for (const candidate of candidates) {
+      onProgress?.({ phase: 'probing', detail: candidate });
+      const interpreter = await this._probeInterpreter(candidate);
+      if (interpreter === undefined) {
+        continue;
+      }
+      const key = interpreter.path.replace(/\//g, '\\').toLowerCase();
+      if (seen.has(key)) {
+        continue;
+      }
+      seen.add(key);
+      interpreters.push(interpreter);
+    }
+    interpreters.sort((left, right) => compareVersions(right.version, left.version));
+    return interpreters;
+  }
+
+  /**
+   * 持久化解释器列表并修正默认解释器：原默认仍有效则保留，否则取版本最高者。
+   */
+  private async _commitInterpreters(
+    interpreters: readonly IPythonInterpreter[],
+    onProgress?: (progress: ISearchProgress) => void,
+  ): Promise<IPythonStatus> {
+    const previousDefault = await this._configService.get(CONFIG_KEYS.pythonPath);
+    const defaultPath =
+      typeof previousDefault === 'string' &&
+      interpreters.some((interpreter) => interpreter.path === previousDefault)
+        ? previousDefault
+        : interpreters[0]?.path;
+    if (defaultPath !== undefined) {
+      await this._configService.set(CONFIG_KEYS.pythonPath, defaultPath);
+    }
+    await this._configService.set(CONFIG_KEYS.pythonInterpreters, interpreters);
+    onProgress?.({ phase: 'finished' });
+    return {
+      interpreters: [...interpreters],
+      ...(defaultPath === undefined ? {} : { defaultPath }),
+    };
   }
 
   private async _readCachedInterpreters(): Promise<IPythonInterpreter[]> {

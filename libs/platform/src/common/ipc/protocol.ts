@@ -61,6 +61,8 @@ export const AUTOSAVE_RPC_METHODS = {
 export const TOOLCHAIN_RPC_METHODS = {
   getStatus: 'toolchain.getStatus',
   search: 'toolchain.search',
+  forceSearch: 'toolchain.forceSearch',
+  setDefaultCompiler: 'toolchain.setDefaultCompiler',
   setDefaultStandard: 'toolchain.setDefaultStandard',
   setCustomFlags: 'toolchain.setCustomFlags',
   compile: 'toolchain.compile',
@@ -81,6 +83,7 @@ export const TOOLCHAIN_RPC_NOTIFICATIONS = {
 export const PYTHON_RPC_METHODS = {
   getStatus: 'python.getStatus',
   search: 'python.search',
+  forceSearch: 'python.forceSearch',
   setDefaultInterpreter: 'python.setDefaultInterpreter',
   pipInstall: 'python.pipInstall',
   run: 'python.run',

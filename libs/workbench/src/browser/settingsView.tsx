@@ -7,6 +7,7 @@ import {
   faFileLines,
   faFloppyDisk,
   faFolderOpen,
+  faGlobe,
   faMagnifyingGlass,
   faMoon,
   faPen,
@@ -18,8 +19,10 @@ import {
 import type {
   IPythonServiceClient,
   IPythonStatus,
+  ISearchProgress,
   IToolchainServiceClient,
   IToolchainStatus,
+  ToolchainCandidateSource,
 } from '@oi/platform';
 import { useCallback, useEffect, useRef, useState } from 'react';
 import { WORKBENCH_STRINGS } from './strings';
@@ -41,6 +44,25 @@ export interface ISettingsViewProps {
 
 const PIP_LOG_LIMIT = 200;
 
+/** 候选来源徽标文案。 */
+const CANDIDATE_SOURCE_LABELS: Record<ToolchainCandidateSource, string> = {
+  path: WORKBENCH_STRINGS.settingsSourcePath,
+  msys2: WORKBENCH_STRINGS.settingsSourceMsys2,
+  mingw: WORKBENCH_STRINGS.settingsSourceMinGW,
+  global: WORKBENCH_STRINGS.settingsSourceGlobal,
+};
+
+function progressText(progress: ISearchProgress): string {
+  const detail = progress.detail ?? '';
+  if (progress.phase === 'probing') {
+    return WORKBENCH_STRINGS.settingsProbing.replace('{target}', detail);
+  }
+  if (detail.length > 0) {
+    return WORKBENCH_STRINGS.settingsScanning.replace('{target}', detail);
+  }
+  return WORKBENCH_STRINGS.settingsSearching;
+}
+
 /**
  * 设置页：外观、文件操作、C++ 编译器、Python 解释器与 pip 安装。
  * 搜索/安装均为异步动作，搜索期间展示旋转动画与探测进度。
@@ -60,13 +82,16 @@ export function SettingsView({
 }: ISettingsViewProps) {
   const [cppStatus, setCppStatus] = useState<IToolchainStatus | undefined>(undefined);
   const [cppSearching, setCppSearching] = useState(false);
-  const [cppProgress, setCppProgress] = useState('');
+  const [cppForcing, setCppForcing] = useState(false);
+  const [cppSwitching, setCppSwitching] = useState(false);
+  const [cppProgress, setCppProgress] = useState<ISearchProgress | undefined>(undefined);
   const [cppFlags, setCppFlags] = useState('');
   const [flagsSaved, setFlagsSaved] = useState(false);
   const flagsInitializedRef = useRef(false);
   const [pythonStatus, setPythonStatus] = useState<IPythonStatus | undefined>(undefined);
   const [pythonSearching, setPythonSearching] = useState(false);
-  const [pythonProgress, setPythonProgress] = useState('');
+  const [pythonForcing, setPythonForcing] = useState(false);
+  const [pythonProgress, setPythonProgress] = useState<ISearchProgress | undefined>(undefined);
   const [packageName, setPackageName] = useState('');
   const [packageVersion, setPackageVersion] = useState('');
   const [useTsinghua, setUseTsinghua] = useState(true);
@@ -79,15 +104,15 @@ export function SettingsView({
     const store = new DisposableStore();
     store.add(
       toolchainService.onDidSearchProgress((progress) => {
-        if (progress.phase === 'probing') {
-          setCppProgress(progress.detail ?? '');
+        if (progress.phase !== 'finished') {
+          setCppProgress(progress);
         }
       }),
     );
     store.add(
       pythonService.onDidSearchProgress((progress) => {
-        if (progress.phase === 'probing') {
-          setPythonProgress(progress.detail ?? '');
+        if (progress.phase !== 'finished') {
+          setPythonProgress(progress);
         }
       }),
     );
@@ -103,16 +128,43 @@ export function SettingsView({
 
   const searchCpp = useCallback(async (): Promise<void> => {
     setCppSearching(true);
-    setCppProgress('');
+    setCppProgress(undefined);
     try {
       setCppStatus(await toolchainService.search());
     } catch (error) {
       onUnexpectedError(error);
     } finally {
       setCppSearching(false);
-      setCppProgress('');
+      setCppProgress(undefined);
     }
   }, [toolchainService]);
+
+  const forceSearchCpp = useCallback(async (): Promise<void> => {
+    setCppForcing(true);
+    setCppProgress(undefined);
+    try {
+      setCppStatus(await toolchainService.forceSearch());
+    } catch (error) {
+      onUnexpectedError(error);
+    } finally {
+      setCppForcing(false);
+      setCppProgress(undefined);
+    }
+  }, [toolchainService]);
+
+  const selectCompiler = useCallback(
+    async (path: string): Promise<void> => {
+      setCppSwitching(true);
+      try {
+        setCppStatus(await toolchainService.setDefaultCompiler(path));
+      } catch (error) {
+        onUnexpectedError(error);
+      } finally {
+        setCppSwitching(false);
+      }
+    },
+    [toolchainService],
+  );
 
   const changeStandard = useCallback(
     async (standard: string): Promise<void> => {
@@ -150,14 +202,27 @@ export function SettingsView({
 
   const searchPython = useCallback(async (): Promise<void> => {
     setPythonSearching(true);
-    setPythonProgress('');
+    setPythonProgress(undefined);
     try {
       setPythonStatus(await pythonService.search());
     } catch (error) {
       onUnexpectedError(error);
     } finally {
       setPythonSearching(false);
-      setPythonProgress('');
+      setPythonProgress(undefined);
+    }
+  }, [pythonService]);
+
+  const forceSearchPython = useCallback(async (): Promise<void> => {
+    setPythonForcing(true);
+    setPythonProgress(undefined);
+    try {
+      setPythonStatus(await pythonService.forceSearch());
+    } catch (error) {
+      onUnexpectedError(error);
+    } finally {
+      setPythonForcing(false);
+      setPythonProgress(undefined);
     }
   }, [pythonService]);
 
@@ -222,6 +287,9 @@ export function SettingsView({
   const defaultInterpreter = pythonStatus?.interpreters.find(
     (interpreter) => interpreter.path === pythonStatus.defaultPath,
   );
+  const cppBusy = cppSearching || cppForcing || cppSwitching;
+  const pythonBusy = pythonSearching || pythonForcing;
+  const cppCandidates = cppStatus?.candidates ?? [];
 
   return (
     <div className="oi-settings" hidden={hidden}>
@@ -393,7 +461,7 @@ export function SettingsView({
               type="button"
               className="oi-btn oi-btn-secondary oi-cpp-search"
               onClick={() => void searchCpp()}
-              disabled={cppSearching}
+              disabled={cppBusy}
             >
               <FontAwesomeIcon
                 icon={cppSearching ? faSpinner : faMagnifyingGlass}
@@ -408,15 +476,33 @@ export function SettingsView({
                     : WORKBENCH_STRINGS.settingsSearch}
               </span>
             </button>
-            {cppSearching && cppProgress.length > 0 ? (
-              <span
-                className="oi-search-progress"
-                title={WORKBENCH_STRINGS.settingsProbing.replace('{target}', cppProgress)}
-              >
-                {WORKBENCH_STRINGS.settingsProbing.replace('{target}', cppProgress)}
+            <button
+              type="button"
+              className="oi-btn oi-btn-secondary oi-cpp-force-search"
+              onClick={() => void forceSearchCpp()}
+              disabled={cppBusy}
+              title={WORKBENCH_STRINGS.settingsCppForceSearchHint}
+            >
+              <FontAwesomeIcon
+                icon={cppForcing ? faSpinner : faGlobe}
+                spin={cppForcing}
+                aria-hidden="true"
+              />
+              <span>
+                {cppForcing
+                  ? WORKBENCH_STRINGS.settingsSearching
+                  : WORKBENCH_STRINGS.settingsForceSearch}
+              </span>
+            </button>
+            {cppBusy && cppProgress !== undefined ? (
+              <span className="oi-search-progress" title={progressText(cppProgress)}>
+                {progressText(cppProgress)}
               </span>
             ) : null}
           </div>
+          <p className="oi-settings-hint oi-force-search-hint">
+            {WORKBENCH_STRINGS.settingsCppForceSearchHint}
+          </p>
           {cppStatus?.found === true ? (
             <div className="oi-settings-rows">
               <div className="oi-settings-row">
@@ -446,7 +532,7 @@ export function SettingsView({
                   className="oi-select"
                   value={cppStatus.defaultStandard ?? ''}
                   onChange={(event) => void changeStandard(event.target.value)}
-                  disabled={cppSearching}
+                  disabled={cppBusy}
                 >
                   {[...cppStatus.supportedStandards].reverse().map((standard) => (
                     <option key={standard} value={standard}>
@@ -455,6 +541,44 @@ export function SettingsView({
                   ))}
                 </select>
               </div>
+              {cppCandidates.length > 0 ? (
+                <div className="oi-candidates-block">
+                  <span className="oi-settings-label">
+                    {WORKBENCH_STRINGS.settingsCppCandidates}
+                  </span>
+                  <div className="oi-cpp-candidates">
+                    {cppCandidates.map((candidate) => {
+                      const active = candidate.path === cppStatus.compilerPath;
+                      return (
+                        <button
+                          key={candidate.path}
+                          type="button"
+                          className={`oi-radio-row oi-cpp-candidate${active ? ' oi-radio-row-active' : ''}`}
+                          onClick={() => void selectCompiler(candidate.path)}
+                          disabled={cppBusy}
+                          title={candidate.path}
+                        >
+                          <FontAwesomeIcon
+                            icon={faCircleCheck}
+                            className="oi-radio-icon"
+                            aria-hidden="true"
+                          />
+                          <span className="oi-python-version">{candidate.version}</span>
+                          <span className="oi-python-path">{candidate.path}</span>
+                          <span className="oi-candidate-source">
+                            {CANDIDATE_SOURCE_LABELS[candidate.source]}
+                          </span>
+                          {active ? (
+                            <span className="oi-radio-badge">
+                              {WORKBENCH_STRINGS.settingsPythonDefault}
+                            </span>
+                          ) : null}
+                        </button>
+                      );
+                    })}
+                  </div>
+                </div>
+              ) : null}
               <div className="oi-settings-row oi-settings-flags">
                 <label className="oi-settings-label" htmlFor="oi-cpp-flags">
                   {WORKBENCH_STRINGS.settingsCppFlags}
@@ -469,13 +593,13 @@ export function SettingsView({
                     setCppFlags(event.target.value);
                     setFlagsSaved(false);
                   }}
-                  disabled={cppSearching}
+                  disabled={cppBusy}
                 />
                 <button
                   type="button"
                   className="oi-btn oi-btn-secondary oi-flags-save"
                   onClick={() => void saveCppFlags()}
-                  disabled={cppSearching}
+                  disabled={cppBusy}
                 >
                   <span>{WORKBENCH_STRINGS.settingsSave}</span>
                 </button>
@@ -501,7 +625,7 @@ export function SettingsView({
               type="button"
               className="oi-btn oi-btn-secondary oi-python-search"
               onClick={() => void searchPython()}
-              disabled={pythonSearching}
+              disabled={pythonBusy}
             >
               <FontAwesomeIcon
                 icon={pythonSearching ? faSpinner : faMagnifyingGlass}
@@ -516,15 +640,33 @@ export function SettingsView({
                     : WORKBENCH_STRINGS.settingsSearch}
               </span>
             </button>
-            {pythonSearching && pythonProgress.length > 0 ? (
-              <span
-                className="oi-search-progress"
-                title={WORKBENCH_STRINGS.settingsProbing.replace('{target}', pythonProgress)}
-              >
-                {WORKBENCH_STRINGS.settingsProbing.replace('{target}', pythonProgress)}
+            <button
+              type="button"
+              className="oi-btn oi-btn-secondary oi-python-force-search"
+              onClick={() => void forceSearchPython()}
+              disabled={pythonBusy}
+              title={WORKBENCH_STRINGS.settingsPythonForceSearchHint}
+            >
+              <FontAwesomeIcon
+                icon={pythonForcing ? faSpinner : faGlobe}
+                spin={pythonForcing}
+                aria-hidden="true"
+              />
+              <span>
+                {pythonForcing
+                  ? WORKBENCH_STRINGS.settingsSearching
+                  : WORKBENCH_STRINGS.settingsForceSearch}
+              </span>
+            </button>
+            {pythonBusy && pythonProgress !== undefined ? (
+              <span className="oi-search-progress" title={progressText(pythonProgress)}>
+                {progressText(pythonProgress)}
               </span>
             ) : null}
           </div>
+          <p className="oi-settings-hint oi-force-search-hint">
+            {WORKBENCH_STRINGS.settingsPythonForceSearchHint}
+          </p>
           {pythonStatus !== undefined && pythonStatus.interpreters.length > 0 ? (
             <div className="oi-python-list">
               {pythonStatus.interpreters.map((interpreter) => {

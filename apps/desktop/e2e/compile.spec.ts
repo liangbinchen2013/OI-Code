@@ -2,7 +2,7 @@ import { execFileSync } from 'node:child_process';
 import { existsSync } from 'node:fs';
 import { mkdtemp, rm, writeFile } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
-import { basename, join } from 'node:path';
+import { basename, dirname, join } from 'node:path';
 import { expect, test, type Page } from '@playwright/test';
 import { launchApp, mockOpenFileDialog } from './helpers';
 
@@ -90,6 +90,9 @@ test('设置页自动搜索 g++ 与 Python 并展示版本与支持标准', asyn
       });
       await expect(cppSection.locator('.oi-chip-list')).toContainText('c++17');
       await expect(cppSection.locator('select#oi-cpp-standard')).toBeVisible();
+      // 搜索完成后以单选列表展示全部候选，当前默认项被标记
+      await expect(cppSection.locator('.oi-cpp-candidate').first()).toBeVisible();
+      await expect(cppSection.locator('.oi-cpp-candidate.oi-radio-row-active')).toHaveCount(1);
     }
 
     if (hasCommand('python')) {
@@ -97,7 +100,7 @@ test('设置页自动搜索 g++ 与 Python 并展示版本与支持标准', asyn
       await expect(page.locator('.oi-python-list')).toContainText('Python 3', {
         timeout: 60_000,
       });
-      await expect(page.locator('.oi-radio-row-active')).toBeVisible();
+      await expect(page.locator('.oi-python-list .oi-radio-row-active')).toBeVisible();
     }
   } finally {
     await app.close();
@@ -198,5 +201,41 @@ test('Python 语法检查经 F12 触发并标记错误，正确代码通过', as
   } finally {
     await app.close();
     await rm(directory, { recursive: true, force: true });
+  }
+});
+
+test('强力搜索在限定根目录内发现 g++ 并支持点选为默认', async () => {
+  test.setTimeout(180_000);
+  test.skip(!hasCommand('g++'), '未安装 g++');
+  const command = process.platform === 'win32' ? 'where.exe' : 'which';
+  const gppPath = execFileSync(command, ['g++'], { encoding: 'utf8' })
+    .split(/\r?\n/)
+    .map((line) => line.trim())
+    .find((line) => line.length > 0);
+  expect(gppPath).toBeTruthy();
+  if (gppPath === undefined) {
+    return;
+  }
+
+  // 限定扫描根为 g++ 所在目录，避免 E2E 全盘扫描
+  const app = await launchApp({ env: { OI_FORCE_SEARCH_ROOTS: dirname(gppPath) } });
+  try {
+    const page = await app.firstWindow();
+    await waitReady(page);
+    await page.locator('.oi-activity-item-settings').click();
+    await page.locator('.oi-cpp-force-search').click();
+
+    const candidates = page.locator('.oi-cpp-candidates .oi-cpp-candidate');
+    await expect(candidates.first()).toBeVisible({ timeout: 90_000 });
+    await expect(page.locator('.oi-cpp-candidates .oi-radio-row-active')).toHaveCount(1);
+    await expect(page.locator('.oi-candidate-source').first()).toBeVisible();
+
+    // 点击候选立即生效为默认编译器
+    await candidates.first().click();
+    await expect(candidates.first()).toHaveClass(/oi-radio-row-active/, { timeout: 60_000 });
+    const cppSection = page.locator('.oi-settings-section', { hasText: 'C++ 编译器' });
+    await expect(cppSection.locator('select#oi-cpp-standard')).toBeVisible();
+  } finally {
+    await app.close();
   }
 });

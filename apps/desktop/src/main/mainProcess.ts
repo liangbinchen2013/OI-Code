@@ -152,13 +152,13 @@ function parseFlagsParam(params: unknown): string {
   return flags;
 }
 
-function parseInterpreterPathParam(params: unknown): string {
+function parseRequiredPathParam(params: unknown, label: string): string {
   if (typeof params !== 'object' || params === null || !('path' in params)) {
-    throw new RpcError(JSON_RPC_ERROR_CODES.invalidParams, '缺少 path 参数');
+    throw new RpcError(JSON_RPC_ERROR_CODES.invalidParams, `缺少 ${label} 参数`);
   }
   const { path } = params as { path: unknown };
   if (typeof path !== 'string' || path.length === 0) {
-    throw new RpcError(JSON_RPC_ERROR_CODES.invalidParams, 'path 参数非法');
+    throw new RpcError(JSON_RPC_ERROR_CODES.invalidParams, `${label} 参数非法`);
   }
   return path;
 }
@@ -396,6 +396,14 @@ export class MainProcess implements IDisposable {
         channel.notify(TOOLCHAIN_RPC_NOTIFICATIONS.searchProgress, progress);
       }),
     );
+    channel.registerMethod(TOOLCHAIN_RPC_METHODS.forceSearch, () =>
+      this._toolchainService.forceSearch((progress) => {
+        channel.notify(TOOLCHAIN_RPC_NOTIFICATIONS.searchProgress, progress);
+      }),
+    );
+    channel.registerMethod(TOOLCHAIN_RPC_METHODS.setDefaultCompiler, (params) =>
+      this._toolchainService.setDefaultCompiler(parseRequiredPathParam(params, 'compilerPath')),
+    );
     channel.registerMethod(TOOLCHAIN_RPC_METHODS.setDefaultStandard, async (params) => {
       await this._toolchainService.setDefaultStandard(parseStandardParam(params));
     });
@@ -427,8 +435,15 @@ export class MainProcess implements IDisposable {
         channel.notify(PYTHON_RPC_NOTIFICATIONS.searchProgress, progress);
       }),
     );
+    channel.registerMethod(PYTHON_RPC_METHODS.forceSearch, () =>
+      this._pythonService.forceSearch((progress) => {
+        channel.notify(PYTHON_RPC_NOTIFICATIONS.searchProgress, progress);
+      }),
+    );
     channel.registerMethod(PYTHON_RPC_METHODS.setDefaultInterpreter, async (params) => {
-      await this._pythonService.setDefaultInterpreter(parseInterpreterPathParam(params));
+      await this._pythonService.setDefaultInterpreter(
+        parseRequiredPathParam(params, 'interpreterPath'),
+      );
     });
     channel.registerMethod(PYTHON_RPC_METHODS.pipInstall, (params) =>
       this._pythonService.pipInstall(parsePipRequestParam(params), (chunk) => {

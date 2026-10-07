@@ -65,6 +65,14 @@ export class ToolchainServiceClient implements IToolchainServiceClient, IDisposa
     return this._channel.call<IToolchainStatus>(TOOLCHAIN_RPC_METHODS.search);
   }
 
+  forceSearch(): Promise<IToolchainStatus> {
+    return this._channel.call<IToolchainStatus>(TOOLCHAIN_RPC_METHODS.forceSearch);
+  }
+
+  setDefaultCompiler(path: string): Promise<IToolchainStatus> {
+    return this._channel.call<IToolchainStatus>(TOOLCHAIN_RPC_METHODS.setDefaultCompiler, { path });
+  }
+
   async setDefaultStandard(standard: string): Promise<void> {
     await this._channel.call(TOOLCHAIN_RPC_METHODS.setDefaultStandard, { standard });
   }

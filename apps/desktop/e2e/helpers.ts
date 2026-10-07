@@ -11,6 +11,8 @@ export const mainEntry = resolve(specDir, '../../../dist/desktop/main.cjs');
 export interface ILaunchOptions {
   /** 复用既有 userData 目录（自动保存恢复用例跨重启复用）。 */
   readonly userDataDir?: string;
+  /** 追加/覆盖环境变量（如 OI_FORCE_SEARCH_ROOTS 限定强力搜索范围）。 */
+  readonly env?: Readonly<Record<string, string>>;
 }
 
 /**
@@ -31,6 +33,9 @@ export async function launchApp(options: ILaunchOptions = {}): Promise<ElectronA
   env['OI_CODE_AUTOSAVE_DIR'] = join(userDataDir, 'autosave');
   // E2E 中运行器不等待按键，避免遗留控制台窗口
   env['OI_RUNNER_NO_PAUSE'] = '1';
+  for (const [key, value] of Object.entries(options.env ?? {})) {
+    env[key] = value;
+  }
   return electron.launch(
     executablePath === undefined ? { args: [mainEntry], env } : { executablePath, env },
   );

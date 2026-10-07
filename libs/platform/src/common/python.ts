@@ -48,6 +48,8 @@ export interface IPythonService {
   getStatus(): Promise<IPythonStatus>;
   /** 全量搜索解释器；主进程实现可经回调上报进度。 */
   search(onProgress?: (progress: ISearchProgress) => void): Promise<IPythonStatus>;
+  /** 强力搜索：递归扫描磁盘寻找 python，耗时较长；结果并入解释器列表。 */
+  forceSearch(onProgress?: (progress: ISearchProgress) => void): Promise<IPythonStatus>;
   setDefaultInterpreter(path: string): Promise<void>;
   /** 执行 pip 安装；主进程实现可经回调流式上报输出。 */
   pipInstall(

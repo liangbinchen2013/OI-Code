@@ -1,8 +1,10 @@
 import { describe, expect, it } from 'vitest';
 import {
+  classifyKnownSource,
   compareVersions,
   executablePathFor,
   generateStandardCandidates,
+  parseCandidates,
   parseCompileFlags,
   parseGppVersion,
 } from './toolchainService';
@@ -67,5 +69,38 @@ describe('executablePathFor', () => {
     } else {
       expect(result).toBe('C:/problems/T1');
     }
+  });
+});
+
+describe('classifyKnownSource', () => {
+  it('按路径特征归类来源', () => {
+    expect(classifyKnownSource('C:\\msys64\\ucrt64\\bin\\g++.exe')).toBe('msys2');
+    expect(classifyKnownSource('C:\\Program Files\\mingw64\\bin\\g++.exe')).toBe('mingw');
+    expect(classifyKnownSource('C:\\Program Files (x86)\\Dev-Cpp\\MinGW64\\bin\\g++.exe')).toBe(
+      'mingw',
+    );
+    expect(classifyKnownSource('/usr/bin/g++')).toBe('path');
+  });
+});
+
+describe('parseCandidates', () => {
+  it('过滤结构非法的条目', () => {
+    expect(
+      parseCandidates([
+        { path: '/usr/bin/g++', version: '13.2.0', source: 'path' },
+        { path: '/opt/g++', version: '12.1.0', source: 'global' },
+        { path: 42, version: '1.0', source: 'path' },
+        { path: '/x', version: '1.0', source: 'unknown' },
+        'nonsense',
+      ]),
+    ).toEqual([
+      { path: '/usr/bin/g++', version: '13.2.0', source: 'path' },
+      { path: '/opt/g++', version: '12.1.0', source: 'global' },
+    ]);
+  });
+
+  it('非数组输入返回空列表', () => {
+    expect(parseCandidates(undefined)).toEqual([]);
+    expect(parseCandidates({ path: '/x' })).toEqual([]);
   });
 });

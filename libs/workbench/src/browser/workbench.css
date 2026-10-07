@@ -771,6 +771,32 @@ body {
   font-size: 11px;
 }
 
+/* 强力搜索：提示文案与候选编译器列表 */
+.oi-force-search-hint {
+  margin-top: 8px;
+}
+
+.oi-candidates-block {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+
+.oi-cpp-candidates {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+
+.oi-candidate-source {
+  flex: none;
+  padding: 2px 8px;
+  border: 1px solid var(--border);
+  border-radius: 999px;
+  color: var(--muted);
+  font-size: 11px;
+}
+
 .oi-pip-form {
   display: flex;
   flex-direction: column;
