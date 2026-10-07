@@ -820,7 +820,7 @@ export function SettingsView({
             <label className="oi-field">
               <span className="oi-settings-label">{WORKBENCH_STRINGS.settingsPipPackage}</span>
               <input
-                className="oi-input"
+                className="oi-input oi-pip-package"
                 type="text"
                 value={packageName}
                 placeholder={WORKBENCH_STRINGS.settingsPipPackagePlaceholder}
@@ -831,7 +831,7 @@ export function SettingsView({
             <label className="oi-field">
               <span className="oi-settings-label">{WORKBENCH_STRINGS.settingsPipVersion}</span>
               <input
-                className="oi-input"
+                className="oi-input oi-pip-version"
                 type="text"
                 value={packageVersion}
                 placeholder={WORKBENCH_STRINGS.settingsPipVersionPlaceholder}

@@ -1042,6 +1042,20 @@ body {
   outline-offset: 1px;
 }
 
+/* 包名 / 版本按内容规模收口，不撑满整个设置面板；窄侧栏仍回退到 100% */
+.oi-pip-form .oi-pip-package {
+  width: min(220px, 100%);
+}
+
+.oi-pip-form .oi-pip-version {
+  width: min(120px, 100%);
+}
+
+/* 安装按钮与输入列同宽，避免宽侧栏下按钮拉满整块面板 */
+.oi-pip-form .oi-pip-install {
+  width: min(220px, 100%);
+}
+
 .oi-checkbox-row {
   display: flex;
   align-items: center;
