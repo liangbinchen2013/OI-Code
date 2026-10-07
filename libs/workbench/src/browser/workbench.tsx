@@ -28,6 +28,7 @@ import type {
   IPythonServiceClient,
   ISearchProgress,
   IToolchainServiceClient,
+  IVjudgeServiceClient,
 } from '@oi/platform';
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import type { PointerEvent as ReactPointerEvent } from 'react';
@@ -98,6 +99,7 @@ export interface IWorkbenchServices {
   readonly pythonService: IPythonServiceClient;
   readonly autoSaveService: IAutoSaveServiceClient;
   readonly judgeService: IJudgeServiceClient;
+  readonly vjudgeService: IVjudgeServiceClient;
 }
 
 export interface IWorkbenchOptions {

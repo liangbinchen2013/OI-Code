@@ -17,6 +17,7 @@ import {
   PythonServiceClient,
   RpcChannel,
   ToolchainServiceClient,
+  VjudgeServiceClient,
   WINDOW_RPC_NOTIFICATIONS,
 } from '@oi/platform';
 import { renderWorkbench } from '@oi/workbench';
@@ -65,6 +66,7 @@ async function bootstrap(): Promise<void> {
   const toolchainService = new ToolchainServiceClient(channel);
   const pythonService = new PythonServiceClient(channel);
   const judgeService = new JudgeServiceClient(channel);
+  const vjudgeService = new VjudgeServiceClient(channel);
   const workbench = renderWorkbench({
     container,
     environment: preload.environment,
@@ -76,6 +78,7 @@ async function bootstrap(): Promise<void> {
       pythonService,
       autoSaveService: new AutoSaveServiceClient(channel),
       judgeService,
+      vjudgeService,
     },
     onDirtyStateChange: (dirty) => {
       channel.notify(WINDOW_RPC_NOTIFICATIONS.setDirtyState, { dirty });
@@ -87,6 +90,7 @@ async function bootstrap(): Promise<void> {
   disposables.add(toolchainService);
   disposables.add(pythonService);
   disposables.add(judgeService);
+  disposables.add(vjudgeService);
   disposables.add(workbench);
   disposables.add(channel);
   disposables.add(logService);
