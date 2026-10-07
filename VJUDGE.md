@@ -442,20 +442,38 @@ GET /user/solveDetail/{username}
 
 ---
 
-## 7. 在 OI-Code 中的落地设计（待实现，先对齐架构）
+## 7. OI-Code 落地实现（已交付首版）
 
-| 关注点 | 方案 | 归属层 |
-|--------|------|--------|
-| 服务契约 `IVjudgeService`（配置、题面、提交、查状态、记录） | 接口 + `createDecorator`，方法先行 | Platform |
-| 实际发请求（Cookie、代理、重试、限速） | Node 侧实现，注册进主进程；**渲染进程不直连网络** | Code（`apps/desktop/src/main`） |
-| 登录 | 复用内置浏览器 `webview` 分区 Cookie，不自己存密码；仅题目页与提交需要登录 | Workbench（UI）+ Code（Cookie 读取） |
-| 题面渲染 | `/problem/description/{descKey}` 返回自包含 HTML，直接喂给预览分屏的**沙箱 iframe**（与 VJudge 同构，公式免二次处理） | Workbench |
-| 时限 / 内存限制 | 解析题目页 `dataJson.properties` 的 `time_limit` / `mem_limit`，喂给评测机 | Code 解析 + Platform 类型 |
-| 语言下拉 | 缓存 `/util/cfg.remoteOJs[OJ].languages`，按 `version` 失效 | Platform 契约 + Code |
-| 提交→判题轮询 | 复用评测机的异步 + 进度通知模式（JSON-RPC 通知） | Platform 协议 + Code |
-| 状态映射 | `statusCanonical` → `JudgeVerdict`（AC/WA/TLE/MLE/RE/CE），未知码不判 AC | Platform 纯函数 + 单测 |
-| 刷题进度 / 去重 | `GET /user/solveDetail/{username}`（无需登录） | Platform 契约 + Code |
-| 资源生命周期 | 轮询定时器必须进 `DisposableStore`，取消即停 | 全层通用 |
+已按本节实现，代码位置：
+
+| 关注点 | 实现位置 |
+|--------|----------|
+| 契约与纯逻辑（OJ 匹配、状态码映射、题面版本择一、限制解析） | `libs/platform/src/common/vjudge.ts` |
+| 题面 HTML → Markdown | `libs/platform/src/common/vjudgeMarkdown.ts` |
+| 渲染进程 RPC 代理 | `libs/platform/src/common/vjudgeServiceClient.ts` |
+| 主进程网络实现 | `apps/desktop/src/main/vjudgeService.ts` |
+| 响应解析（可单测，不依赖 electron） | `apps/desktop/src/main/vjudgeParse.ts` |
+| RPC 方法/通知常量 | `libs/platform/src/common/ipc/protocol.ts`（`VJUDGE_RPC_*`） |
+| 视图（活动栏一级入口） | `libs/workbench/src/browser/vjudgePanel.tsx` |
+| 用户偏好与本地测试点存储 | `libs/workbench/src/browser/vjudgeSettings.ts` |
+| E2E | `apps/desktop/e2e/vjudge.spec.ts` |
+
+实现要点：
+
+- **登录**：不模拟登录（Turnstile + CSRF 不适合纯 HTTP），在 VJudge 视图内嵌
+  与内置浏览器同分区（`persist:oi-code-browser`）的 webview，用户手动登录；
+  主进程经 `session.fromPartition(...).cookies.get()` 复用 Cookie，应用不存密码。
+  登录态用 `GET /problem/suggestions` 探测（401 即未登录）。
+- **取题**：`/problem/info`（匿名）取标题 → 题目页（需登录）解析 `dataJson`
+  取 `descBriefs`/`properties`/`submitMethods`/`mySols` → `/problem/description/{key}`
+  取题面 HTML 转 Markdown 渲染。
+- **提交**：`/problem/submit/{OJ}-{id}`，语言表来自 `/util/cfg.remoteOjs[OJ].languages`；
+  提交前可用本地测试点先跑评测机（设置中可关）。
+- **回爬**：提交后主进程按 1s→5s 退火轮询 `/solution/data/{runId}`，
+  经 `vjudge.submissionUpdate` 通知实时回写视图，终态或 10 分钟预算后停止。
+- **记录**：`/user/solveDetail/{username}` 的 AC 题号渲染为顶部可点击胶囊。
+
+仍未接入（等 §9 补全）：发起 AI 翻译任务、比赛/题单接口、`/problem/suggestions` 搜索下拉。
 
 **注意**：工具链与外部 OJ 集成在 Extension Host（阶段 6）落地后应迁到 `libs/extensions/`，当前先放 Code 层。
 
