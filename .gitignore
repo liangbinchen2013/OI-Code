@@ -21,3 +21,6 @@ test-results/
 # 系统
 .DS_Store
 Thumbs.db
+
+# 抓包文件（含 Cookie 等请求头，禁止入库）
+*.har
