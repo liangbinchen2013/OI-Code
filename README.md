@@ -1,155 +1,180 @@
 # OI-Code
 
 **为 OIer（信息学奥赛学生）打造的跨平台一体化 IDE。**
-多语言（C++ / Python）、环境自动搭建、内置 OI 工具集（对拍、Debug、计时、内存测量）、Markdown + LaTeX 渲染。
 
-架构、规范与工作流见 [`AGENTS.md`](./AGENTS.md)；子代理见 [`.agents/`](./.agents/)。
+开箱即用的 C++ / Python 编辑、编译、运行与评测环境；对拍、评测机、内置浏览器、计时器等 OI 常用工具全部内置在侧边栏，写题、调题、测试不用离开一个窗口。
 
----
-
-## 一、依赖清单（本机环境核对）
-
-核对方式：`Get-Command <tool>` + `--version`；包管理器连通性：`npm ping`。
-
-### 1. 必需（已就绪 ✅）
-
-| 状态 | 依赖 | 版本 | 用途 |
-|------|------|------|------|
-| ✅ | Node.js | v24.19.0 | 运行时（要求 ≥ 20 LTS） |
-| ✅ | npm | 11.17.0 | 包管理兜底 |
-| ✅ | **pnpm** | 12.9.1 | 指定包管理器（AGENTS.md §1） |
-| ✅ | corepack | 0.35.0 | pnpm 版本供给 |
-| ✅ | Git | 2.55.0.windows.5 | 版本控制（`user.name` / `user.email` 已配置） |
-| ✅ | registry | npmjs.org 直连 | `npm ping` PONG ≈1.5s，无需镜像 |
-
-### 2. OI 编译 / 运行环境（已就绪 ✅）
-
-| 状态 | 依赖 | 版本 | 用途 |
-|------|------|------|------|
-| ✅ | gcc / g++ | 16.1.0（MSYS2 ucrt64） | C++ 题解编译运行 |
-| ✅ | gdb | 17.2 | Debug 工具 |
-| ✅ | ninja | 1.13.2 | 构建执行 |
-| ✅ | mingw32-make | 4.4.1 | 构建执行（替代 `make`） |
-| ✅ | cmake | 4.3.3 | 构建配置 |
-| ✅ | Python | 3.13.12 | Python 题解 |
-| ✅ | Docker | 29.7.2 | 可选：容器化构建 |
-| ✅ | winget | 1.29.380 | 备用安装源 |
-
-### 3. 待安装（☐ 未装，可选）
-
-| ☐ | 依赖 | 用途 | 安装命令 |
-|---|------|------|----------|
-| ☐ | 无 | — | 当前无必需待装项 |
-
-已装 VS Code 扩展：`dbaeumer.vscode-eslint`、`esbenp.prettier-vscode`、`nrwl.angular-console`（Nx Console）、cpptools、Python。
-
-**`make`**：ucrt64 仓库的 `mingw-w64-ucrt-x86_64-make` 只提供 `mingw32-make.exe`，原生 `make.exe` 仅在 msys 环境（`C:\msys64\usr\bin`，不在 PATH）。
-已在 PATH 内创建 shim `C:\msys64\ucrt64\bin\make.cmd` → 转发到 `C:\msys64\usr\bin\make.exe`，实测 `make --version` = GNU Make 4.4.1；`ninja` / `mingw32-make` 不受影响。
-
-不适用、**无需安装**：`valgrind`、`perf`（Windows 平台不可用）。
+> 当前状态：编辑器、编译运行、工具链环境与 OI 工具集已交付；Windows 便携版可直接打包运行。
+> 架构约束、编码规范与开发流程见 [`AGENTS.md`](./AGENTS.md)。
 
 ---
 
-## 二、项目级依赖（已安装 ✅ 2026-10-06）
+## 功能特性
 
-> `package.json` / `pnpm-lock.yaml` 已生成，`pnpm install` 完成，工具链全部验证通过（阶段 1 已建仓，2026-10-06）。
+### 编辑器
 
-### 1. 已安装清单与版本
+- Monaco 内核，C++ / Python 深度支持，内置语言全量注册（任意文件尽量匹配高亮）
+- 括号按层级着色并显示配对连接线
+- 无扩展名文件按内容自动识别 C++ / Python（并提示补后缀）
+- 字号 / 制表符宽度可在设置中调整，编辑器内 `Ctrl+滚轮` 直接缩放
+- 标签页与脏标记；`Ctrl+S` 保存、`Ctrl+O` 打开、`Ctrl+N` 新建
 
-| 类别 | 依赖 | 版本 |
+### 编译与运行
+
+- 编译复用本机 g++，标准与自定义编译选项可配置；`F12` 编译、`F10` 运行、`F11` 编译并运行
+- 工具链自动搜索（PATH、常见安装目录、MSYS2 / MinGW / Dev-Cpp 等），也可「强力搜索」全盘扫描
+- 多编译器 / 多 Python 解释器候选列表，点选即切换默认
+- 输入时实时语法检查，问题面板按 `行 | 列 | 原因` 展示并可跳转
+
+### 自动保存
+
+- 每 10 秒静默保存脏文档到临时目录，正常退出自动清理
+- 进程崩溃 / 断电后重启检测草稿，原文件未被修改时提示一键恢复
+
+### OI 工具箱（侧边栏）
+
+- **简易评测机**：测试点可手动粘贴添加、编辑、删除；支持导入文件夹或 zip 压缩包，自动按同前缀配对 `.in/.out`、`.in/.ans`、`.input/.output`；可设时间与内存限制，一键编译并对全部测试点评测，逐点给出 AC / WA / TLE / MLE / RE / CE 与耗时、内存
+- **对拍**：选择数据生成器、标准程序与待测程序，逐轮生成数据比对输出；发现不一致时展示该轮输入与两侧输出
+- **内置浏览器**：默认洛谷首页，Cookie / 登录态持久化；主题支持跟随系统 / 跟随 OI-Code / 亮色 / 暗色
+- **计时器**：正计时与倒计时
+
+### 界面与预览
+
+- 分屏：Markdown / HTML 文件实时预览；打开两个代码文件时变为双编辑器并排，保存与编译跟随焦点所在的一侧
+- Markdown 预览支持 GitHub 风格表格，代码块使用 Monaco 语法高亮
+- 侧边栏无级伸缩、拖到最窄自动折叠、窄宽度下内容自适应
+- 模板系统：内置模板可编辑、隐藏与恢复；`+` 菜单固定提供无后缀「文件」项；`Ctrl+N` 使用的模板可在设置中选择
+- 亮 / 暗主题（跟随系统），全部样式基于统一设计令牌
+
+---
+
+## 技术栈
+
+| 层面 | 选型 |
+|------|------|
+| 语言 | TypeScript（strict） |
+| 桌面 | Electron |
+| 编辑器 | Monaco Editor |
+| UI | React |
+| 构建 | Vite（开发）+ esbuild（生产） |
+| Monorepo | Nx |
+| 规范 | ESLint Flat Config + Prettier + Husky |
+| 测试 | Vitest（单元）+ Playwright（E2E） |
+| 包管理 | pnpm |
+
+---
+
+## 目录结构
+
+```
+apps/desktop      Electron 入口（主进程、preload、渲染进程装配）
+libs/base         无依赖基础设施（事件、URI、Disposable、错误处理）
+libs/platform     服务契约、IPC 协议、平台服务实现
+libs/editor       Monaco 集成与语言服务
+libs/workbench    工作台 UI（侧边栏、标签栏、工具箱、设置、分屏）
+tools/scripts     构建、打包、分层校验脚本
+```
+
+分层依赖单向：`Code → Workbench → Editor → Platform → Base`，任何越层引用都会被 `valid-layers-check` 拦截。
+
+---
+
+## 环境要求
+
+### 开发环境
+
+| 依赖 | 要求 | 说明 |
 |------|------|------|
-| 语言/规范 | `typescript` | 6.0.3（阶段 1 由 7.0.2 降级，原因见 §2.2） |
-| | `typescript-eslint` / `@eslint/js` | 8.71.1 / 10.0.1 |
-| | `eslint` / `eslint-config-prettier` | 10.12.0 / 10.1.8 |
-| | `prettier` | 3.9.9 |
-| | `husky` / `lint-staged` | 9.1.7 / 17.6.0 |
-| Monorepo/构建 | `nx` `@nx/js` `@nx/eslint` `@nx/vite` `@nx/vitest` | 23.2.1 |
-| | `nx-electron` | 22.0.0（社区 Electron 插件，替代 404 的 `@nx/electron`） |
-| | `vite` / `esbuild` | 8.3.2 / 0.28.2 |
-| 桌面 | `electron` | 44.5.1（二进制已下载） |
-| 编辑器/UI | `monaco-editor` | 0.57.0 |
-| | `react` / `react-dom` | 19.3.0 |
-| | `@vitejs/plugin-react` | 6.1.2 |
-| | `@fortawesome/*`（svg-core + solid/brands/regular + react-fontawesome） | 7.3.1 / 3.5.0，**项目唯一图标库，见 `ICON_GUIDE.md`** |
-| | `@types/react` / `@types/react-dom` / `@types/node` | 19.3.0 / 19.3.0 / 26.6.4 |
-| 测试 | `vitest` / `@vitest/coverage-v8` | **4.1.11**（见下方"已知问题"） |
-| | `@playwright/test` | 1.63.0 + Chromium 153.0.8010.12（已安装并实测启动成功） |
+| Node.js | >= 20（推荐 LTS） | 运行时 |
+| pnpm | 12.x | 仓库已在 `packageManager` 固定版本，`corepack enable` 自动供给 |
+| Git | 任意近版本 | 版本控制与提交钩子 |
 
-### 2. 阶段 1 已补齐（2026-10-06）
+### 运行环境（编译题解所需）
 
-原"未安装 / 待决"项已全部落地：
+- **C++**：任意 `g++`（推荐 MSYS2 / MinGW-w64 / Dev-Cpp / WinLibs）
+- **Python**：3.8 及以上
 
-| 依赖 / 配置 | 说明 |
-|-------------|------|
-| `typescript-eslint` 8.71.1 + `@eslint/js` 10.0.1 | TS 源码 lint；配套 `typescript` 降级至 6.0.3 |
-| `@vitejs/plugin-react` 6.1.2 | React 渲染层构建（peer `vite ^8` 已满足） |
-| `@nx/vitest` 23.2.1 | Nx 推断 `test` 目标（`testMode: run`） |
-| `nx.json` / `tsconfig.base.json` / `eslint.config.mjs` / `.prettierrc.json` / `.husky/` / `tools/scripts/` | 工作区配置、提交钩子与校验、构建脚本 |
+应用内「设置 → C++ 编译器 / Python 解释器」会自动搜索；找不到时可用「强力搜索」全盘扫描，或手动指定。
 
-> **TypeScript 降级决策**：TS 7.0.2 为原生编译器（不提供 JS API），`typescript-eslint` 无法在其上运行；
-> 经人类确认降级至 6.0.3，构建链（Vite/esbuild）不受影响。
+### 可选工具
 
-> **`@nx/electron` 决策记录**：官方包 npm 404 → 经人类确认采用社区插件 `nx-electron@22.0.0`。
-> 该包 peer 要求 `@nx/devkit|@nx/workspace ^22`，pnpm 自动装入嵌套 `nx@22.7.12`，故当前 **存在 2 个 nx 版本**（根 23.2.1 / 嵌套 22.7.12）。
-> 构建链实际采用 **Vite（dev）+ esbuild（prod）**（AGENTS.md §1）；`nx-electron` 仅保留用于后续打包。
-
-### 3. 关键配置
-
-- **构建脚本白名单**：`pnpm-workspace.yaml` 中 `allowBuilds: {electron, electron-winstaller, esbuild, nx}`。
-  pnpm 11+ 已废弃 `package.json` 的 `pnpm.onlyBuiltDependencies`，改用 `allowBuilds`，否则安装报 `ERR_PNPM_IGNORED_BUILDS`。
-- **工作区**：`packages` 覆盖 `apps/*`、`libs/*`、`libs/extensions/*`；跨层引用使用 `workspace:*` 依赖 + 包 `exports`
-  直连 TS 源码（内部包模式），依赖方向由 `npm run valid-layers-check` 校验。
-- **供应链策略**：pnpm 12 对新发布包要求列入 `minimumReleaseAgeExclude`（安装时自动写入），否则不满足最小发布时长策略。
-- **Nx daemon**：`nx.json` 设 `useDaemonProcess: false`（本机 daemon 首次启动会挂起，属环境问题）。
-- **peer 约束**：`@nx/vitest@23` 要求 `vitest ^3 || ^4`，故 vitest 固定在 4.x（5.x 会产生 peer 冲突）。
+- `gdb`：调试功能规划中
+- `ninja` / `cmake`：外部构建场景（本项目自身构建不依赖）
 
 ---
 
-## 三、网络镜像与已知问题（本机环境）
-
-本机 GitHub / Playwright CDN 直连不可用，二进制下载需走镜像：
-
-| 场景 | 解决方式 |
-|------|----------|
-| Electron 二进制（GitHub 下载 `fetch failed`） | `$env:ELECTRON_MIRROR='https://npmmirror.com/mirrors/electron/'` 后执行 `node node_modules/electron/install.js` |
-| Playwright 浏览器下载器超时 | 根因：Playwright 自定义 DNS **IPv6 优先** + Node happy-eyeballs 组合在本机挂起（已二分复现：IPv4 优先则正常）。绕过方式：用 `curl` 从 `https://cdn.npmmirror.com/binaries/playwright` 手动下载 zip，解压到 `%LOCALAPPDATA%\ms-playwright\<name>-<rev>\` 并创建空文件 `INSTALLATION_COMPLETE` |
-| `registry.npmmirror.com/-/binary/playwright` 不可用 | 返回 302 且 Playwright 跟随后仍超时；改用 **`cdn.npmmirror.com/binaries/playwright`**（206 直连 ≈928KB/s） |
-| pnpm 安装报 `ERR_PNPM_IGNORED_BUILDS` | 见 §2.3 `allowBuilds` 配置 |
-
-> 升级 Playwright 后需重新执行上述手动安装（revision 变化）。
-
----
-
-## 四、安装后自检
+## 快速开始
 
 ```bash
-pnpm -v                    # 12.9.1
-node -v                    # ≥ v20（本机 v24.19.0）
-pnpm install               # 幂等安装（须无 ERR_PNPM_IGNORED_BUILDS）
+corepack enable                  # 启用 packageManager 指定的 pnpm
+pnpm install                     # 安装依赖
+pnpm exec nx run desktop:serve   # 开发模式启动
+```
 
-# 工具链验证（2026-10-06 实测通过）
-pnpm exec nx --version     # 23.2.1
-pnpm exec tsc --version    # 6.0.3
-pnpm exec eslint --version # 10.12.0
-pnpm exec vitest --version # 4.1.11
-pnpm exec esbuild --version# 0.28.2
-pnpm exec playwright --version  # 1.63.0（Chromium 153 实测 launch OK）
+首次启动后建议进入「设置」执行一次 C++ / Python 搜索，或直接在编译时由应用自动搜索。
 
-# 阶段 1 起可用（2026-10-06 实测通过）
-pnpm lint                    # ESLint + Prettier
-npm run valid-layers-check   # 分层校验
-nx affected:test             # 受影响项目单元测试
+---
+
+## 构建与打包
+
+```bash
+pnpm exec nx run desktop:build     # 生产构建，输出 dist/desktop
+pnpm exec nx run desktop:package   # Windows 便携打包，输出 release/oi-code-win32-x64/OI-Code.exe
+```
+
+打包产物免安装，双击即可运行。配置、浏览器 Cookie 与自动保存草稿保存在系统用户数据目录中。
+
+---
+
+## 测试与校验
+
+```bash
+pnpm lint                          # ESLint + Prettier
+npm run valid-layers-check         # 分层依赖校验
+npx nx run-many -t test --all      # 全量单元测试（Vitest）
+pnpm typecheck                     # 全仓 TypeScript 类型检查
+npx nx run desktop:e2e             # Playwright E2E（对构建产物）
+```
+
+对打包产物复跑同一套 E2E（PowerShell）：
+
+```powershell
+$env:OI_E2E_EXECUTABLE='release/oi-code-win32-x64/OI-Code.exe'
+pnpm exec nx run desktop:e2e
 ```
 
 ---
 
-## 五、常用命令
+## 常见问题
 
-```bash
-nx run desktop:serve         # 开发模式启动
-nx run desktop:build         # 生产构建
-nx run desktop:package       # Windows 便携打包（release/oi-code-win32-x64/OI-Code.exe）
-nx run desktop:e2e           # E2E 测试（设 OI_E2E_EXECUTABLE 可对打包产物复跑）
+**Electron / Playwright 二进制下载失败（国内网络）**
+
+```powershell
+# Electron 二进制走 npmmirror
+$env:ELECTRON_MIRROR='https://npmmirror.com/mirrors/electron/'
+node node_modules/electron/install.js
 ```
 
-完整命令与规则见 `AGENTS.md` §9。
+Playwright 浏览器可从 `https://cdn.npmmirror.com/binaries/playwright` 手动下载，解压到 `%LOCALAPPDATA%\ms-playwright\<name>-<rev>\` 并创建空文件 `INSTALLATION_COMPLETE`；升级 Playwright 后 revision 变化需重新安装。
+
+**找不到 `make`**
+
+MinGW 环境通常提供的是 `mingw32-make`，本项目自身不依赖 `make`。
+
+---
+
+## 文档索引
+
+| 文档 | 内容 |
+|------|------|
+| [`AGENTS.md`](./AGENTS.md) | 架构铁律、编码规范、分支策略、标准工作流、常用命令 |
+| [`ICON_GUIDE.md`](./ICON_GUIDE.md) | 图标规范（FontAwesome 唯一来源，禁止 emoji） |
+| [`UI_DESIGN.md`](./UI_DESIGN.md) | 视觉方向、设计令牌与交互语言 |
+| [`NEXT_UPDATE.md`](./NEXT_UPDATE.md) | 最近一批功能交付记录 |
+| [`.agents/`](./.agents/) | 架构守卫、代码生成器、代码审查员子代理说明 |
+
+---
+
+## 许可
+
+ISC（见 `package.json`）。
