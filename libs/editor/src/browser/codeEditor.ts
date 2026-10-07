@@ -115,6 +115,9 @@ class CodeEditorHost implements ICodeEditorHost {
       tabSize: EDITOR_TAB_SIZE,
       scrollBeyondLastLine: false,
       renderWhitespace: 'selection',
+      // 括号按嵌套层级着色并显示配对连接线
+      bracketPairColorization: { enabled: true },
+      guides: { bracketPairs: true, bracketPairsHorizontal: true },
     });
     this._disposables.add(this._onDidChangeContent);
     this._disposables.add(toDisposable(() => this._editor.dispose()));
