@@ -14,7 +14,7 @@
 
 ## 1. VJudge 是什么，怎么用它
 
-VJudge 不是传统 OJ：**它把 50+ 个远端 OJ 的题目抓取到本地库，再把用户的代码"模拟提交"到远端 OJ，并回爬判题结果**。因此：
+VJudge 不是传统 OJ：**它把远端 OJ 的题目抓取到本地库，再把用户的代码"模拟提交"到远端 OJ，并回爬判题结果**。`/util/cfg` 实测登记 **62 个远端 OJ，其中 45 个 `isAlive`** `[实测]`：
 
 | 能力 | VJudge 侧行为 | 对集成的影响 |
 |------|----------------|--------------|
@@ -50,6 +50,17 @@ VJudge 不是传统 OJ：**它把 50+ 个远端 OJ 的题目抓取到本地库�
 ```
 
 集成时按 `error.i18nKey` 分支处理，不要匹配中文文案。
+
+**登录需求矩阵**（实测）：
+
+| 需要登录 | 匿名可用 |
+|----------|----------|
+| `GET /problem/{OJ}-{id}`（题目页 HTML，含 `dataJson`） | `GET /util/cfg`（OJ / 语言 / 题面语言表） |
+| `POST /problem/submit/...`、`POST /solution/data/...` | `GET /problem/description/{descKey}`（题面与各语言译本） |
+| `GET /problem/suggestions` | `GET /problem/info/{OJ}-{id}`、`GET /problem/data`（题目列表） |
+| 比赛 / 题单 / 抓取任务管理 | `GET /user/solveDetail/{username}`（通过记录） |
+
+> 含义：**读题面、读译本、读配置可以完全匿名**；只有"进题目页拿 descKey / 提交 / 查自己的判题"需要登录态 Cookie。
 
 ---
 
@@ -103,15 +114,47 @@ curl https://vjudge.net/problem/info/CodeForces-1748E
 | `crawling` | 是否正在抓取题面（true 时题面尚不可用） |
 | `error` | 抓取/题目不可用原因，正常为空串 |
 
-### 4.2 题面正文 `[待验证]`
+### 4.2 题面正文 `[实测]`（**无需登录**）
 
-- 页面 `GET /problem/{OJ}-{probNum}` 需登录（实测 `303` 跳转），题面正文由该页面渲染，**未发现独立的"取题面 HTML"公开 JSON 端点**。
-- 可选实现路径（按优先级）：
-  1. **webview 内取 DOM**：在内置浏览器打开题目页，直接取渲染后的题面容器（含 MathJax/KaTeX 结果），最稳。
-  2. **登录后抓 HTML**：主进程带 Cookie `GET /problem/{OJ}-{probNum}`，解析题面节点。
-  3. 若发现 `pid` 维度的题面端点，补录到本节。
+```
+GET /problem/description/{descKey}      → 200，返回一份完整的独立 HTML 文档
+```
 
-### 4.3 题面抓取任务（题面缺失 / 重新抓取）`[bundle]`
+题面**不是** JSON 片段，而是一个自包含的 HTML 页面（含 `<head>`、主题脚本、MathJax），VJudge 前端用 `<iframe id="frame-description">` 装载它。因此：
+
+- 集成时把该 URL 直接塞进 iframe / webview 即可原样渲染（公式、图片都能出）；
+- 想要纯文本，需自行解析该 HTML 的正文节点（POJ 题面常见 `<div class="ptx">`）。
+
+`descKey` 是**"题目 × 语言版本"的键**，不是 `pid`，必须从题目页的 `dataJson.descBriefs` 取得（见 §4.3）。
+
+### 4.3 题目页内联状态 `dataJson` `[实测]`
+
+```
+GET /problem/{OJ}-{probNum}      → 需登录（303 跳登录页）
+```
+
+页面里有一块隐藏节点承载全部结构化数据：
+
+```html
+<textarea style="display:none" name="dataJson">{ ... }</textarea>
+```
+
+实测（`POJ-1182`）字段：
+
+| 字段 | 含义 / 示例 |
+|------|-------------|
+| `problemId` | VJudge 内部题号（此题 `14789`；注意与 `/problem/info` 的 `pid` 不是同一维度） |
+| `oj` / `prob` | `"POJ"` / `"1182"` |
+| `descBriefs` | **题面版本数组**，见 §5；每项含 `key`（即 `descKey`）、`lang`、`type`、`author`、`version`、`official`、`mainOfficial`、`publicVisible`、`remarks` |
+| `properties` | 题面属性数组：`time_limit`（`"1000 ms"`）、`mem_limit`（`"10000 kB"`）、`source`（HTML）——**时限/内存限制可直接解析** |
+| `submitMethods` | `[true,true,true]`：三种提交方式（对应 `method` 0/1/2）是否可用 |
+| `statistics` | `[["users","11553 / 12976"],["","14709 / 18056"],["submissions","45215 / 149842"]]`（本地/远端通过数与提交数，含 HTML） |
+| `mySols` | 我的提交摘要：`[[runId, status, 时间戳, statusClass, statusCanonical]]` |
+| `crawling` / `hasStatementAccess` / `visibility` / `accepted` / `attempted` / `isFav` / `solutionCount` / `username` / `status` | 题目状态与当前用户上下文 |
+
+> **集成要点**：`descKey`、时限内存、可用提交方式都只在这份登录态 HTML 里。若不想依赖登录，可用 §4.1 的 `pid` + 已知 `descKey` 直接取题面，但**首次拿到某题的 `descKey` 仍需一次登录态请求**。
+
+### 4.4 题面抓取任务（题面缺失 / 重新抓取）`[bundle]`
 
 | 方法 | 路径 | 说明 |
 |------|------|------|
@@ -137,32 +180,82 @@ $.ajax({
 
 任务列表行含 `triggerSource`、`crawl` 相关状态字段；UI 文案键：`problem.crawl.tasks.*`。另有"重新抓取"按钮 `recrawl`。
 
-### 4.4 题目搜索建议 `[实测]`（需登录）
+### 4.5 题目列表（搜索 / 浏览）`[实测]`（**无需登录**）
+
+```
+GET /problem/data?draw=1&start=0&length=20&sortDir=desc&sortCol=7&OJId=POJ&probNum=&title=&source=&category=all
+```
+
+DataTables 信封，记录字段（节选）：`id`、`originOJ`、`originProb`、`visibility`、`solvedUsers`、`available`、`source`（HTML）。可按 `OJId` / `probNum` / `title` / `source` / `category` 过滤，`sortCol` + `sortDir` 排序。
+
+### 4.6 题目搜索建议 `[实测]`（需登录）
 
 ```
 GET /problem/suggestions?q={关键词}
 → 401 {"error":{"i18nKey":"user.error.login_required","trustable":false}}
 ```
 
+### 4.7 全局配置 `/util/cfg` `[实测]`（**无需登录**）
+
+```
+GET /util/cfg
+```
+
+一次请求拿到全站元数据，**集成应当先拉它并缓存**（响应带 `version` 可用于失效判断）：
+
+| 字段 | 内容 |
+|------|------|
+| `remoteOJs` | **62 个远端 OJ**（实测 45 个 `isAlive`）：`{name, homepage, faviconUrl, isAlive, languages, credentialTypes, vapt}`。`credentialTypes` 如 `["browser_session","username_password"]` 说明该 OJ 支持哪种账号绑定方式 |
+| `remoteOJs[OJ].languages` | **该 OJ 的提交语言表 `{语言id: 显示名}`** —— 见 §6.5，POJ 实测 `0 = "C++98 (MinGW GCC 4.4.0)"`，与提交响应完全对应 |
+| `languages` | 20 个规范语言名（`CPP`/`PYTHON`/`JAVA`/`RUST`/`GO`…） |
+| `statementLanguages` | **23 种题面语言**（`en,zh,ja,ru,es,vi,ar,pt,id,ko,kk,az,bn,de,fa,fr,hi,it,pl,ro,th,tr,uk`）—— 翻译的目标语言枚举 |
+| `cdnBaseUrl` | `https://cdn.vjudge.net.cn/`（题面图片、用户头像可能走这里） |
+| `turnstileSiteKey` | 人机验证站点公钥（存在即可，集成不需要使用） |
+| `version` | 配置版本号（毫秒时间戳） |
+
 ---
 
 ## 5. 题面翻译 API
 
-bundle 中与翻译相关的仅有 i18n 键（多语言文案齐全，说明是正式功能）：
+**翻译不是独立接口，而是"题面多语言版本切换"** `[实测]`：题目页的 `dataJson.descBriefs` 列出该题所有题面版本，每个版本有自己的 `descKey`；点"翻译"只是把 `iframe#frame-description` 换成目标语言版本的 `GET /problem/description/{descKey}`。
 
-| 键 | 中文文案 |
-|----|----------|
-| `translation` | 翻译 |
-| `translation_tip` | **请求 AI 翻译** |
-| `statements` | 问题文（题面多语言列表） |
+抓包实证（`POJ-1182`，共 16 个题面版本）：
 
-推断与待验证清单：
+| `descKey` | `lang` | `type` | `author` | `remarks` |
+|-----------|--------|--------|----------|-----------|
+| `316632928574981` | `zh` | `main` | System | Initialization.（官方主版本） |
+| `401313910919122` | `ja` | `translator` | DeepSeek | [日本語] translation by LLM (deepseek-chat) |
+| `400945453243432` | `en` | `translator` | DeepSeek | [English] translation by LLM (deepseek-chat) |
+| `409820260721001` | `ar` | `translator` | GPT | [اَلْعَرَبِيَّةُ] translation by OpenAI (gpt-…) |
+| `366856660683060` | `en` | `translator` | GPT | [English] translation by OpenAI (gpt-3.5-turbo) |
+| `386598219069603` | `zh` | `user` | hinlole | Forked from …（用户手工版） |
 
-1. 翻译**大概率复用抓取任务通道**（`/problem/crawl/tasks` 的 JSON 体可能还有 `type` / `targetLanguage` 之类字段），也可能是独立的 `/problem/translation*` 端点。
-2. 需要登录态点击"翻译"按钮，抓取一次真实的请求 URL + 请求体 + 响应，再回填本节。
-3. 已试过的猜测路径 `/problem/detail/{OJ}-{id}`、`/problem/translation/{OJ}-{id}` 均返回 **404**（说明不是这两个名字）`[实测]`。
+点击"翻译"后实际发出的唯一请求：
 
-> 在文档补全前，OI-Code 侧不要硬编码翻译端点；可先用「本地 LLM/离线词典」或让用户在 webview 里点 VJudge 自带翻译。
+```
+GET /problem/description/401313910919122      → 200（该语言的译本 HTML，无需登录）
+```
+
+### 5.1 版本选择规则
+
+- `type`：`main`（官方抓取） / `translator`（LLM 翻译） / `user`（用户改写）。
+- `official` / `mainOfficial`：标记主版本与官方版本；默认展示 `main` 那一项。
+- `lang`：目标语言码，枚举取自 `/util/cfg.statementLanguages`（23 种）。
+- `version`：毫秒时间戳，同一语言可能有多个译本（实测 `en` 有 DeepSeek 与 GPT 两份），按 `version` 取最新。
+- `publicVisible`：是否对公众可见。
+
+### 5.2 请求新译本（目标语言尚无译本时）`[待验证]`
+
+按钮为 `<a class="gpt_translate btn btn-secondary" data-i18n-title="problem.view.translation_tip">`（文案"请求 AI 翻译"）。本次抓包的题目**已有目标语言译本**，点击未产生创建类请求，因此"发起新翻译任务"的端点仍未证实：
+
+- 候选：复用 `POST /problem/crawl/tasks`（其 JSON 体可能带语言字段）；或独立的翻译任务端点。
+- 复核方法：找一道**没有中文译本**的外文题（例如新建/冷门题），点"翻译"并抓包。
+
+> 集成建议：先按 §5 的"读现成译本"实现（零风险、无需登录）；"发起翻译"作为可选增强，等端点证实后再接。
+
+### 5.3 已排除的猜测 `[实测]`
+
+`/problem/detail/{OJ}-{id}`、`/problem/translation/{OJ}-{id}` 均为 **404**；bundle 中也没有任何 `translat*` 端点字面量——翻译能力完全由服务端渲染的题目页数据驱动。
 
 ---
 
@@ -292,9 +385,19 @@ GET /status/data?draw=1&start=0&length=N[&其他过滤参数]
 
 按 id 批量取记录：`{basePath}/status/dataById` `[bundle]`。
 
-### 6.5 可选语言列表 `[待验证]`
+### 6.5 可选语言列表 `[实测]`（**无需登录**）
 
-提交弹窗的语言下拉取自运行时按 OJ 索引的映射（bundle 里形如 `E[oj].languages`），**未在 JS 中找到静态语言表，也没有找到独立端点**；候选来源是题目页服务端渲染的数据。集成时**不要写死语言 id**——各远端 OJ 编号完全不同（POJ `0` = C++98 GCC 4.4.0 即为实测例）。
+来自 `/util/cfg` 的 `remoteOJs[OJ].languages`（见 §4.7），结构就是 `{语言id: 显示名}`：
+
+```json
+{ "0": "C++98 (MinGW GCC 4.4.0)", "1": "C99 (MinGW GCC 4.4.0)", "2": "Java (JDK 6)",
+  "3": "Pascal (FreePascal 2.2.0)", "4": "C++98 (MS VC++ 2008 Express)",
+  "5": "C99 (MS VC++ 2008 Express)", "6": "Fortran (MinGW GCC 4.4.0)" }
+```
+
+- **语言 id 完全由远端 OJ 决定**，POJ 的 `0` 与 CodeForces 的 `0` 不是一回事；提交体的 `language` 就填这个 key。
+- 实测自洽：用 `language=0` 提交 POJ，轮询响应回显 `"language":"C++98 (MinGW GCC 4.4.0)"`。
+- 正确做法：启动时拉一次 `/util/cfg` 缓存，按 `OJ` 取表渲染下拉；用 `version` 做失效判断。切勿写死。
 
 ### 6.6 其他提交相关端点 `[bundle]`
 
@@ -310,14 +413,32 @@ GET /status/data?draw=1&start=0&length=N[&其他过滤参数]
 ### 6.7 典型提交—取结果时序（全链路 `[实测]`）
 
 ```
-1. (可选) GET  /problem/info/{OJ}-{id}        → 题目存在且 crawling=false
-2. POST    /problem/submit/{OJ}-{id}          → { "runId": 73166362 }
-3. POST    /solution/data/{runId}  (showCode=false)
+1. (可选) GET  /util/cfg                       → 缓存 OJ 列表、语言表、题面语言枚举
+2. (可选) GET  /problem/info/{OJ}-{id}         → 题目存在且 crawling=false，拿标题
+3. (需登录) GET /problem/{OJ}-{id}             → 解析 dataJson：descBriefs / properties / submitMethods
+4. POST    /problem/submit/{OJ}-{id}           → { "runId": 73166362 }
+5. POST    /solution/data/{runId}  (showCode=false)
       ├─ statusCanonical=PENDING / processing=true   → 继续轮询（退火 1s→5s）
       └─ processing=false                            → 终态
-4. 读 statusCanonical + runtime + memory      → 映射为 AC/WA/TLE/MLE/RE/CE
-5. (可选) GET /status/data?...                → 批量记录 / 题单进度统计
+6. 读 statusCanonical + runtime + memory       → 映射为 AC/WA/TLE/MLE/RE/CE
+7. (可选) GET /problem/description/{descKey}   → 题面 HTML（无需登录）
+   (可选) GET /user/solveDetail/{username}     → 已 AC 题号，做进度/去重
 ```
+
+### 6.8 用户通过记录（"爬取记录"首选）`[实测]`（**无需登录**）
+
+```
+GET /user/solveDetail/{username}
+→ 200 {"acRecords":{"POJ":["1182"]},"failRecords":{}}
+```
+
+按 OJ 分组的 AC 题号列表 + 失败记录，**体积小、无需登录**，适合做刷题进度/去重判断。
+
+补充：
+
+- `GET /user/solveDetail2/{username}` 为另一版本（更详细），来自 bundle `[bundle]`。
+- 题目页 `dataJson.mySols` 给出当前用户在该题的提交摘要 `[实测]`。
+- `GET /user/remoteAccounts/list?oj={OJ}` → `{"sessionUnlocked":false,"groups":{}}`（远端账号绑定状态，提交前检查用）`[实测]`。
 
 ---
 
@@ -325,12 +446,15 @@ GET /status/data?draw=1&start=0&length=N[&其他过滤参数]
 
 | 关注点 | 方案 | 归属层 |
 |--------|------|--------|
-| 服务契约 `IVjudgeService`（题面、提交、查状态） | 接口 + `createDecorator`，方法先行 | Platform |
-| 实际发请求（Cookie、代理、重试） | Node 侧实现，注册进主进程；**渲染进程不直连网络** | Code（`apps/desktop/src/main`） |
-| 登录 | 复用内置浏览器 `webview` 分区 Cookie，不自己存密码 | Workbench（UI）+ Code（Cookie 读取） |
-| 题面渲染 | 取回的 HTML 走 Markdown/HTML 预览分屏；公式需补 KaTeX（阶段 5） | Workbench / Editor |
+| 服务契约 `IVjudgeService`（配置、题面、提交、查状态、记录） | 接口 + `createDecorator`，方法先行 | Platform |
+| 实际发请求（Cookie、代理、重试、限速） | Node 侧实现，注册进主进程；**渲染进程不直连网络** | Code（`apps/desktop/src/main`） |
+| 登录 | 复用内置浏览器 `webview` 分区 Cookie，不自己存密码；仅题目页与提交需要登录 | Workbench（UI）+ Code（Cookie 读取） |
+| 题面渲染 | `/problem/description/{descKey}` 返回自包含 HTML，直接喂给预览分屏的**沙箱 iframe**（与 VJudge 同构，公式免二次处理） | Workbench |
+| 时限 / 内存限制 | 解析题目页 `dataJson.properties` 的 `time_limit` / `mem_limit`，喂给评测机 | Code 解析 + Platform 类型 |
+| 语言下拉 | 缓存 `/util/cfg.remoteOJs[OJ].languages`，按 `version` 失效 | Platform 契约 + Code |
 | 提交→判题轮询 | 复用评测机的异步 + 进度通知模式（JSON-RPC 通知） | Platform 协议 + Code |
-| 状态映射 | `status`/`statusType` → `JudgeVerdict`（AC/WA/TLE/MLE/RE/CE） | Platform 纯函数 + 单测 |
+| 状态映射 | `statusCanonical` → `JudgeVerdict`（AC/WA/TLE/MLE/RE/CE），未知码不判 AC | Platform 纯函数 + 单测 |
+| 刷题进度 / 去重 | `GET /user/solveDetail/{username}`（无需登录） | Platform 契约 + Code |
 | 资源生命周期 | 轮询定时器必须进 `DisposableStore`，取消即停 | 全层通用 |
 
 **注意**：工具链与外部 OJ 集成在 Extension Host（阶段 6）落地后应迁到 `libs/extensions/`，当前先放 Code 层。
@@ -351,22 +475,29 @@ GET /status/data?draw=1&start=0&length=N[&其他过滤参数]
 
 ## 9. 待验证清单（需登录态抓包）
 
-已验证（本轮 HAR 抓包）：
+已由抓包证实：
 
 - [x] 提交端点、请求体字段与响应（§6.1，含"不需要 token"这一反直觉结论）。
 - [x] 结果轮询端点 `POST /solution/data/{runId}` 与全部响应字段（§6.2）。
 - [x] `PENDING → AC` 的终态判定路径与耗时量级（§6.7）。
+- [x] 题面正文端点与形态：`GET /problem/description/{descKey}`，自包含 HTML，**无需登录**（§4.2）。
+- [x] 翻译机制：`descBriefs` 多语言版本切换，含 LLM 译本元数据（§5）。
+- [x] 语言列表来源：`/util/cfg.remoteOJs[OJ].languages`（§6.5）。
+- [x] 题目列表与过滤参数：`/problem/data`（§4.5）。
+- [x] 用户通过记录：`/user/solveDetail/{username}`（§6.8）。
+- [x] 时限 / 内存限制来源：题目页 `dataJson.properties`（§4.3）。
+- [x] 提交方式可用性：`dataJson.submitMethods`（§4.3）。
 
-仍待补全：
+仍需补全：
 
-- [ ] 题面正文的取回方式：题目页里承载题面的容器/接口（HTML 结构 + 是否有 JSON 端点）。
-- [ ] AI 翻译的真实端点、请求体（是否复用 `crawl/tasks`）与结果轮询方式 —— JS 里**只有 i18n 文案键，没有端点字面量**，说明端点由服务端渲染的页面决定，必须抓包。
-- [ ] 语言列表的数据来源（题目页内联数据？独立端点？）与各 OJ 的 id 映射（§6.5）。
-- [ ] `method=1/2` 与 `open` 其他取值的准确语义与允许值。
-- [ ] `statusCanonical` / `statusType` 的完整枚举（WA/TLE/MLE/RE/CE/PE/SE 等），只需对同一题故意交错/超时/越界各抓一次。
-- [ ] `/problem/suggestions` 的请求参数与响应结构。
-- [ ] 提交失败的错误信封样例（远端 OJ 不可用、账号未绑定、题面未抓取）。
-- [ ] `/status/data` 的过滤参数名（按 `problemId` / `userName` / `oj` 过滤）。
+- [ ] **发起新 AI 翻译**的端点（目标语言无译本时点 `a.gpt_translate` 才会触发）。
+- [ ] `statusCanonical` / `statusType` 完整枚举（WA/TLE/MLE/RE/CE/PE/SE）——对同一题分别抓一次错解、超时、越界内存、运行时错误、编译错误。
+- [ ] `method=1/2` 与 `open` 其他取值的准确行为（需先绑定远端账号）。
+- [ ] `/problem/suggestions` 的参数与响应结构。
+- [ ] 提交失败错误信封样例（远端 OJ 不可用、账号未绑定、题面未抓取）。
+- [ ] `/problem/description/{descKey}` 是否对完全匿名也放行（本轮实测未带 Cookie 返回 200，建议再验证跨账号/未登录浏览器）。
+- [ ] `dataJson` 与 `/util/cfg` 中 `vapt`、`status`、`sessionUnlocked` 等字段含义。
+- [ ] 比赛（contest）与题单（workbook）相关接口（本轮未覆盖）。
 
 复核方法：登录 → 打开题目页 → DevTools Network 面板记录上述操作的实际请求，把 URL / 请求体 / 响应样例回填本文对应小节，并把 `[待验证]` 改为 `[实测]`。导出 HAR 时**注意里面会带 Cookie 请求头**（Chrome 默认导出可能包含），分析完请删除，不要提交进仓库。
 
@@ -402,6 +533,19 @@ for(const x of h.log.entries){
   console.log("=== "+x.request.method+" "+u.pathname+" -> "+x.response.status);
   if(x.request.postData) console.log("  BODY: "+safe(x.request.postData.text||"").replace(/\s+/g," ").slice(0,200));
   console.log("  RESP: "+safe(x.response.content.text||"").replace(/\s+/g," ").slice(0,500));
+}'
+
+# 6) 从题目页 HTML 抠出内联状态（题面版本表、时限、提交方式都在这里）
+node -e '
+const fs=require("fs");const h=JSON.parse(fs.readFileSync("vjudge.net.har","utf8"));
+for(const e of h.log.entries){
+  if(e._resourceType!=="document")continue;
+  const m=(e.response.content.text||"").match(/name=\"dataJson\">([\s\S]*?)<\/textarea>/);
+  if(!m)continue;
+  const d=JSON.parse(m[1]);
+  console.log(new URL(e.request.url).pathname, "→", Object.keys(d).join(","));
+  console.log("  descBriefs:", d.descBriefs.map(b=>b.lang+":"+b.key+":"+b.type).join("  "));
+  console.log("  properties:", JSON.stringify(d.properties.map(p=>p.title+"="+String(p.content).slice(0,24))));
 }'
 ```
 
