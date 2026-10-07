@@ -181,7 +181,6 @@ function Workbench({ services, initialTheme, onDirtyStateChange }: IWorkbenchPro
   const [newMenuOpen, setNewMenuOpen] = useState(false);
   const sidebarWidthRef = useRef(sidebarWidth);
   const lastExpandedWidthRef = useRef(lastExpandedWidth);
-  const sidebarHoverExpandedRef = useRef(false);
   const [theme, setTheme] = useState<ThemeKind>(initialTheme);
   const [status, setStatus] = useState<WorkbenchStatus>('idle');
   const [statusDetail, setStatusDetail] = useState<string | undefined>(undefined);
@@ -963,26 +962,28 @@ function Workbench({ services, initialTheme, onDirtyStateChange }: IWorkbenchPro
     [split.direction, split.ratio, store],
   );
 
-  const selectActivityView = useCallback((view: ActivityView): void => {
-    setActivityView(view);
-    // 折叠态点击活动栏图标：临时展开至上次非折叠宽度，移出后自动折回
-    if (isCollapsedWidth(sidebarWidthRef.current)) {
-      setSidebarWidth(clampSidebarWidth(lastExpandedWidthRef.current));
-      sidebarHoverExpandedRef.current = true;
-    }
-  }, []);
-
-  const handleSidebarRegionLeave = useCallback((): void => {
-    if (sidebarHoverExpandedRef.current) {
-      sidebarHoverExpandedRef.current = false;
-      setSidebarWidth(SIDEBAR_COLLAPSED_WIDTH);
-    }
-  }, []);
+  const selectActivityView = useCallback(
+    (view: ActivityView): void => {
+      // 折叠态点击活动栏图标：展开至上次非折叠宽度并保持
+      if (isCollapsedWidth(sidebarWidthRef.current)) {
+        setSidebarWidth(clampSidebarWidth(lastExpandedWidthRef.current));
+        setActivityView(view);
+        return;
+      }
+      // 再次点击当前视图：快速折叠回活动栏
+      if (view === activityView) {
+        setSidebarWidth(SIDEBAR_COLLAPSED_WIDTH);
+        persistSidebarWidth(SIDEBAR_COLLAPSED_WIDTH);
+        return;
+      }
+      setActivityView(view);
+    },
+    [activityView],
+  );
 
   const beginResize = useCallback(
     (event: ReactPointerEvent<HTMLDivElement>): void => {
       event.preventDefault();
-      sidebarHoverExpandedRef.current = false;
       const startX = event.clientX;
       const startWidth = sidebarWidthRef.current;
       let latestWidth = startWidth;
@@ -1050,7 +1051,7 @@ function Workbench({ services, initialTheme, onDirtyStateChange }: IWorkbenchPro
         onCreateFromTemplate={createFromTemplate}
       />
       <div className="oi-body">
-        <div className="oi-sidebar-region" onMouseLeave={handleSidebarRegionLeave}>
+        <div className="oi-sidebar-region">
           <ActivityBar activeView={activityView} onSelect={selectActivityView} />
           <div
             className={`oi-sidebar${isCollapsedWidth(sidebarWidth) ? ' collapsed' : ''}`}

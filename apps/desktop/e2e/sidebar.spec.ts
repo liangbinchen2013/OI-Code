@@ -96,7 +96,7 @@ test('侧边栏可拖拽调整宽度并持久化', async () => {
   }
 });
 
-test('侧边栏拖拽至最小宽度自动折叠，点击图标临时展开后移出折回', async () => {
+test('侧边栏拖拽至最小宽度自动折叠，点击图标展开后保持并再次点击收起', async () => {
   const app = await launchApp();
   try {
     const page = await app.firstWindow();
@@ -120,14 +120,21 @@ test('侧边栏拖拽至最小宽度自动折叠，点击图标临时展开后�
     const collapsed = await sidebar.boundingBox();
     expect(collapsed?.width).toBeLessThanOrEqual(52);
 
-    // 折叠态点击活动栏图标：临时展开面板
-    await page.locator('.oi-activity-item[aria-label="OI 工具箱"]').click();
+    // 折叠态点击活动栏图标：展开面板
+    const toolboxItem = page.locator('.oi-activity-item[aria-label="OI 工具箱"]');
+    await toolboxItem.click();
     await expect(sidebar).not.toHaveClass(/collapsed/);
     await expect(page.locator('.oi-toolbox')).toBeVisible();
 
-    // 鼠标移出侧边栏区域自动折回
+    // 鼠标移出侧边栏不再强制缩回
     await page.mouse.move(900, 400);
+    await expect(sidebar).not.toHaveClass(/collapsed/);
+    await expect(page.locator('.oi-toolbox')).toBeVisible();
+
+    // 再次点击当前活动的图标：快速折叠
+    await toolboxItem.click();
     await expect(sidebar).toHaveClass(/collapsed/);
+    await expect(page.locator('.oi-sidebar-panels')).toBeHidden();
   } finally {
     await app.close();
   }
