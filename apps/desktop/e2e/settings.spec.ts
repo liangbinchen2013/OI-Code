@@ -124,6 +124,35 @@ test('内置模板可编辑、隐藏并通过恢复按钮还原', async () => {
   }
 });
 
+test('+ 菜单固定「文件」项创建无后缀文件，Ctrl+N 默认模板可配置', async () => {
+  test.setTimeout(120_000);
+  const app = await launchApp();
+  try {
+    const page = await app.firstWindow();
+    await waitReady(page);
+
+    // 固定「文件」项：无后缀
+    await page.locator('.oi-tab-new').click();
+    await page.locator('.oi-menu-plain-file').click();
+    await expect(page.locator('.oi-tab-active .oi-tab-name')).toHaveText('未命名-1');
+
+    // 设置 Ctrl+N 默认模板为 Python
+    await page.locator('.oi-activity-item-settings').click();
+    await page.locator('#oi-default-template').selectOption({ label: 'Python 文件' });
+    await page.keyboard.press('Control+n');
+    await expect(page.locator('.oi-tab-active .oi-tab-name')).toHaveText('未命名-2.py');
+    await expect(page.locator('.view-lines').first()).toContainText('import sys');
+
+    // 刷新后默认模板保持
+    await page.reload();
+    await waitReady(page);
+    await page.locator('.oi-activity-item-settings').click();
+    await expect(page.locator('#oi-default-template')).toHaveValue('builtin-python');
+  } finally {
+    await app.close();
+  }
+});
+
 test('模板内容使用 Monaco 编辑器且 Tab 正常缩进', async () => {
   test.setTimeout(120_000);
   const app = await launchApp();

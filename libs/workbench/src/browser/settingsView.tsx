@@ -52,8 +52,10 @@ export interface ISettingsViewProps {
   readonly pythonService: IPythonServiceClient;
   readonly templates: readonly IFileTemplate[];
   readonly builtInTemplateIds: readonly string[];
+  readonly defaultTemplateId: string;
   readonly onTemplatesChange: (templates: readonly IFileTemplate[]) => void;
   readonly onResetBuiltInTemplates: () => void;
+  readonly onDefaultTemplateChange: (id: string) => void;
 }
 
 const PIP_LOG_LIMIT = 200;
@@ -96,8 +98,10 @@ export function SettingsView({
   pythonService,
   templates,
   builtInTemplateIds,
+  defaultTemplateId,
   onTemplatesChange,
   onResetBuiltInTemplates,
+  onDefaultTemplateChange,
 }: ISettingsViewProps) {
   const [cppStatus, setCppStatus] = useState<IToolchainStatus | undefined>(undefined);
   const [cppSearching, setCppSearching] = useState(false);
@@ -480,6 +484,25 @@ export function SettingsView({
               <span>{WORKBENCH_STRINGS.templateResetBuiltIn}</span>
             </button>
           </div>
+          {templates.length > 0 ? (
+            <div className="oi-settings-row">
+              <label className="oi-settings-label" htmlFor="oi-default-template">
+                {WORKBENCH_STRINGS.settingsDefaultTemplate}
+              </label>
+              <select
+                id="oi-default-template"
+                className="oi-select oi-default-template"
+                value={defaultTemplateId}
+                onChange={(event) => onDefaultTemplateChange(event.target.value)}
+              >
+                {templates.map((template) => (
+                  <option key={template.id} value={template.id}>
+                    {template.name}
+                  </option>
+                ))}
+              </select>
+            </div>
+          ) : null}
           {templateDraft !== undefined ? (
             <div className="oi-template-editor">
               <label className="oi-field">

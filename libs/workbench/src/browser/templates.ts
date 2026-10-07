@@ -48,6 +48,14 @@ export const PYTHON_TEMPLATE: IFileTemplate = {
 
 export const BUILT_IN_TEMPLATES: readonly IFileTemplate[] = [CPP_TEMPLATE, PYTHON_TEMPLATE];
 
+/** + 菜单固定项：创建无后缀的空文件。 */
+export const PLAIN_TEMPLATE: IFileTemplate = {
+  id: 'builtin-plain',
+  name: '文件',
+  extension: '',
+  content: '',
+};
+
 /** `Ctrl+N` 直接使用的新建默认模板。 */
 export const DEFAULT_TEMPLATE = CPP_TEMPLATE;
 
@@ -62,6 +70,8 @@ export const BUILT_IN_TEMPLATE_IDS: ReadonlySet<string> = new Set(
 export interface ITemplateStore {
   readonly custom: readonly IFileTemplate[];
   readonly hidden: readonly string[];
+  /** Ctrl+N 使用的模板 id；缺省或失效时回退 C++ 内置模板。 */
+  readonly defaultTemplateId?: string;
 }
 
 export const EMPTY_TEMPLATE_STORE: ITemplateStore = { custom: [], hidden: [] };
@@ -95,12 +105,17 @@ export function loadTemplateStore(): ITemplateStore {
     if (typeof parsed !== 'object' || parsed === null) {
       return EMPTY_TEMPLATE_STORE;
     }
-    const { custom, hidden } = parsed as { custom?: unknown; hidden?: unknown };
+    const { custom, hidden, defaultTemplateId } = parsed as {
+      custom?: unknown;
+      hidden?: unknown;
+      defaultTemplateId?: unknown;
+    };
     return {
       custom: Array.isArray(custom) ? custom.filter(isTemplate) : [],
       hidden: Array.isArray(hidden)
         ? hidden.filter((id): id is string => typeof id === 'string')
         : [],
+      ...(typeof defaultTemplateId === 'string' ? { defaultTemplateId } : {}),
     };
   } catch (error) {
     onUnexpectedError(error);
@@ -151,7 +166,10 @@ export function mergeTemplateStore(store: ITemplateStore): IFileTemplate[] {
  * 由编辑后的完整模板列表反推持久化结构：
  * 与内置默认一致的项不落盘；缺失的内置 id 视为隐藏；其余按覆盖/新增保存。
  */
-export function templateStoreFromList(templates: readonly IFileTemplate[]): ITemplateStore {
+export function templateStoreFromList(
+  templates: readonly IFileTemplate[],
+  defaultTemplateId?: string,
+): ITemplateStore {
   const builtInById = new Map(BUILT_IN_TEMPLATES.map((template) => [template.id, template]));
   const remaining = new Set(templates.map((template) => template.id));
   const hidden = BUILT_IN_TEMPLATES.filter((template) => !remaining.has(template.id)).map(
@@ -161,7 +179,22 @@ export function templateStoreFromList(templates: readonly IFileTemplate[]): ITem
     const builtIn = builtInById.get(template.id);
     return builtIn === undefined || !templateEquals(builtIn, template);
   });
-  return { custom, hidden };
+  return { custom, hidden, ...(defaultTemplateId === undefined ? {} : { defaultTemplateId }) };
+}
+
+/**
+ * 解析 Ctrl+N 默认模板：配置失效（被隐藏/删除）时回退到首个可用模板。
+ */
+export function resolveDefaultTemplate(
+  templates: readonly IFileTemplate[],
+  defaultTemplateId: string | undefined,
+): IFileTemplate {
+  return (
+    templates.find((template) => template.id === defaultTemplateId) ??
+    templates.find((template) => template.id === DEFAULT_TEMPLATE.id) ??
+    templates[0] ??
+    DEFAULT_TEMPLATE
+  );
 }
 
 export function createTemplateId(): string {

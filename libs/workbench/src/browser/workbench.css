@@ -279,6 +279,12 @@ body {
   flex: 1;
 }
 
+.oi-menu-divider {
+  height: 1px;
+  margin: 4px 6px;
+  background: var(--border);
+}
+
 .oi-menu-hint {
   color: var(--muted);
   font-family: var(--font-mono);

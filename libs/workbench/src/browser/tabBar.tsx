@@ -3,6 +3,7 @@ import { FontAwesomeIcon } from '@fortawesome/react-fontawesome';
 import {
   faBolt,
   faCode,
+  faFile,
   faFileCode,
   faFileLines,
   faGripLines,
@@ -51,6 +52,8 @@ export interface ITabBarProps {
   readonly newMenuOpen: boolean;
   readonly onToggleNewMenu: () => void;
   readonly onCloseNewMenu: () => void;
+  /** + 菜单固定项：创建无后缀的「文件」。 */
+  readonly onCreateUntitled: () => void;
   readonly onCreateFromTemplate: (template: IFileTemplate) => void;
 }
 
@@ -86,6 +89,7 @@ export function TabBar({
   newMenuOpen,
   onToggleNewMenu,
   onCloseNewMenu,
+  onCreateUntitled,
   onCreateFromTemplate,
 }: ITabBarProps) {
   const actionDisabled = !actionsEnabled || busy;
@@ -142,6 +146,18 @@ export function TabBar({
             <>
               <div className="oi-menu-backdrop" onClick={onCloseNewMenu} aria-hidden="true" />
               <div className="oi-menu" role="menu" aria-label={WORKBENCH_STRINGS.newFileMenuLabel}>
+                <button
+                  type="button"
+                  role="menuitem"
+                  className="oi-menu-item oi-menu-plain-file"
+                  onClick={onCreateUntitled}
+                >
+                  <FontAwesomeIcon icon={faFile} aria-hidden="true" />
+                  <span className="oi-menu-label">{WORKBENCH_STRINGS.newPlainFile}</span>
+                </button>
+                {templates.length > 0 ? (
+                  <span className="oi-menu-divider" aria-hidden="true" />
+                ) : null}
                 {templates.map((template) => (
                   <button
                     key={template.id}

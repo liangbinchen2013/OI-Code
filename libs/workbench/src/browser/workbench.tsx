@@ -58,9 +58,10 @@ import { WORKBENCH_STRINGS } from './strings';
 import { TabBar } from './tabBar';
 import {
   BUILT_IN_TEMPLATE_IDS,
-  DEFAULT_TEMPLATE,
+  PLAIN_TEMPLATE,
   loadTemplateStore,
   mergeTemplateStore,
+  resolveDefaultTemplate,
   saveTemplateStore,
   templateStoreFromList,
   type IFileTemplate,
@@ -359,10 +360,21 @@ function Workbench({ services, initialTheme, onDirtyStateChange }: IWorkbenchPro
   // + 菜单使用的模板列表：内置模板可覆盖/隐藏，后接自定义模板
   const templates = useMemo(() => mergeTemplateStore(templateStore), [templateStore]);
 
-  const updateTemplates = useCallback((next: readonly IFileTemplate[]): void => {
-    const store = templateStoreFromList(next);
-    setTemplateStore(store);
-    saveTemplateStore(store);
+  const updateTemplates = useCallback(
+    (next: readonly IFileTemplate[]): void => {
+      const store = templateStoreFromList(next, templateStore.defaultTemplateId);
+      setTemplateStore(store);
+      saveTemplateStore(store);
+    },
+    [templateStore.defaultTemplateId],
+  );
+
+  const changeDefaultTemplate = useCallback((id: string): void => {
+    setTemplateStore((current) => {
+      const store: ITemplateStore = { ...current, defaultTemplateId: id };
+      saveTemplateStore(store);
+      return store;
+    });
   }, []);
 
   /** 恢复内置模板默认内容并取消隐藏；保留用户新增模板。 */
@@ -468,13 +480,14 @@ function Workbench({ services, initialTheme, onDirtyStateChange }: IWorkbenchPro
     [applyDetectedLanguage],
   );
 
+  // + 菜单固定项：无后缀空文件
+  const createUntitledFile = useCallback((): void => {
+    createFromTemplate(PLAIN_TEMPLATE);
+  }, [createFromTemplate]);
+
   const newDefaultFile = useCallback((): void => {
-    const preferred =
-      templates.find((template) => template.id === DEFAULT_TEMPLATE.id) ??
-      templates[0] ??
-      DEFAULT_TEMPLATE;
-    createFromTemplate(preferred);
-  }, [createFromTemplate, templates]);
+    createFromTemplate(resolveDefaultTemplate(templates, templateStore.defaultTemplateId));
+  }, [createFromTemplate, templates, templateStore.defaultTemplateId]);
 
   const clearAutoSaveDraft = useCallback(
     (uri: URI): void => {
@@ -996,8 +1009,9 @@ function Workbench({ services, initialTheme, onDirtyStateChange }: IWorkbenchPro
       }
     };
     window.addEventListener('keydown', onKeyDown);
-    store.add(toDisposable(() => window.removeEventListener('keydown', onKeyDown)));
-  }, [newDefaultFile, store]);
+    // 用 effect 清理而不是 DisposableStore：newDefaultFile 变化时旧监听必须移除，否则重复触发
+    return () => window.removeEventListener('keydown', onKeyDown);
+  }, [newDefaultFile]);
 
   const activeTab = tabs.find((tab) => tab.id === activeTabId);
   const statusPresentation = status === 'idle' ? undefined : STATUS_PRESENTATION[status];
@@ -1185,6 +1199,7 @@ function Workbench({ services, initialTheme, onDirtyStateChange }: IWorkbenchPro
         newMenuOpen={newMenuOpen}
         onToggleNewMenu={() => setNewMenuOpen((open) => !open)}
         onCloseNewMenu={() => setNewMenuOpen(false)}
+        onCreateUntitled={createUntitledFile}
         onCreateFromTemplate={createFromTemplate}
       />
       <div className="oi-body">
@@ -1220,8 +1235,12 @@ function Workbench({ services, initialTheme, onDirtyStateChange }: IWorkbenchPro
                 pythonService={services.pythonService}
                 templates={templates}
                 builtInTemplateIds={[...BUILT_IN_TEMPLATE_IDS]}
+                defaultTemplateId={
+                  resolveDefaultTemplate(templates, templateStore.defaultTemplateId).id
+                }
                 onTemplatesChange={updateTemplates}
                 onResetBuiltInTemplates={resetBuiltInTemplates}
+                onDefaultTemplateChange={changeDefaultTemplate}
               />
             </div>
           </div>
