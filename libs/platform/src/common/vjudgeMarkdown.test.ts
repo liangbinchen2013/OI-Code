@@ -65,6 +65,20 @@ describe('htmlToMarkdown', () => {
     expect(md).toContain('第二行');
   });
 
+  it('<br> 转为硬换行标记而不是被并成空格', () => {
+    expect(htmlToMarkdown('<p>第一行<br>第二行</p>')).toBe('第一行<br>第二行');
+    expect(htmlToMarkdown('<p>第一行<br />第二行</p>')).toBe('第一行<br>第二行');
+  });
+
+  it('表格单元格里的 <br> 保住样例的逐行结构', () => {
+    const md = htmlToMarkdown(
+      '<table><tr><th>Input</th><th>Output</th></tr>' +
+        '<tr><td>4 3<br>2 2</td><td>8 5<br>351025663</td></tr></table>',
+    );
+
+    expect(md).toContain('| 4 3<br>2 2 | 8 5<br>351025663 |');
+  });
+
   it('MathJax 定界符转为 $ 与 $$', () => {
     const md = htmlToMarkdown('<p>当 \\(n \\le 10^5\\) 时</p><p>\\[ x = 1 \\]</p>');
     expect(md).toContain('$n \\le 10^5$');
@@ -242,6 +256,16 @@ describe('statementTextToMarkdown', () => {
     );
 
     expect(md).toBe('## Description\n\n段一\n\n段二');
+  });
+
+  it('MD 正文里的 <br/> 归一为硬换行标记', () => {
+    const md = statementTextToMarkdown(
+      JSON.stringify({
+        sections: [{ title: 'Sample', value: { format: 'MD', content: '第一行<br/>第二行' } }],
+      }),
+    );
+
+    expect(md).toBe('## Sample\n\n第一行<br>第二行');
   });
 
   it('MD 正文里的 HTML 链接与图片转成 Markdown', () => {

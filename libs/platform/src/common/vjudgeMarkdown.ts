@@ -253,7 +253,9 @@ function renderInline(nodes: readonly INode[]): string {
     const trimmed = children.trim();
     switch (node.tag) {
       case 'br':
-        out += '\n';
+        // 用字面 `<br>` 作硬换行标记：Markdown 段落里的裸换行会被并成空格，
+        // 表格单元格更是容不下换行（样例的逐行输入输出会挤成一行）
+        out += '<br>';
         break;
       case 'img': {
         const src = attr(node, 'src') || attr(node, 'data-src');
@@ -514,7 +516,7 @@ function normalizeInlineHtml(text: string): string {
       if (index % 2 === 1) {
         return part;
       }
-      let result = part.replace(/<br\s*\/?>/gi, '\n');
+      let result = part;
       for (const [tag, marker] of INLINE_PAIRS) {
         result = result.replace(
           new RegExp(`<${tag}\\b[^>]*>([^<]*)</${tag}>`, 'gi'),
@@ -539,6 +541,10 @@ function normalizeInlineHtml(text: string): string {
       );
       return result.replace(/<\/?([a-zA-Z][\w-]*)(?:\s[^>]*)?\/?>/g, (match, name: string) => {
         const tag = name.toLowerCase();
+        if (tag === 'br') {
+          // 统一成硬换行标记，预览侧再还原为 <br> 元素
+          return '<br>';
+        }
         if (!KNOWN_HTML_TAG.test(tag)) {
           return match;
         }

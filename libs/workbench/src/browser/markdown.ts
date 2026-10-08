@@ -59,7 +59,9 @@ function isTableSeparator(row: readonly string[]): boolean {
 }
 
 function renderText(escaped: string): string {
-  let result = escaped.replace(/\*\*([^*]+)\*\*/g, '<strong>$1</strong>');
+  // 题面转换器用字面 `<br>` 标记硬换行；转义后整词还原，带属性的写法仍按文本显示
+  let result = escaped.replace(/&lt;br\s*\/?&gt;/gi, '<br>');
+  result = result.replace(/\*\*([^*]+)\*\*/g, '<strong>$1</strong>');
   result = result.replace(/\*([^*]+)\*/g, '<em>$1</em>');
   // 图片必须先于链接处理，否则 `![alt](src)` 会被链接规则吃掉剩下的 `!`
   result = result.replace(/!\[([^\]]*)\]\(([^)\s]+)\)/g, (_match, alt: string, src: string) =>

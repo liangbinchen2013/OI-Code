@@ -108,6 +108,22 @@ describe('renderMarkdown', () => {
     expect(html).not.toContain('katex');
   });
 
+  it('字面 <br> 还原为换行元素，带属性写法与代码内仍按文本', () => {
+    expect(renderMarkdown('第一行<br>第二行')).toBe('<p>第一行<br>第二行</p>');
+    expect(renderMarkdown('第一行<br />第二行')).toBe('<p>第一行<br>第二行</p>');
+    expect(renderMarkdown('写 `<br>` 即可')).toBe('<p>写 <code>&lt;br&gt;</code> 即可</p>');
+    expect(renderMarkdown('别用 <br class="x">')).toContain('&lt;br class=&quot;x&quot;&gt;');
+  });
+
+  it('表格单元格里的 <br> 渲染成换行，样例保持逐行', () => {
+    const html = renderMarkdown(
+      '| Input | Output |\n| --- | --- |\n| 4 3<br>2 2 | 8 5<br>351025663 |',
+    );
+
+    expect(html).toContain('<td>4 3<br>2 2</td>');
+    expect(html).toContain('<td>8 5<br>351025663</td>');
+  });
+
   it('普通美元金额不会被误判成公式', () => {
     const html = renderMarkdown('花了 $5 和 $6 元');
 
