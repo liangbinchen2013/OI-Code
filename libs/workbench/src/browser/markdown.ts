@@ -1,6 +1,6 @@
 /**
- * 分屏预览用的极简 Markdown → HTML 渲染：
- * 支持标题、段落、无序列表、围栏代码块与常用行内语法。
+ * 分屏预览与题面用的极简 Markdown → HTML 渲染：
+ * 支持标题、段落、有序/无序列表、表格、围栏代码块与常用行内语法。
  * 所有文本先转义再生成受控标签，不追求完整 CommonMark 兼容。
  */
 export function escapeHtml(text: string): string {
@@ -14,6 +14,7 @@ export function escapeHtml(text: string): string {
 
 const HEADING = /^(#{1,6})\s+(.+)$/;
 const LIST_ITEM = /^\s*[-*]\s+(.+)$/;
+const ORDERED_ITEM = /^\s*(\d+)[.)]\s+(.+)$/;
 const FENCE = /^\s*```(.*)$/;
 const FENCE_CLOSE = /^\s*```\s*$/;
 const SAFE_HREF = /^(https?:|#|\/|\.{1,2}\/)/i;
@@ -62,8 +63,9 @@ function renderInline(escaped: string): string {
 export function renderMarkdown(source: string): string {
   const html: string[] = [];
   let paragraph: string[] = [];
-  let listOpen = false;
+  let listOpen: 'ol' | 'ul' | undefined;
   let fenceOpen = false;
+  let fenceLines: string[] = [];
 
   const flushParagraph = (): void => {
     if (paragraph.length > 0) {
@@ -72,9 +74,9 @@ export function renderMarkdown(source: string): string {
     }
   };
   const closeList = (): void => {
-    if (listOpen) {
-      html.push('</ul>');
-      listOpen = false;
+    if (listOpen !== undefined) {
+      html.push(`</${listOpen}>`);
+      listOpen = undefined;
     }
   };
 
@@ -83,10 +85,12 @@ export function renderMarkdown(source: string): string {
     const line = lines[index] ?? '';
     if (fenceOpen) {
       if (FENCE_CLOSE.test(line)) {
-        html.push('</code></pre>');
+        // 代码行整体一次性输出：逐行 push 会让 `<pre>` 里每行之间多出空行
+        html.push(`${escapeHtml(fenceLines.join('\n'))}</code></pre>`);
+        fenceLines = [];
         fenceOpen = false;
       } else {
-        html.push(`${escapeHtml(line)}\n`);
+        fenceLines.push(line);
       }
       continue;
     }
@@ -101,7 +105,8 @@ export function renderMarkdown(source: string): string {
     ) {
       flushParagraph();
       closeList();
-      html.push('<table><thead><tr>');
+      // 窄面板里宽表格需要自身横向滚动，而不是撑破容器
+      html.push('<div class="oi-md-table"><table><thead><tr>');
       for (const cell of headerCells) {
         html.push(`<th>${renderInline(escapeHtml(cell))}</th>`);
       }
@@ -120,7 +125,7 @@ export function renderMarkdown(source: string): string {
         html.push('</tr>');
         index += 1;
       }
-      html.push('</tbody></table>');
+      html.push('</tbody></table></div>');
       continue;
     }
     const fence = FENCE.exec(line);
@@ -145,13 +150,19 @@ export function renderMarkdown(source: string): string {
       continue;
     }
     const listItem = LIST_ITEM.exec(line);
-    if (listItem) {
+    const orderedItem = listItem === null ? ORDERED_ITEM.exec(line) : null;
+    const item = listItem?.[1] ?? orderedItem?.[2];
+    if (item !== undefined) {
       flushParagraph();
-      if (!listOpen) {
-        html.push('<ul>');
-        listOpen = true;
+      const kind = listItem === null ? 'ol' : 'ul';
+      if (listOpen !== kind) {
+        closeList();
+        // 保留题面里的起始编号
+        const start = Number(orderedItem?.[1] ?? '1');
+        html.push(kind === 'ol' ? (start === 1 ? '<ol>' : `<ol start="${start}">`) : '<ul>');
+        listOpen = kind;
       }
-      html.push(`<li>${renderInline(escapeHtml(listItem[1] ?? ''))}</li>`);
+      html.push(`<li>${renderInline(escapeHtml(item))}</li>`);
       continue;
     }
     if (line.trim().length === 0) {
@@ -163,9 +174,10 @@ export function renderMarkdown(source: string): string {
     paragraph.push(line);
   }
   if (fenceOpen) {
-    html.push('</code></pre>');
+    html.push(`${escapeHtml(fenceLines.join('\n'))}</code></pre>`);
   }
   flushParagraph();
   closeList();
-  return html.join('\n');
+  // 片段之间不插换行：`<pre>` 内的空白有语义，多一个换行就是多一行空白
+  return html.join('');
 }

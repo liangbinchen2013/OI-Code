@@ -670,7 +670,7 @@ export function VjudgePanel({
               {problem.markdown.trim().length === 0 ? (
                 <p className="oi-vjudge-empty">{WORKBENCH_STRINGS.vjudgeStatementEmpty}</p>
               ) : (
-                // 内容已由 htmlToMarkdown + renderMarkdown 处理，仅生成受控标签
+                // 内容已由题面转换器 + renderMarkdown 处理，仅生成受控标签
                 <div
                   className="oi-preview-markdown"
                   dangerouslySetInnerHTML={{ __html: renderMarkdown(problem.markdown) }}

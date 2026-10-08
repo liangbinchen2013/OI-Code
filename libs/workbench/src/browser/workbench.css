@@ -693,13 +693,22 @@ body {
   margin: 0.6em 0;
 }
 
-.oi-preview-markdown ul {
+.oi-preview-markdown ul,
+.oi-preview-markdown ol {
   margin: 0.6em 0;
   padding-left: 22px;
 }
 
-.oi-preview-markdown table {
+.oi-preview-markdown li {
+  margin: 0.2em 0;
+}
+
+.oi-md-table {
   margin: 0.8em 0;
+  overflow-x: auto;
+}
+
+.oi-preview-markdown table {
   border-collapse: collapse;
 }
 

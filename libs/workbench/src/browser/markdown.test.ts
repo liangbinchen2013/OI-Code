@@ -33,7 +33,8 @@ describe('renderMarkdown', () => {
       '| 复杂度 | 值 |\n| --- | :--: |\n| 时间 | O(n) |\n| 空间 | O(1) |\n\n结束',
     );
 
-    expect(html).toContain('<table><thead><tr>');
+    expect(html).toContain('<div class="oi-md-table"><table><thead><tr>');
+    expect(html).toContain('</tbody></table></div>');
     expect(html).toContain('<th>复杂度</th>');
     expect(html).toContain('<th>值</th>');
     expect(html).toContain('<td>时间</td>');
@@ -41,6 +42,37 @@ describe('renderMarkdown', () => {
     expect(html).toContain('<td>空间</td>');
     expect(html).toContain('<td>O(1)</td>');
     expect(html).toContain('<p>结束</p>');
+  });
+
+  it('有序列表保留编号并独立成列表', () => {
+    const html = renderMarkdown('1. 读入\n2. 计算\n\n3. 结束');
+
+    expect(html).toContain('<ol>');
+    expect(html).toContain('<li>读入</li>');
+    expect(html).toContain('<li>计算</li>');
+    expect(html).toContain('<ol start="3">');
+    expect(html).toContain('<li>结束</li>');
+    expect(html).not.toContain('<p>1. 读入</p>');
+  });
+
+  it('有序列表与无序列表互不嵌套', () => {
+    const html = renderMarkdown('- 甲\n1. 乙\n- 丙');
+
+    expect(html).toBe('<ul><li>甲</li></ul><ol><li>乙</li></ol><ul><li>丙</li></ul>');
+  });
+
+  it('围栏代码块不额外产生空行', () => {
+    const html = renderMarkdown('```cpp\n#include <bits/stdc++.h>\nint main() {}\n```');
+
+    expect(html).toBe(
+      '<pre class="oi-md-code" data-language="cpp"><code>#include &lt;bits/stdc++.h&gt;\nint main() {}</code></pre>',
+    );
+  });
+
+  it('未闭合的代码块照样输出正文', () => {
+    const html = renderMarkdown('```\n第一行\n第二行');
+
+    expect(html).toBe('<pre class="oi-md-code"><code>第一行\n第二行</code></pre>');
   });
 
   it('文本先转义，脚本不会进入输出', () => {

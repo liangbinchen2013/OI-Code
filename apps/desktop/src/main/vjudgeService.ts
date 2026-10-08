@@ -8,13 +8,13 @@ import {
   type IDisposable,
 } from '@oi/base';
 import {
-  htmlToMarkdown,
   IConfigService,
   ILogService,
   parseMemoryLimitKb,
   parseTimeLimitMs,
   pickStatementVersion,
   problemKey,
+  statementTextToMarkdown,
   VJUDGE_BASE_URL,
   OI_CODE_BROWSER_PARTITION,
   type IVjudgeAccount,
@@ -176,7 +176,7 @@ export class VjudgeService implements IVjudgeService, IDisposable {
     const timeLimitMs = parseTimeLimitMs(readProperty(data, 'time_limit'));
     const memoryLimitKb = parseMemoryLimitKb(readProperty(data, 'mem_limit'));
     return {
-      markdown: htmlToMarkdown(description.text),
+      markdown: statementTextToMarkdown(description.text),
       memoryLimitKb,
       mySubmissions: parseMySubmissions(data['mySols']),
       oj: readString(data, 'oj').length > 0 ? readString(data, 'oj') : oj,

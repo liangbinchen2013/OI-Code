@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { htmlToMarkdown } from './vjudgeMarkdown';
+import { htmlToMarkdown, statementTextToMarkdown } from './vjudgeMarkdown';
 
 describe('htmlToMarkdown', () => {
   it('整份文档只取 body，并丢弃脚本与样式', () => {
@@ -122,5 +122,161 @@ describe('htmlToMarkdown', () => {
   it('&amp;lt; 双重转义只解一层', () => {
     expect(htmlToMarkdown('<p>&amp;lt;x&amp;gt;</p>')).toBe('&lt;x&gt;');
     expect(htmlToMarkdown('<p>&lt;x&gt;</p>')).toBe('<x>');
+  });
+});
+
+describe('statementTextToMarkdown', () => {
+  it('JSON 分节文档拆成标题与正文，不泄漏文档结构', () => {
+    const json = JSON.stringify({
+      lang: 'zh',
+      trustable: true,
+      sections: [
+        { title: 'Background', value: { format: 'MD', content: '不能有多余的内容\n\n结尾' } },
+        { title: 'Description', value: { format: 'MD', content: '输入 a, b，输出 a+b。' } },
+      ],
+    });
+    const md = statementTextToMarkdown(json);
+
+    expect(md).toBe(
+      '## Background\n\n不能有多余的内容\n\n结尾\n\n## Description\n\n输入 a, b，输出 a+b。',
+    );
+    expect(md).not.toContain('sections');
+    expect(md).not.toContain('\\n');
+  });
+
+  it('JSON 字符串里的 \\u 转义按原义解码，MD 正文不再当 HTML 处理', () => {
+    const md = statementTextToMarkdown(
+      '{"lang":"zh","sections":[{"title":"Description","value":' +
+        '{"format":"MD","content":"a \\u003c b\\n\\n**粗**"}}]}',
+    );
+
+    expect(md).toBe('## Description\n\na < b\n\n**粗**');
+  });
+
+  it('正文自带标题时不叠加分节标题', () => {
+    const md = statementTextToMarkdown(
+      JSON.stringify({
+        sections: [
+          { title: 'Description', value: { format: 'MD', content: '## 题目描述\n\n正文' } },
+        ],
+      }),
+    );
+
+    expect(md).toBe('## 题目描述\n\n正文');
+  });
+
+  it('format 为 HTML 的分节仍走 HTML 转换', () => {
+    const md = statementTextToMarkdown(
+      JSON.stringify({
+        sections: [
+          {
+            title: 'Input',
+            value: { format: 'HTML', content: '<p>两个整数 <code>a</code>、<code>b</code></p>' },
+          },
+        ],
+      }),
+    );
+
+    expect(md).toBe('## Input\n\n两个整数 `a`、`b`');
+  });
+
+  it('value 为纯字符串时按是否含标签决定转换方式', () => {
+    expect(
+      statementTextToMarkdown(
+        JSON.stringify({ sections: [{ title: 'Hint', value: '<p>提示</p>' }] }),
+      ),
+    ).toBe('## Hint\n\n提示');
+  });
+
+  it('JSON 文档被包在 HTML 正文里时先剥壳再分节', () => {
+    const inner = JSON.stringify({
+      sections: [{ title: 'Description', value: { format: 'MD', content: '正文' } }],
+    });
+
+    expect(statementTextToMarkdown(`<html><body>${inner}</body></html>`)).toBe(
+      '## Description\n\n正文',
+    );
+  });
+
+  it('HTML 题面保持原有行为', () => {
+    expect(statementTextToMarkdown('<h2>描述</h2><p>内容</p>')).toBe('## 描述\n\n内容');
+  });
+
+  it('MD 正文夹带的 HTML 只归一标签，段落分隔不丢', () => {
+    const md = statementTextToMarkdown(
+      JSON.stringify({
+        sections: [
+          {
+            title: 'Background',
+            value: {
+              format: 'MD',
+              content: '第一段\n\n请看 <b>这里</b>。\n\n<div class="md">独立说明</div>',
+            },
+          },
+        ],
+      }),
+    );
+
+    expect(md).toBe('## Background\n\n第一段\n\n请看 **这里**。\n\n独立说明');
+  });
+
+  it('MD 代码块内的 HTML 原样保留', () => {
+    const md = statementTextToMarkdown(
+      JSON.stringify({
+        sections: [
+          { title: 'Sample', value: { format: 'MD', content: '```html\n<div>原样</div>\n```' } },
+        ],
+      }),
+    );
+
+    expect(md).toBe('## Sample\n\n```html\n<div>原样</div>\n```');
+  });
+
+  it('标为 MD 的整段 HTML 按标签切段，不会挤成一行', () => {
+    const md = statementTextToMarkdown(
+      JSON.stringify({
+        sections: [
+          { title: 'Description', value: { format: 'MD', content: '<p>段一</p><p>段二</p>' } },
+        ],
+      }),
+    );
+
+    expect(md).toBe('## Description\n\n段一\n\n段二');
+  });
+
+  it('MD 正文里的 HTML 链接与图片转成 Markdown', () => {
+    const md = statementTextToMarkdown(
+      JSON.stringify({
+        sections: [
+          {
+            title: 'Link',
+            value: {
+              format: 'MD',
+              content:
+                '见 <a href="https://x.test/p">题面</a> 与 <img src="https://x.test/a.png" alt="图">',
+            },
+          },
+        ],
+      }),
+    );
+
+    expect(md).toContain('[题面](https://x.test/p)');
+    expect(md).toContain('![图](https://x.test/a.png)');
+  });
+
+  it('非标签的尖括号正文不被当标签吃掉', () => {
+    const md = statementTextToMarkdown(
+      JSON.stringify({
+        sections: [
+          { title: 'Description', value: { format: 'MD', content: '当 a < b 且 b > 0 时' } },
+        ],
+      }),
+    );
+
+    expect(md).toBe('## Description\n\n当 a < b 且 b > 0 时');
+  });
+
+  it('没有可用分节时原样返回，不伪造标题', () => {
+    expect(statementTextToMarkdown('{"sections":[]}')).toBe('{"sections":[]}');
   });
 });

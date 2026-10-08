@@ -1,8 +1,9 @@
 /**
- * 题面 HTML → Markdown 的纯文本转换器。
+ * 题面正文 → Markdown 的纯文本转换器。
  *
- * VJudge 的题面（`/problem/description/{key}`）是一份自包含 HTML，
- * 这里做**容错、够用**的转换：保留标题、列表、表格、代码块、图片与链接，
+ * VJudge 的题面（`/problem/description/{key}`）有两种形态：自包含 HTML（多数 OJ）
+ * 与 JSON 分节文档（洛谷等），两者都在这里归一。
+ * HTML 分支做**容错、够用**的转换：保留标题、列表、表格、代码块、图片与链接，
  * 丢弃脚本与样式，并把 MathJax 定界符换成本项目预览更友好的 `$` / `$$`。
  * 不依赖 DOM，可在主进程与渲染进程同时使用。
  */
@@ -460,8 +461,159 @@ export function htmlToMarkdown(html: string): string {
     ? html.replace(/^[\s\S]*?<body[\s\S]*?>/i, '').replace(/<\/body>[\s\S]*$/i, '')
     : html;
   const markdown = renderChildren(parseHtml(body), { listStack: [], quoteDepth: 0 });
-  return normalizeMathOutsideCode(markdown)
+  return finishMarkdown(normalizeMathOutsideCode(markdown));
+}
+
+function isRecord(value: unknown): value is Record<string, unknown> {
+  return typeof value === 'object' && value !== null;
+}
+
+/** 只剩空白差异的 Markdown：统一换行、去行尾空白、压缩连续空行。 */
+function finishMarkdown(markdown: string): string {
+  return markdown
+    .replace(/\r\n?/g, '\n')
     .replace(/[ \t]+$/gm, '')
     .replace(/\n{3,}/g, '\n\n')
     .trim();
+}
+
+const HTML_HINT = /<\/?(?:p|div|pre|table|center|font|span|br|img|ul|ol|li|h[1-6]|blockquote)\b/i;
+
+/** 可安全丢弃的已知 HTML 标签名：白名单避免把 `$a < b$` 这类正文当标签吃掉。 */
+const KNOWN_HTML_TAG =
+  /^(?:a|abbr|article|aside|b|blockquote|br|center|code|col|colgroup|dd|del|details|div|dl|dt|em|figcaption|figure|font|footer|h[1-6]|header|hr|i|img|ins|kbd|label|li|main|mark|nav|ol|p|pre|section|small|span|strong|sub|summary|sup|table|tbody|td|tfoot|th|thead|tr|tt|u|ul|var|wbr)$/;
+
+/** 块级标签：在 Markdown 正文里换成空行，保留分段而不是把文字挤成一坨。 */
+const BLOCK_HTML_TAG =
+  /^(?:address|article|aside|blockquote|center|dd|div|dl|dt|fieldset|figcaption|figure|footer|form|h[1-6]|header|hr|li|main|nav|ol|p|pre|section|table|tbody|td|tfoot|th|thead|tr|ul)$/;
+
+/** 成对出现的行内 HTML 标签 → Markdown 标记。 */
+const INLINE_PAIRS: ReadonlyArray<readonly [string, string]> = [
+  ['b', '**'],
+  ['strong', '**'],
+  ['em', '*'],
+  ['i', '*'],
+  ['del', '~~'],
+  ['s', '~~'],
+  ['strike', '~~'],
+];
+
+function attrValue(raw: string, name: string): string {
+  const match = new RegExp(`${name}\\s*=\\s*(?:"([^"]*)"|'([^']*)'|([^\\s"'>]+))`, 'i').exec(raw);
+  return decodeHtmlEntities(match?.[1] ?? match?.[2] ?? match?.[3] ?? '');
+}
+
+/**
+ * 归一 Markdown 正文里夹带的 HTML 标签，只动标签不动 Markdown 结构。
+ * 围栏代码块内的内容原样保留（题面会把 HTML 片段写进样例）。
+ */
+function normalizeInlineHtml(text: string): string {
+  return text
+    .split(/(```[\s\S]*?```)/g)
+    .map((part, index) => {
+      if (index % 2 === 1) {
+        return part;
+      }
+      let result = part.replace(/<br\s*\/?>/gi, '\n');
+      for (const [tag, marker] of INLINE_PAIRS) {
+        result = result.replace(
+          new RegExp(`<${tag}\\b[^>]*>([^<]*)</${tag}>`, 'gi'),
+          (_match, inner: string) =>
+            inner.trim().length === 0 ? '' : `${marker}${inner}${marker}`,
+        );
+      }
+      result = result.replace(
+        /<code\b[^>]*>([^<]*)<\/code>/gi,
+        (_match, inner: string) => `\`${inner.replace(/`/g, "'")}\``,
+      );
+      result = result.replace(
+        /<a\b([^>]*)>([^<]*)<\/a>/gi,
+        (_match, attrs: string, label: string) =>
+          attrValue(attrs, 'href').length > 0 && label.trim().length > 0
+            ? `[${label.trim()}](${attrValue(attrs, 'href')})`
+            : label,
+      );
+      result = result.replace(
+        /<img\b([^>]*)\/?>/gi,
+        (_match, attrs: string) => `![${attrValue(attrs, 'alt')}](${attrValue(attrs, 'src')})`,
+      );
+      return result.replace(/<\/?([a-zA-Z][\w-]*)(?:\s[^>]*)?\/?>/g, (match, name: string) => {
+        const tag = name.toLowerCase();
+        if (!KNOWN_HTML_TAG.test(tag)) {
+          return match;
+        }
+        // 块级标签换成空行保留分段，行内标签直接摘掉
+        return BLOCK_HTML_TAG.test(tag) ? '\n\n' : '';
+      });
+    })
+    .join('');
+}
+
+/** 分节正文：`MD` 保留 Markdown 结构只归一标签，其余形态按标签密度决定。 */
+function renderSectionValue(value: unknown): string {
+  const content = isRecord(value) ? value['content'] : value;
+  if (typeof content !== 'string' || content.trim().length === 0) {
+    return '';
+  }
+  const format =
+    isRecord(value) && typeof value['format'] === 'string' ? value['format'].toUpperCase() : '';
+  if (format === 'MD' || format === 'MARKDOWN') {
+    return finishMarkdown(normalizeInlineHtml(content));
+  }
+  return HTML_HINT.test(content) ? htmlToMarkdown(content) : finishMarkdown(content);
+}
+
+/**
+ * 解析 `/problem/description/{key}` 的 JSON 分节文档并拼成 Markdown。
+ *
+ * 洛谷等站点的题面不是 HTML，而是
+ * `{"lang":"zh","sections":[{"title":"Background","value":{"format":"MD","content":"…"}}]}`，
+ * 其中 `content` 已是 Markdown，只需由 `JSON.parse` 解码 `\n`、`\uXXXX` 等转义。
+ * @returns 不是该形态时返回 `undefined`
+ */
+function parseStatementDocument(text: string): string | undefined {
+  const trimmed = text.trim();
+  if (!trimmed.startsWith('{')) {
+    return undefined;
+  }
+  let parsed: unknown;
+  try {
+    parsed = JSON.parse(trimmed);
+  } catch {
+    return undefined;
+  }
+  if (!isRecord(parsed) || !Array.isArray(parsed['sections'])) {
+    return undefined;
+  }
+  const parts: string[] = [];
+  for (const section of parsed['sections']) {
+    if (!isRecord(section)) {
+      continue;
+    }
+    const body = renderSectionValue(section['value']);
+    if (body.length === 0) {
+      continue;
+    }
+    const title = typeof section['title'] === 'string' ? section['title'].trim() : '';
+    // 正文自带标题时不再叠加，避免同一节出现两行标题
+    parts.push(title.length > 0 && !/^#{1,6}\s/.test(body) ? `## ${title}\n\n${body}` : body);
+  }
+  if (parts.length === 0) {
+    return undefined;
+  }
+  return finishMarkdown(normalizeMathOutsideCode(parts.join('\n\n')));
+}
+
+/**
+ * 把题面响应正文转成 Markdown，自动识别 HTML 与 JSON 分节两种形态。
+ * @param text `/problem/description/{key}` 的响应正文
+ */
+export function statementTextToMarkdown(text: string): string {
+  const document = parseStatementDocument(text);
+  if (document !== undefined) {
+    return document;
+  }
+  const converted = htmlToMarkdown(text);
+  // 少数情况下 JSON 文档被包在 HTML 正文里，剥掉外壳后仍需按分节解析
+  return parseStatementDocument(converted) ?? converted;
 }
