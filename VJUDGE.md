@@ -117,13 +117,30 @@ curl https://vjudge.net/problem/info/CodeForces-1748E
 ### 4.2 题面正文 `[实测]`（**无需登录**）
 
 ```
-GET /problem/description/{descKey}      → 200，返回一份完整的独立 HTML 文档
+GET /problem/description/{descKey}      → 200，正文形态随站点而异
 ```
 
-题面**不是** JSON 片段，而是一个自包含的 HTML 页面（含 `<head>`、主题脚本、MathJax），VJudge 前端用 `<iframe id="frame-description">` 装载它。因此：
+**同一个端点有两种正文**，必须都处理：
 
-- 集成时把该 URL 直接塞进 iframe / webview 即可原样渲染（公式、图片都能出）；
-- 想要纯文本，需自行解析该 HTML 的正文节点（POJ 题面常见 `<div class="ptx">`）。
+1. **自包含 HTML 文档**（POJ / CodeForces 等）：含 `<head>`、主题脚本与 MathJax，VJudge 前端用 `<iframe id="frame-description">` 装载。POJ 题面常见 `<div class="ptx">`。
+2. **JSON 分节文档**（洛谷等，`[实测]` 洛谷-P1001）：整份响应正文就是
+
+   ```json
+   {
+     "lang": "zh",
+     "trustable": true,
+     "sections": [
+       { "title": "Background", "value": { "format": "MD", "content": "不熟悉算法竞赛的选手请看这里：\n\n…" } },
+       { "title": "Description", "value": { "format": "MD", "content": "## 题目描述\n\n…" } }
+     ]
+   }
+   ```
+
+   - `value.format`：`MD`（`content` **已是 Markdown**）或 `HTML`（需转 Markdown）；
+   - `content` 里的换行与尖括号是 **JSON 转义**（`\n`、`\u003c`、`\u0026`），必须由 `JSON.parse` 解码，绝不能把原始响应正文当文本渲染；
+   - `sections[].title` 是英文分节名（`Background` / `Description` / `Input Format` / `Sample Output` / `Hint`），与正文语言无关；正文可能自带 `##` 标题。
+
+> **踩坑记录**：早期把该端点一律当 HTML 转换，洛谷题面就变成一整坨带字面量 `\n`、`\u003c` 的 JSON 文本。归一化实现见 `libs/platform/src/common/vjudgeMarkdown.ts` 的 `statementTextToMarkdown`。
 
 `descKey` 是**"题目 × 语言版本"的键**，不是 `pid`，必须从题目页的 `dataJson.descBriefs` 取得（见 §4.3）。
 
@@ -421,7 +438,7 @@ GET /status/data?draw=1&start=0&length=N[&其他过滤参数]
       ├─ statusCanonical=PENDING / processing=true   → 继续轮询（退火 1s→5s）
       └─ processing=false                            → 终态
 6. 读 statusCanonical + runtime + memory       → 映射为 AC/WA/TLE/MLE/RE/CE
-7. (可选) GET /problem/description/{descKey}   → 题面 HTML（无需登录）
+7. (可选) GET /problem/description/{descKey}   → 题面正文：HTML 或 JSON 分节（无需登录）
    (可选) GET /user/solveDetail/{username}     → 已 AC 题号，做进度/去重
 ```
 
@@ -449,7 +466,7 @@ GET /user/solveDetail/{username}
 | 关注点 | 实现位置 |
 |--------|----------|
 | 契约与纯逻辑（OJ 匹配、状态码映射、题面版本择一、限制解析） | `libs/platform/src/common/vjudge.ts` |
-| 题面 HTML → Markdown | `libs/platform/src/common/vjudgeMarkdown.ts` |
+| 题面正文（HTML / JSON 分节）→ Markdown | `libs/platform/src/common/vjudgeMarkdown.ts`（`statementTextToMarkdown`） |
 | 渲染进程 RPC 代理 | `libs/platform/src/common/vjudgeServiceClient.ts` |
 | 主进程网络实现 | `apps/desktop/src/main/vjudgeService.ts` |
 | 响应解析（可单测，不依赖 electron） | `apps/desktop/src/main/vjudgeParse.ts` |
@@ -469,7 +486,8 @@ GET /user/solveDetail/{username}
   登录态用 `GET /problem/suggestions` 探测（401 即未登录）。
 - **取题**：`/problem/info`（匿名）取标题 → 题目页（需登录）解析 `dataJson`
   取 `descBriefs`/`properties`/`submitMethods`/`mySols` → `/problem/description/{key}`
-  取题面 HTML 转 Markdown 渲染。
+  按 §4.2 归一化为 Markdown 后渲染（HTML 与 JSON 分节两种形态都支持；
+  正文里夹带的 HTML 标签只改标签、不动 Markdown 结构）。
 - **提交**：`/problem/submit/{OJ}-{id}`，语言表来自 `/util/cfg.remoteOjs[OJ].languages`；
   提交前可用本地测试点先跑评测机（设置中可关）。
 - **回爬**：提交后主进程按 1s→5s 退火轮询 `/solution/data/{runId}`，
@@ -477,6 +495,7 @@ GET /user/solveDetail/{username}
 - **记录**：`/user/solveDetail/{username}` 的 AC 题号渲染为顶部可点击胶囊。
 
 仍未接入（等 §9 补全）：发起 AI 翻译任务、比赛/题单接口、`/problem/suggestions` 搜索下拉。
+题面里的 `$…$` / `$$…$$` 公式目前按纯文本显示（KaTeX 尚未接入预览渲染）。
 
 **注意**：工具链与外部 OJ 集成在 Extension Host（阶段 6）落地后应迁到 `libs/extensions/`，当前先放 Code 层。
 
@@ -501,7 +520,7 @@ GET /user/solveDetail/{username}
 - [x] 提交端点、请求体字段与响应（§6.1，含"不需要 token"这一反直觉结论）。
 - [x] 结果轮询端点 `POST /solution/data/{runId}` 与全部响应字段（§6.2）。
 - [x] `PENDING → AC` 的终态判定路径与耗时量级（§6.7）。
-- [x] 题面正文端点与形态：`GET /problem/description/{descKey}`，自包含 HTML，**无需登录**（§4.2）。
+- [x] 题面正文端点与形态：`GET /problem/description/{descKey}`，**两种形态**——自包含 HTML（POJ/CF）与 JSON 分节文档（洛谷），**无需登录**（§4.2）。
 - [x] 翻译机制：`descBriefs` 多语言版本切换，含 LLM 译本元数据（§5）。
 - [x] 语言列表来源：`/util/cfg.remoteOJs[OJ].languages`（§6.5）。
 - [x] 题目列表与过滤参数：`/problem/data`（§4.5）。
