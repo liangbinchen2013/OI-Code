@@ -495,7 +495,7 @@ GET /user/solveDetail/{username}
 - **记录**：`/user/solveDetail/{username}` 的 AC 题号渲染为顶部可点击胶囊。
 
 仍未接入（等 §9 补全）：发起 AI 翻译任务、比赛/题单接口、`/problem/suggestions` 搜索下拉。
-题面里的 `$…$` / `$$…$$` 公式目前按纯文本显示（KaTeX 尚未接入预览渲染）。
+题面里的 `$…$` / `$$…$$` 公式由预览渲染器的 KaTeX 排版（非法 LaTeX 以红色原式显示、`\href` 等外链宏按 `trust:false` 拒绝，不会打断整篇渲染）。
 
 **注意**：工具链与外部 OJ 集成在 Extension Host（阶段 6）落地后应迁到 `libs/extensions/`，当前先放 Code 层。
 

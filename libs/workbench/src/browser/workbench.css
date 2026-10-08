@@ -746,6 +746,26 @@ body {
   background: transparent;
 }
 
+/* KaTeX：长公式在窄面板里自己横向滚动，不把容器撑破 */
+.oi-md-math {
+  margin: 0.8em 0;
+}
+
+.oi-preview-markdown .katex {
+  font-size: 1.06em;
+}
+
+.oi-preview-markdown .katex-display {
+  margin: 0.8em 0;
+  padding: 2px 0;
+  overflow-x: auto;
+  overflow-y: hidden;
+}
+
+.oi-md-math .katex-display {
+  margin: 0;
+}
+
 .oi-preview-markdown a {
   color: var(--link);
 }

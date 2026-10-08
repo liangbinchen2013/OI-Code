@@ -49,6 +49,12 @@ test('分屏预览：Markdown 实时渲染、拖拽比例、方向切换与持�
       'int main() { return 0; }',
       '```',
       '',
+      '如题，输入 $a+b$，约束 $n \\le 10^5$。',
+      '',
+      '$$',
+      '\\sum_{i=1}^{n} i = \\frac{n(n+1)}{2}',
+      '$$',
+      '',
     ].join('\n'),
     'utf8',
   );
@@ -76,6 +82,16 @@ test('分屏预览：Markdown 实时渲染、拖拽比例、方向切换与持�
     await expect(
       page.locator('.oi-preview-markdown pre.oi-md-code span[class*="mtk"]').first(),
     ).toBeAttached();
+
+    // KaTeX 公式：行内与独立块都要渲染，且字体必须真的可用（回退字体会让求和号错位）
+    await expect(page.locator('.oi-preview-markdown .katex').first()).toBeVisible();
+    await expect(page.locator('.oi-preview-markdown .oi-md-math .katex-display')).toBeVisible();
+    expect(
+      await page.evaluate(async () => {
+        await document.fonts.load('24px KaTeX_Size2', '\\u2211');
+        return document.fonts.check('24px KaTeX_Size2', '\\u2211');
+      }),
+    ).toBe(true);
 
     // 编辑内容实时反映到预览
     await page.locator('.monaco-editor').click();

@@ -75,6 +75,69 @@ describe('renderMarkdown', () => {
     expect(html).toBe('<pre class="oi-md-code"><code>第一行\n第二行</code></pre>');
   });
 
+  it('行内公式交给 KaTeX 渲染', () => {
+    const html = renderMarkdown('如题，输入 $a+b$ 即可。');
+
+    expect(html).toContain('class="katex"');
+    expect(html).toContain('<annotation encoding="application/x-tex">a+b</annotation>');
+    expect(html).toContain('如题，输入');
+    expect(html).not.toContain('$a+b$');
+  });
+
+  it('$$ 独立块公式输出为块级并保留前后段落', () => {
+    const html = renderMarkdown('前文\n\n$$\nn \\le 10^5\n$$\n\n后文');
+
+    expect(html).toContain('<div class="oi-md-math">');
+    expect(html).toContain('katex-display');
+    expect(html).toContain('<annotation encoding="application/x-tex">n \\le 10^5</annotation>');
+    expect(html).toContain('<p>前文</p>');
+    expect(html).toContain('<p>后文</p>');
+  });
+
+  it('行内写的 $$…$$ 也按块级公式渲染', () => {
+    const html = renderMarkdown('答案 $$a+b$$ 在此');
+
+    expect(html).toContain('katex-display');
+  });
+
+  it('代码里的美元定界符不当公式处理', () => {
+    const html = renderMarkdown('`$x$` 是字面量\n\n```\n$n \\le 10$\n```');
+
+    expect(html).toContain('<code>$x$</code>');
+    expect(html).toContain('$n \\le 10$');
+    expect(html).not.toContain('katex');
+  });
+
+  it('普通美元金额不会被误判成公式', () => {
+    const html = renderMarkdown('花了 $5 和 $6 元');
+
+    expect(html).toBe('<p>花了 $5 和 $6 元</p>');
+  });
+
+  it('公式与行内语法、表格、列表共存', () => {
+    const html = renderMarkdown(
+      '- 复杂度 $O(n\\log n)$\n\n| 项 | 值 |\n| --- | --- |\n| 上界 | $10^5$ |',
+    );
+
+    expect(html).toContain('<li>复杂度 <span class="katex">');
+    expect(html).toContain('<td>上界</td>');
+    expect(html).toContain('class="katex"');
+  });
+
+  it('LaTeX 写错时原式以错误态呈现，整篇继续渲染', () => {
+    const html = renderMarkdown('错误 $\\frac{1}{$ 与后文');
+
+    expect(html).toContain('katex-error');
+    expect(html).toContain('与后文');
+  });
+
+  it('公式里的 \\href 不会被渲染成链接', () => {
+    const html = renderMarkdown('$\\href{javascript:alert(1)}{x}$');
+
+    expect(html).not.toContain('<a ');
+    expect(html).not.toContain('href="javascript');
+  });
+
   it('文本先转义，脚本不会进入输出', () => {
     const html = renderMarkdown('<script>alert(1)</script>');
 

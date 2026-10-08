@@ -1,8 +1,11 @@
 /**
  * 分屏预览与题面用的极简 Markdown → HTML 渲染：
- * 支持标题、段落、有序/无序列表、表格、围栏代码块与常用行内语法。
- * 所有文本先转义再生成受控标签，不追求完整 CommonMark 兼容。
+ * 支持标题、段落、有序/无序列表、表格、围栏代码块、KaTeX 公式与常用行内语法。
+ * 除公式（由 KaTeX 生成受控标记）外，所有文本先转义再生成标签，
+ * 不追求完整 CommonMark 兼容。
  */
+import katex from 'katex';
+
 export function escapeHtml(text: string): string {
   return text
     .replace(/&/g, '&amp;')
@@ -17,10 +20,26 @@ const LIST_ITEM = /^\s*[-*]\s+(.+)$/;
 const ORDERED_ITEM = /^\s*(\d+)[.)]\s+(.+)$/;
 const FENCE = /^\s*```(.*)$/;
 const FENCE_CLOSE = /^\s*```\s*$/;
+const DISPLAY_MATH = /^\s*\$\$\s*$/;
+/** 行内代码优先于公式：`$x$` 写在代码里就不该被当成公式。 */
+const INLINE_TOKEN = /(`[^`]+`)|\$\$[\s\S]+?\$\$|\$(?![\s$])[^$\n]*?(?<=[^\s$])\$/g;
 const SAFE_HREF = /^(https?:|#|\/|\.{1,2}\/)/i;
 /** 题面与笔记里的图片只允许 http(s)、站内路径与内联 data:image。 */
 const SAFE_IMG = /^(https?:|\/|\.{1,2}\/|data:image\/)/i;
 const TABLE_SEPARATOR_CELL = /^:?-{2,}:?$/;
+
+/** 公式渲染：题面里的 LaTeX 常有笔误，出错时原样显示而不是打断整篇渲染。 */
+function renderMath(token: string): string {
+  const display = token.startsWith('$$');
+  return katex.renderToString(display ? token.slice(2, -2) : token.slice(1, -1), {
+    displayMode: display,
+    // trust:false 拒绝 \href 等外链宏；strict:false 抑制 KaTeX 的 console 告警
+    errorColor: '#c62828',
+    strict: false,
+    throwOnError: false,
+    trust: false,
+  });
+}
 
 /** 拆分表格行；无 `|` 或仅分隔线样式时返回 undefined。 */
 function splitTableRow(line: string): string[] | undefined {
@@ -39,9 +58,8 @@ function isTableSeparator(row: readonly string[]): boolean {
   return row.length > 0 && row.every((cell) => TABLE_SEPARATOR_CELL.test(cell));
 }
 
-function renderInline(escaped: string): string {
-  let result = escaped.replace(/`([^`]+)`/g, '<code>$1</code>');
-  result = result.replace(/\*\*([^*]+)\*\*/g, '<strong>$1</strong>');
+function renderText(escaped: string): string {
+  let result = escaped.replace(/\*\*([^*]+)\*\*/g, '<strong>$1</strong>');
   result = result.replace(/\*([^*]+)\*/g, '<em>$1</em>');
   // 图片必须先于链接处理，否则 `![alt](src)` 会被链接规则吃掉剩下的 `!`
   result = result.replace(/!\[([^\]]*)\]\(([^)\s]+)\)/g, (_match, alt: string, src: string) =>
@@ -60,6 +78,25 @@ function renderInline(escaped: string): string {
   return result;
 }
 
+/** 行内渲染：代码与公式各自受控处理，其余文本先转义再生成标签。 */
+function renderInline(raw: string): string {
+  let out = '';
+  let cursor = 0;
+  for (const match of raw.matchAll(INLINE_TOKEN)) {
+    const token = match[0];
+    if (token === undefined) {
+      continue;
+    }
+    const start = match.index ?? 0;
+    out += renderText(escapeHtml(raw.slice(cursor, start)));
+    out += token.startsWith('`')
+      ? `<code>${escapeHtml(token.slice(1, -1))}</code>`
+      : renderMath(token);
+    cursor = start + token.length;
+  }
+  return out + renderText(escapeHtml(raw.slice(cursor)));
+}
+
 export function renderMarkdown(source: string): string {
   const html: string[] = [];
   let paragraph: string[] = [];
@@ -69,7 +106,7 @@ export function renderMarkdown(source: string): string {
 
   const flushParagraph = (): void => {
     if (paragraph.length > 0) {
-      html.push(`<p>${renderInline(escapeHtml(paragraph.join(' ')))}</p>`);
+      html.push(`<p>${renderInline(paragraph.join(' '))}</p>`);
       paragraph = [];
     }
   };
@@ -108,7 +145,7 @@ export function renderMarkdown(source: string): string {
       // 窄面板里宽表格需要自身横向滚动，而不是撑破容器
       html.push('<div class="oi-md-table"><table><thead><tr>');
       for (const cell of headerCells) {
-        html.push(`<th>${renderInline(escapeHtml(cell))}</th>`);
+        html.push(`<th>${renderInline(cell)}</th>`);
       }
       html.push('</tr></thead><tbody>');
       index += 2;
@@ -120,12 +157,25 @@ export function renderMarkdown(source: string): string {
         }
         html.push('<tr>');
         for (let column = 0; column < headerCells.length; column += 1) {
-          html.push(`<td>${renderInline(escapeHtml(bodyCells[column] ?? ''))}</td>`);
+          html.push(`<td>${renderInline(bodyCells[column] ?? '')}</td>`);
         }
         html.push('</tr>');
         index += 1;
       }
       html.push('</tbody></table></div>');
+      continue;
+    }
+    const displayMath = DISPLAY_MATH.test(line);
+    if (displayMath) {
+      flushParagraph();
+      closeList();
+      const body: string[] = [];
+      index += 1;
+      while (index < lines.length && !DISPLAY_MATH.test(lines[index] ?? '')) {
+        body.push(lines[index] ?? '');
+        index += 1;
+      }
+      html.push(`<div class="oi-md-math">${renderMath(`$$${body.join('\n')}$$`)}</div>`);
       continue;
     }
     const fence = FENCE.exec(line);
@@ -146,7 +196,7 @@ export function renderMarkdown(source: string): string {
       flushParagraph();
       closeList();
       const level = (heading[1] ?? '#').length;
-      html.push(`<h${level}>${renderInline(escapeHtml(heading[2] ?? ''))}</h${level}>`);
+      html.push(`<h${level}>${renderInline(heading[2] ?? '')}</h${level}>`);
       continue;
     }
     const listItem = LIST_ITEM.exec(line);
@@ -162,7 +212,7 @@ export function renderMarkdown(source: string): string {
         html.push(kind === 'ol' ? (start === 1 ? '<ol>' : `<ol start="${start}">`) : '<ul>');
         listOpen = kind;
       }
-      html.push(`<li>${renderInline(escapeHtml(item))}</li>`);
+      html.push(`<li>${renderInline(item)}</li>`);
       continue;
     }
     if (line.trim().length === 0) {

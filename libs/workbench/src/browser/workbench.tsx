@@ -87,6 +87,8 @@ import {
   type ITemplateStore,
 } from './templates';
 import { applyTheme, persistTheme, readStoredTheme, resolveInitialTheme } from './theme';
+// KaTeX 样式必须先于工作台样式，后者的覆盖规则才有机会生效
+import 'katex/dist/katex.min.css';
 import './tokens.css';
 import './workbench.css';
 
