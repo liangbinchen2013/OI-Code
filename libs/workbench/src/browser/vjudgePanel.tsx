@@ -94,7 +94,7 @@ export function VjudgePanel({ resolveSource, appTheme, hidden, vjudgeService }: 
   const [busy, setBusy] = useState<'fetch' | 'submit' | undefined>(undefined);
   const [message, setMessage] = useState<string | undefined>(undefined);
   const [activated, setActivated] = useState(hidden !== true);
-  const [fullscreen, setFullscreen] = useState(false);
+  const [expanded, setExpanded] = useState(false);
   const currentKeyRef = useRef('');
   const markdownRef = useRef<HTMLElement | null>(null);
   const loginStageRef = useRef<HTMLDivElement | null>(null);
@@ -225,22 +225,22 @@ export function VjudgePanel({ resolveSource, appTheme, hidden, vjudgeService }: 
     return () => {
       cancelled = true;
     };
-  }, [problem?.markdown, appTheme, fullscreen]);
+  }, [problem?.markdown, appTheme, expanded]);
 
-  // 全屏阅读：Esc 退出，并把焦点移入题面，避免 Tab 落在被遮住的侧栏上
+  // 放大阅读：Esc 收回，并把焦点移入题面，避免 Tab 落在被遮住的侧栏部件上
   useEffect(() => {
-    if (!fullscreen) {
+    if (!expanded) {
       return undefined;
     }
     const onKeyDown = (event: KeyboardEvent): void => {
       if (event.key === 'Escape') {
-        setFullscreen(false);
+        setExpanded(false);
       }
     };
     window.addEventListener('keydown', onKeyDown);
     markdownRef.current?.focus();
     return () => window.removeEventListener('keydown', onKeyDown);
-  }, [fullscreen]);
+  }, [expanded]);
 
   const resolveOj = useCallback((): IVjudgeRemoteOj | undefined => {
     if (config === undefined) {
@@ -397,11 +397,11 @@ export function VjudgePanel({ resolveSource, appTheme, hidden, vjudgeService }: 
     </button>
   );
 
-  // 全屏阅读：只留题面与提交，侧栏其余部件一律不渲染（同一时间只有一个 markdownRef 宿主）
-  if (fullscreen && problem !== undefined) {
+  // 放大阅读：题面占满整个侧边栏面板，只留提交与缩小按钮
+  if (expanded && problem !== undefined) {
     return (
       <section
-        className="oi-vjudge oi-vjudge-fullscreen"
+        className="oi-vjudge"
         hidden={hidden}
         aria-label={`${WORKBENCH_STRINGS.vjudgeTitle} · ${problemKey(problem.oj, problem.probNum)}`}
       >
@@ -414,14 +414,19 @@ export function VjudgePanel({ resolveSource, appTheme, hidden, vjudgeService }: 
           <button
             type="button"
             className="oi-btn oi-btn-icon oi-btn-secondary oi-vjudge-shrink"
-            onClick={() => setFullscreen(false)}
+            onClick={() => setExpanded(false)}
             title={WORKBENCH_STRINGS.vjudgeShrink}
             aria-label={WORKBENCH_STRINGS.vjudgeShrink}
           >
             <FontAwesomeIcon icon={faMinimize} aria-hidden="true" />
           </button>
         </header>
-        <article ref={markdownRef} className="oi-vjudge-read-body" tabIndex={-1}>
+        <article
+          ref={markdownRef}
+          className="oi-vjudge-statement oi-vjudge-statement-expanded"
+          tabIndex={-1}
+          aria-label={problem.title}
+        >
           {statementBody}
         </article>
         {message !== undefined ? (
@@ -629,7 +634,7 @@ export function VjudgePanel({ resolveSource, appTheme, hidden, vjudgeService }: 
                 <button
                   type="button"
                   className="oi-btn oi-btn-icon oi-btn-secondary oi-btn-sm oi-vjudge-expand"
-                  onClick={() => setFullscreen(true)}
+                  onClick={() => setExpanded(true)}
                   title={WORKBENCH_STRINGS.vjudgeExpand}
                   aria-label={WORKBENCH_STRINGS.vjudgeExpand}
                 >

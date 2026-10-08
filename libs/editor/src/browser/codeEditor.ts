@@ -18,6 +18,11 @@ import {
 
 const EDITOR_FONT_SIZE = 14;
 const EDITOR_TAB_SIZE = 4;
+/**
+ * 编辑器等宽字体栈。题面与预览里的代码块用 `--font-mono`（tokens.css）取同一条栈，
+ * 改这里必须同步改那边，否则读参考代码和写代码会看到两种字形。
+ */
+const EDITOR_FONT_FAMILY = "Consolas, Monaco, 'Courier New', monospace";
 
 /** 诊断标记归属者，供 Monaco marker 管理与清理。 */
 const MARKER_OWNER = 'oi-code';
@@ -152,6 +157,7 @@ class CodeEditorHost implements ICodeEditorHost {
       automaticLayout: true,
       minimap: { enabled: false },
       fontSize: options.fontSize ?? EDITOR_FONT_SIZE,
+      fontFamily: EDITOR_FONT_FAMILY,
       tabSize: options.tabSize ?? EDITOR_TAB_SIZE,
       scrollBeyondLastLine: false,
       renderWhitespace: 'selection',

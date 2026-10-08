@@ -739,11 +739,17 @@ body {
   border: 1px solid var(--border);
   border-radius: 10px;
   background: var(--bg);
+  /* 题面里的参考代码与样例按编辑器同款字体与字号呈现 */
+  font-family: var(--font-mono);
+  font-size: 14px;
+  line-height: 1.5;
 }
 
 .oi-preview-markdown .oi-md-code code {
   padding: 0;
   background: transparent;
+  font-family: inherit;
+  font-size: inherit;
 }
 
 /* KaTeX：长公式在窄面板里自己横向滚动，不把容器撑破 */
@@ -2268,25 +2274,18 @@ body {
   min-width: 0;
 }
 
-/* 题面全屏阅读：盖住整个窗口，只留题面与提交 */
-.oi-vjudge-fullscreen {
-  position: fixed;
-  inset: 0;
-  z-index: 22;
-  padding: 12px 24px 24px;
-  background: var(--bg);
-}
-
+/* 题面放大阅读：占满侧边栏面板，只留提交与缩小按钮 */
 .oi-vjudge-read-bar {
   display: flex;
+  flex-wrap: wrap;
   align-items: center;
-  gap: 10px;
-  padding-bottom: 10px;
+  gap: 6px 8px;
+  padding-bottom: 8px;
   border-bottom: 1px solid var(--card-border);
 }
 
 .oi-vjudge-read-title {
-  flex: 1;
+  flex: 1 1 160px;
   min-width: 0;
 }
 
@@ -2294,16 +2293,9 @@ body {
   margin: 0;
 }
 
-.oi-vjudge-read-body {
-  box-sizing: border-box;
-  width: 100%;
-  max-width: 920px;
+.oi-vjudge-statement-expanded {
+  flex: 1 1 auto;
   min-height: 0;
-  flex: 1;
-  margin: 0 auto;
-  padding: 12px 4px 32px;
-  overflow: auto;
-  outline: none;
 }
 
 .oi-vjudge-problem-meta {

@@ -37,6 +37,7 @@
 
   --font-ui:
     -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, 'Helvetica Neue', Arial, sans-serif;
+  /* 与编辑器字体栈一致（见 libs/editor codeEditor.ts 的 EDITOR_FONT_FAMILY） */
   --font-mono: Consolas, Monaco, 'Courier New', monospace;
 }
 
