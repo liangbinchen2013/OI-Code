@@ -307,6 +307,36 @@ export function pickStatementVersion(
   })[0];
 }
 
+/** 各源语言对应的远端语言名匹配模式（按 OJ 显示名择优）。 */
+const SOURCE_LANGUAGE_PATTERNS: Readonly<Record<string, RegExp>> = {
+  cpp: /c\+\+|g\+\+|clang\+\+|\bcpp\b/i,
+  python: /python|pypy|\bpy\d/i,
+};
+
+/**
+ * 为编辑器里的源语言挑一个默认提交语言：
+ * 优先按显示名匹配（C++ / Python），匹配不到再退回列表第一项。
+ * 语言 id 由各远端 OJ 自行编号，第一项经常是 Pascal 之类，故必须做这层择优。
+ */
+export function pickDefaultLanguage(
+  options: readonly IVjudgeLanguageOption[],
+  sourceLanguage: string | undefined,
+): string {
+  const first = options[0];
+  if (first === undefined) {
+    return '';
+  }
+  const pattern =
+    sourceLanguage === undefined ? undefined : SOURCE_LANGUAGE_PATTERNS[sourceLanguage];
+  if (pattern !== undefined) {
+    const matched = options.find((option) => pattern.test(option.name));
+    if (matched !== undefined) {
+      return matched.id;
+    }
+  }
+  return first.id;
+}
+
 function firstNumber(text: string): number | undefined {
   const match = /-?\d+(?:\.\d+)?/.exec(text.replace(/,/g, ''));
   if (match === null) {

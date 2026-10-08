@@ -25,6 +25,15 @@ export function readBoolean(source: Record<string, unknown>, key: string): boole
   return source[key] === true;
 }
 
+/** 题面版本键在页面里是数字字面量，必须与字符串形式一并接受。 */
+function readKey(source: Record<string, unknown>, key: string): string {
+  const value = source[key];
+  if (typeof value === 'string') {
+    return value;
+  }
+  return typeof value === 'number' && Number.isFinite(value) ? String(value) : '';
+}
+
 /** 解析 `/util/cfg` 的远端 OJ 表（`{名: {languages, isAlive, …}}`）。 */
 export function parseRemoteOjs(value: unknown): IVjudgeRemoteOj[] {
   if (!isRecord(value)) {
@@ -79,7 +88,7 @@ export function parseStatementVersions(value: unknown): IStatementVersion[] {
     if (!isRecord(raw)) {
       continue;
     }
-    const key = readString(raw, 'key');
+    const key = readKey(raw, 'key');
     if (key.length === 0) {
       continue;
     }

@@ -1,6 +1,7 @@
 import { describe, expect, it } from 'vitest';
 import {
   matchRemoteOjs,
+  pickDefaultLanguage,
   parseMemoryLimitKb,
   parseTimeLimitMs,
   pickStatementVersion,
@@ -137,6 +138,35 @@ describe('pickStatementVersion', () => {
 
   it('空表返回 undefined', () => {
     expect(pickStatementVersion([], 'zh')).toBeUndefined();
+  });
+});
+
+describe('pickDefaultLanguage', () => {
+  // 洛谷真实语言表：第一项是 Pascal，直接取首项会选错
+  const luogu: readonly { id: string; name: string }[] = [
+    { id: '1', name: 'Pascal' },
+    { id: '2', name: 'C' },
+    { id: '3', name: 'C++98' },
+    { id: '10', name: 'C++14' },
+    { id: '5', name: 'Python3' },
+  ];
+
+  it('按编辑器语言择优匹配显示名', () => {
+    expect(pickDefaultLanguage(luogu, 'cpp')).toBe('3');
+    expect(pickDefaultLanguage(luogu, 'python')).toBe('5');
+  });
+
+  it('未知源语言或无匹配时退回首项', () => {
+    expect(pickDefaultLanguage(luogu, undefined)).toBe('1');
+    expect(pickDefaultLanguage(luogu, 'ruby')).toBe('1');
+  });
+
+  it('空表返回空串', () => {
+    expect(pickDefaultLanguage([], 'cpp')).toBe('');
+  });
+
+  it('C++ 匹配不会误命中非 C++ 名称', () => {
+    expect(pickDefaultLanguage([{ id: '0', name: 'Pascal' }], 'cpp')).toBe('0');
   });
 });
 

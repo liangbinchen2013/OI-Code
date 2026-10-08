@@ -110,6 +110,20 @@ describe('题面版本与限制解析', () => {
     expect(versions[0]?.remarks).toBe('Initialization.');
   });
 
+  it('接受页面里的数字 key（真实题面版本键是数字字面量）', () => {
+    const versions = parseStatementVersions([
+      {
+        key: 316632928574981,
+        lang: 'zh',
+        mainOfficial: true,
+        official: true,
+        type: 'main',
+        version: 1789906721000,
+      },
+    ]);
+    expect(versions.map((version) => version.key)).toEqual(['316632928574981']);
+  });
+
   it('properties 提供时限与内存并可归一', () => {
     const data = {
       properties: [
