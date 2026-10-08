@@ -102,6 +102,7 @@ export function VjudgePanel({
 }: IVjudgePanelProps) {
   const [config, setConfig] = useState<IVjudgeConfig | undefined>(undefined);
   const [account, setAccount] = useState<IVjudgeAccount | undefined>(undefined);
+  const [accountUnknown, setAccountUnknown] = useState(false);
   const [solved, setSolved] = useState<readonly string[]>([]);
   const [loginOpen, setLoginOpen] = useState(false);
   const [ojInput, setOjInput] = useState('');
@@ -161,9 +162,12 @@ export function VjudgePanel({
     try {
       const next = await vjudgeService.getAccount();
       setAccount(next);
+      setAccountUnknown(false);
       return next;
     } catch (error) {
       onUnexpectedError(error);
+      // 网络不通时也必须给出结论，否则顶部会永远停在"正在检查登录态"
+      setAccountUnknown(true);
       return undefined;
     }
   }, [vjudgeService]);
@@ -434,17 +438,25 @@ export function VjudgePanel({
         <span className="oi-vjudge-account">
           <FontAwesomeIcon
             icon={
-              account === undefined ? faSpinner : loggedIn ? faPersonCircleCheck : faRightToBracket
+              account !== undefined
+                ? loggedIn
+                  ? faPersonCircleCheck
+                  : faRightToBracket
+                : accountUnknown
+                  ? faTriangleExclamation
+                  : faSpinner
             }
-            spin={account === undefined}
+            spin={account === undefined && !accountUnknown}
             aria-hidden="true"
           />
           <span>
-            {account === undefined
-              ? WORKBENCH_STRINGS.vjudgeAccountChecking
-              : loggedIn && account.username !== undefined
+            {account !== undefined
+              ? loggedIn && account.username !== undefined
                 ? WORKBENCH_STRINGS.vjudgeLoggedInAs.replace('{user}', account.username)
-                : WORKBENCH_STRINGS.vjudgeNotLoggedIn}
+                : WORKBENCH_STRINGS.vjudgeNotLoggedIn
+              : accountUnknown
+                ? WORKBENCH_STRINGS.vjudgeAccountUnknown
+                : WORKBENCH_STRINGS.vjudgeAccountChecking}
           </span>
           {account?.acceptedCount !== undefined ? (
             <span className="oi-vjudge-count">

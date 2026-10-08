@@ -18,7 +18,11 @@ test('VJudge 视图：控件齐备且未取题时不可提交', async () => {
     await waitReady(page);
     await openVjudge(page);
 
-    await expect(page.locator('.oi-vjudge-account')).toContainText('VJudge');
+    // 顶部账号区必须收敛到确定状态：外网不通时也不能永远停在"正在检查登录态"
+    const account = page.locator('.oi-vjudge-account');
+    await expect(account).toBeVisible();
+    await expect(account).not.toContainText('正在检查', { timeout: 40_000 });
+    expect(await account.innerText()).toMatch(/未登录|已登录|登录状态未知/);
     await expect(page.locator('.oi-vjudge-field input').first()).toBeVisible();
     await expect(page.locator('.oi-vjudge-field-prob input')).toBeVisible();
     await expect(page.locator('.oi-vjudge-fetch')).toBeVisible();

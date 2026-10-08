@@ -225,6 +225,7 @@ export const WORKBENCH_STRINGS = {
   vjudgeLoggedInAs: '已登录：{user}',
   vjudgeAcceptedCount: '通过 {count} 题',
   vjudgeNotLoggedIn: '未登录 VJudge',
+  vjudgeAccountUnknown: '登录状态未知（网络不可达）',
   vjudgeLogin: '登录',
   vjudgeLoginHint: '在下方浏览器中完成登录，窗口会自动识别登录结果',
   vjudgeLoginClose: '关闭登录窗口',
