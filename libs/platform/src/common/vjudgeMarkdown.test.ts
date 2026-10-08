@@ -85,6 +85,19 @@ describe('htmlToMarkdown', () => {
     expect(md).toContain('$$\nx = 1\n$$');
   });
 
+  it('Codeforces 的 $$$…$$$ 折叠为行内公式', () => {
+    const md = htmlToMarkdown('<p>如果一个名为 <span>$$$s$$$</span> 的英雄可以将 $$$t$$$ 变换</p>');
+
+    expect(md).toBe('如果一个名为 $s$ 的英雄可以将 $t$ 变换');
+    expect(md).not.toContain('$$$');
+  });
+
+  it('代码块里的 $$$ 不被改写', () => {
+    const md = htmlToMarkdown('<pre><code>echo $$$s$$$</code></pre>');
+
+    expect(md).toContain('echo $$$s$$$');
+  });
+
   it('HTML 实体与不间断空格', () => {
     const md = htmlToMarkdown('<p>1 &lt; 2 &amp; 3 &nbsp; x&#39;y &quot;z&quot; 10&minus;1</p>');
     expect(md).toContain('1 < 2 & 3');
@@ -302,5 +315,29 @@ describe('statementTextToMarkdown', () => {
 
   it('没有可用分节时原样返回，不伪造标题', () => {
     expect(statementTextToMarkdown('{"sections":[]}')).toBe('{"sections":[]}');
+  });
+
+  it('MD 正文里内部换行的 $$$…$$$ 转为独立块公式', () => {
+    const md = statementTextToMarkdown(
+      JSON.stringify({
+        sections: [
+          { title: 'Description', value: { format: 'MD', content: '其中 $$$a +\nb$$$ 成立' } },
+        ],
+      }),
+    );
+
+    expect(md).toContain('$$\na +\nb\n$$');
+  });
+
+  it('首尾换行不改变公式的行内/块级形态', () => {
+    const md = statementTextToMarkdown(
+      JSON.stringify({
+        sections: [
+          { title: 'Description', value: { format: 'MD', content: '其中 $$$\nn = 2^k\n$$$ 成立' } },
+        ],
+      }),
+    );
+
+    expect(md).toBe('## Description\n\n其中 $n = 2^k$ 成立');
   });
 });

@@ -219,7 +219,7 @@ function collapseInline(text: string): string {
 }
 
 /**
- * 把 MathJax 定界符换成 `$` / `$$`，便于后续接入公式渲染。
+ * 把 MathJax 定界符换成 `$` / `$$`，便于预览侧 KaTeX 排版。
  * 围栏代码块内的内容原样保留（题面常给出 `\(x\)` 形式的输入样例）。
  */
 function normalizeMathOutsideCode(markdown: string): string {
@@ -229,10 +229,23 @@ function normalizeMathOutsideCode(markdown: string): string {
       index % 2 === 1
         ? part
         : part
-            .replace(/\\\(([\s\S]*?)\\\)/g, (_, body: string) => `$${body.trim()}$`)
-            .replace(/\\\[([\s\S]*?)\\\]/g, (_, body: string) => `\n\n$$\n${body.trim()}\n$$\n\n`),
+            // Codeforces 用 `$$$…$$$` 作公式定界符（其 MathJax 配置如此），
+            // 不先折叠会残留字面 `$` 并把公式挤成独立一行
+            .replace(/\$\$\$([\s\S]+?)\$\$\$/g, (_match, body: string) => toDollarDelimiters(body))
+            .replace(/\\\(([\s\S]*?)\\\)/g, (_match, body: string) => `$${body.trim()}$`)
+            .replace(/\\\[([\s\S]*?)\\\]/g, (_match, body: string) => toDisplayMath(body)),
     )
     .join('');
+}
+
+/** 跨行的公式一律转成独立块，行内式才用单 `$`。 */
+function toDollarDelimiters(body: string): string {
+  const trimmed = body.trim();
+  return trimmed.includes('\n') ? toDisplayMath(trimmed) : `$${trimmed}$`;
+}
+
+function toDisplayMath(body: string): string {
+  return `\n\n$$\n${body.trim()}\n$$\n\n`;
 }
 
 function attr(node: IElement, name: string): string {
