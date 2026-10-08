@@ -454,12 +454,15 @@ GET /user/solveDetail/{username}
 | 主进程网络实现 | `apps/desktop/src/main/vjudgeService.ts` |
 | 响应解析（可单测，不依赖 electron） | `apps/desktop/src/main/vjudgeParse.ts` |
 | RPC 方法/通知常量 | `libs/platform/src/common/ipc/protocol.ts`（`VJUDGE_RPC_*`） |
-| 视图（活动栏一级入口） | `libs/workbench/src/browser/vjudgePanel.tsx` |
+| 视图（活动栏一级入口，**侧边栏二级面板**） | `libs/workbench/src/browser/vjudgePanel.tsx` |
 | 用户偏好与本地测试点存储 | `libs/workbench/src/browser/vjudgeSettings.ts` |
 | E2E | `apps/desktop/e2e/vjudge.spec.ts` |
 
 实现要点：
 
+- **布局**：VJudge 是活动栏一级入口 + **侧边栏二级面板**（与资源管理器/工具箱/设置同级），
+  主区始终留给编辑器——提交的是编辑器里的代码，读题与写码必须同屏；
+  侧栏可拖宽读题面，窄面板下查询区纵向堆叠。
 - **登录**：不模拟登录（Turnstile + CSRF 不适合纯 HTTP），在 VJudge 视图内嵌
   与内置浏览器同分区（`persist:oi-code-browser`）的 webview，用户手动登录；
   主进程经 `session.fromPartition(...).cookies.get()` 复用 Cookie，应用不存密码。

@@ -525,20 +525,6 @@ export function VjudgePanel({
             onChange={(event) => setProbInput(event.target.value)}
           />
         </label>
-        <button
-          type="submit"
-          className="oi-btn oi-btn-secondary oi-vjudge-fetch"
-          disabled={busy !== undefined}
-        >
-          <FontAwesomeIcon
-            icon={busy === 'fetch' ? faSpinner : faRotate}
-            spin={busy === 'fetch'}
-            aria-hidden="true"
-          />
-          <span>
-            {busy === 'fetch' ? WORKBENCH_STRINGS.vjudgeFetching : WORKBENCH_STRINGS.vjudgeFetch}
-          </span>
-        </button>
         <label className="oi-vjudge-field oi-vjudge-field-lang">
           <span className="oi-settings-label">{WORKBENCH_STRINGS.vjudgeLanguage}</span>
           <select
@@ -558,6 +544,20 @@ export function VjudgePanel({
             ))}
           </select>
         </label>
+        <button
+          type="submit"
+          className="oi-btn oi-btn-secondary oi-vjudge-fetch"
+          disabled={busy !== undefined}
+        >
+          <FontAwesomeIcon
+            icon={busy === 'fetch' ? faSpinner : faRotate}
+            spin={busy === 'fetch'}
+            aria-hidden="true"
+          />
+          <span>
+            {busy === 'fetch' ? WORKBENCH_STRINGS.vjudgeFetching : WORKBENCH_STRINGS.vjudgeFetch}
+          </span>
+        </button>
         <button
           type="button"
           className="oi-btn oi-btn-primary oi-vjudge-submit"

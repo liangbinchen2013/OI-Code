@@ -528,9 +528,6 @@ body {
   flex: 1;
   min-width: 0;
   min-height: 0;
-  /* 供 VJudge 等主区页面按面板实际宽度响应（与侧栏同理用容器查询） */
-  container-type: inline-size;
-  container-name: oi-main;
 }
 
 .oi-editor-host {
@@ -2007,21 +2004,17 @@ body {
   }
 }
 
-/* VJudge 视图：主区覆盖式页面（题面 + 判题记录），样式全部取自设计令牌 */
+/* VJudge 二级面板：与资源管理器/工具箱/设置同级，主区始终留给编辑器 */
 .oi-vjudge {
-  position: absolute;
-  inset: 0;
-  z-index: 2;
   display: flex;
+  flex: 1;
   flex-direction: column;
-  gap: 12px;
-  padding: 12px 16px;
-  overflow: hidden;
-  background: var(--bg);
-}
-
-.oi-vjudge[hidden] {
-  display: none;
+  gap: 8px;
+  min-width: 0;
+  min-height: 0;
+  padding: 8px;
+  overflow: auto;
+  overscroll-behavior: contain;
 }
 
 .oi-vjudge-topbar {
@@ -2113,8 +2106,8 @@ body {
 }
 
 .oi-vjudge-login-stage {
-  flex: 1;
-  min-height: 240px;
+  flex: none;
+  height: 420px;
 }
 
 .oi-vjudge-login-stage webview,
@@ -2126,8 +2119,8 @@ body {
 
 .oi-vjudge-query {
   display: flex;
-  flex-wrap: wrap;
-  align-items: flex-end;
+  flex-direction: column;
+  align-items: stretch;
   gap: 8px;
 }
 
@@ -2140,21 +2133,29 @@ body {
 
 .oi-vjudge-field .oi-input,
 .oi-vjudge-field .oi-select {
-  width: 160px;
-}
-
-.oi-vjudge-field-prob .oi-input {
-  width: 120px;
+  /* 仓库未设全局 border-box：整宽控件需含边框与内边距计算，否则撑出横向滚动条 */
+  box-sizing: border-box;
+  width: 100%;
+  min-width: 0;
 }
 
 .oi-vjudge-field-lang {
-  flex: 1;
+  flex: none;
   min-width: 0;
 }
 
 .oi-vjudge-field-lang .oi-select {
   width: 100%;
   min-width: 0;
+}
+
+/* 面板内按钮统一按含边框计算；查询区的动作按钮整宽 */
+.oi-vjudge .oi-btn {
+  box-sizing: border-box;
+}
+
+.oi-vjudge-query .oi-btn {
+  width: 100%;
 }
 
 .oi-vjudge-candidates {
@@ -2205,18 +2206,17 @@ body {
 .oi-vjudge-content {
   display: flex;
   flex: 1;
-  gap: 12px;
+  flex-direction: column;
+  gap: 8px;
   min-height: 0;
 }
 
 .oi-vjudge-statement {
-  flex: 1;
-  min-width: 0;
-  padding: 12px 16px;
+  flex: 3 1 auto;
+  min-height: 180px;
+  padding: 10px 12px;
   border: 1px solid var(--card-border);
   border-radius: var(--radius-card);
-  overflow: auto;
-  overscroll-behavior: contain;
   background: var(--bg);
 }
 
@@ -2234,11 +2234,11 @@ body {
 
 .oi-vjudge-results {
   display: flex;
-  flex: none;
+  flex: 1 1 auto;
   flex-direction: column;
   gap: 8px;
-  width: 260px;
-  padding: 12px;
+  min-height: 0;
+  padding: 10px 12px;
   border: 1px solid var(--card-border);
   border-radius: var(--radius-card);
   background: var(--card-bg);
@@ -2310,17 +2310,6 @@ body {
   font-size: 13px;
 }
 
-/* 窄侧栏下判题记录换到题面下方，避免两栏互相挤压 */
-@container oi-main (max-width: 720px) {
-  .oi-vjudge-content {
-    flex-direction: column;
-  }
-
-  .oi-vjudge-results {
-    width: 100%;
-  }
-}
-
 /* VJudge 本地测试点与提交前预检 */
 .oi-vjudge-cases {
   display: flex;
@@ -2351,6 +2340,7 @@ body {
 }
 
 .oi-vjudge-case-input {
+  box-sizing: border-box;
   height: auto;
   padding: 6px 10px;
   font-family: var(--font-mono);

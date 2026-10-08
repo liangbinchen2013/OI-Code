@@ -1446,6 +1446,14 @@ function Workbench({ environment, services, initialTheme, onDirtyStateChange }: 
                 fileDialogService={services.fileDialogService}
                 resolveJudgeSource={resolveJudgeSource}
               />
+              <VjudgePanel
+                hidden={activityView !== 'vjudge'}
+                appTheme={theme}
+                judgeService={services.judgeService}
+                resolveSource={resolveJudgeSource}
+                settings={vjudgeSettings}
+                vjudgeService={services.vjudgeService}
+              />
               <SettingsView
                 theme={theme}
                 canSave={activeTab !== undefined}
@@ -1544,14 +1552,6 @@ function Workbench({ environment, services, initialTheme, onDirtyStateChange }: 
               </>
             ) : null}
           </div>
-          <VjudgePanel
-            hidden={activityView !== 'vjudge'}
-            appTheme={theme}
-            judgeService={services.judgeService}
-            resolveSource={resolveJudgeSource}
-            settings={vjudgeSettings}
-            vjudgeService={services.vjudgeService}
-          />
           {tabs.length === 0 ? (
             <div className="oi-empty-state">
               <h1 className="oi-empty-title">{WORKBENCH_STRINGS.emptyTitle}</h1>
