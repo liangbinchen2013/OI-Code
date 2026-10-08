@@ -142,6 +142,8 @@ GET /problem/description/{descKey}      → 200，正文形态随站点而异
 
 > **踩坑记录**：早期把该端点一律当 HTML 转换，洛谷题面就变成一整坨带字面量 `\n`、`\u003c` 的 JSON 文本。归一化实现见 `libs/platform/src/common/vjudgeMarkdown.ts` 的 `statementTextToMarkdown`。
 
+> **硬换行约定**：转换器把 `<br>` 输出为字面 `<br>` 标记（不是换行符），预览渲染器再还原成 `<br>` 元素。因为 Markdown 段落会把裸换行并成空格，而表格单元格根本放不下换行——否则样例的逐行 Input/Output 会挤成一长串数字。
+
 `descKey` 是**"题目 × 语言版本"的键**，不是 `pid`，必须从题目页的 `dataJson.descBriefs` 取得（见 §4.3）。
 
 ### 4.3 题目页内联状态 `dataJson` `[实测]`
@@ -483,7 +485,8 @@ GET /user/solveDetail/{username}
 - **登录**：不模拟登录（Turnstile + CSRF 不适合纯 HTTP），在 VJudge 视图内嵌
   与内置浏览器同分区（`persist:oi-code-browser`）的 webview，用户手动登录；
   主进程经 `session.fromPartition(...).cookies.get()` 复用 Cookie，应用不存密码。
-  登录态用 `GET /problem/suggestions` 探测（401 即未登录）。
+  登录态用 `GET /problem/suggestions` 探测（401 即未登录）；探测本身失败（离线、被 Cloudflare 拦截）时顶部给出
+  "登录状态未知（网络不可达）"的确定状态，不会一直停在"正在检查登录态"。
 - **取题**：`/problem/info`（匿名）取标题 → 题目页（需登录）解析 `dataJson`
   取 `descBriefs`/`properties`/`submitMethods`/`mySols` → `/problem/description/{key}`
   按 §4.2 归一化为 Markdown 后渲染（HTML 与 JSON 分节两种形态都支持；
