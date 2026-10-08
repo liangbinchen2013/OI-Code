@@ -2244,6 +2244,7 @@ body {
   flex: 3 1 auto;
   min-height: 180px;
   padding: 10px 12px;
+  overflow: auto;
   border: 1px solid var(--card-border);
   border-radius: var(--radius-card);
   background: var(--bg);
