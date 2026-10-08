@@ -80,6 +80,7 @@ export const RunButton = () => (
 | 计时 | `faStopwatch` |
 | 内存测量 | `faMicrochip`（或 brands 无对应时用 solid） |
 | 提交答案 | `faCloudArrowUp` |
+| 全屏 / 退出全屏 | `faExpand` / `faMinimize` |
 | 文件 / 文件夹 | `faFileLines` / `faFolderOpen` |
 | 设置 | `faGear` |
 | 搜索 | `faMagnifyingGlass` |

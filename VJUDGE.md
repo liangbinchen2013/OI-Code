@@ -474,14 +474,14 @@ GET /user/solveDetail/{username}
 | 响应解析（可单测，不依赖 electron） | `apps/desktop/src/main/vjudgeParse.ts` |
 | RPC 方法/通知常量 | `libs/platform/src/common/ipc/protocol.ts`（`VJUDGE_RPC_*`） |
 | 视图（活动栏一级入口，**侧边栏二级面板**） | `libs/workbench/src/browser/vjudgePanel.tsx` |
-| 用户偏好与本地测试点存储 | `libs/workbench/src/browser/vjudgeSettings.ts` |
 | E2E | `apps/desktop/e2e/vjudge.spec.ts` |
 
 实现要点：
 
 - **布局**：VJudge 是活动栏一级入口 + **侧边栏二级面板**（与资源管理器/工具箱/设置同级），
   主区始终留给编辑器——提交的是编辑器里的代码，读题与写码必须同屏；
-  侧栏可拖宽读题面，窄面板下查询区纵向堆叠。
+  侧栏可拖宽读题面，窄面板下查询区纵向堆叠，题面卡片自身滚动、下方只留判题记录。
+  题面右上角可**全屏阅读**：整屏只剩题面正文 + 提交 + 退出全屏（Esc 亦可退出）。
 - **登录**：不模拟登录（Turnstile + CSRF 不适合纯 HTTP），在 VJudge 视图内嵌
   与内置浏览器同分区（`persist:oi-code-browser`）的 webview，用户手动登录；
   主进程经 `session.fromPartition(...).cookies.get()` 复用 Cookie，应用不存密码。
@@ -491,8 +491,8 @@ GET /user/solveDetail/{username}
   取 `descBriefs`/`properties`/`submitMethods`/`mySols` → `/problem/description/{key}`
   按 §4.2 归一化为 Markdown 后渲染（HTML 与 JSON 分节两种形态都支持；
   正文里夹带的 HTML 标签只改标签、不动 Markdown 结构）。
-- **提交**：`/problem/submit/{OJ}-{id}`，语言表来自 `/util/cfg.remoteOjs[OJ].languages`；
-  提交前可用本地测试点先跑评测机（设置中可关）。
+- **提交**：`/problem/submit/{OJ}-{id}`，语言表来自 `/util/cfg.remoteOjs[OJ].languages`，
+  代码取编辑器当前文件。（曾实现"提交前用本地测试点预检"，因挤占侧栏阅读空间且拦截价值有限，已下线。）
 - **回爬**：提交后主进程按 1s→5s 退火轮询 `/solution/data/{runId}`，
   经 `vjudge.submissionUpdate` 通知实时回写视图，终态或 10 分钟预算后停止。
 - **记录**：`/user/solveDetail/{username}` 的 AC 题号渲染为顶部可点击胶囊。

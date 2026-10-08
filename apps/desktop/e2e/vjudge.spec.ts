@@ -32,6 +32,9 @@ test('VJudge 视图：控件齐备且未取题时不可提交', async () => {
       '请先拉取题面',
     );
     await expect(page.locator('.oi-vjudge-statement')).toContainText('输入 OJ 与题号');
+    // 本地测试点已下线：侧栏下方只保留判题记录
+    await expect(page.locator('.oi-vjudge-results')).toContainText('判题记录');
+    await expect(page.locator('.oi-vjudge-results')).not.toContainText('本地测试点');
 
     // 切回资源管理器时视图隐藏但不销毁
     await page.locator('.oi-activity-item[aria-label="资源管理器"]').click();
@@ -58,35 +61,6 @@ test('VJudge 登录窗口：展开挂载同分区 webview，可再次收起', as
 
     await page.locator('.oi-vjudge-login-close').click();
     await expect(page.locator('.oi-vjudge-login')).toHaveCount(0);
-  } finally {
-    await app.close();
-  }
-});
-
-test('VJudge 设置：提交前预检开关持久化', async () => {
-  test.setTimeout(120_000);
-  const app = await launchApp();
-  try {
-    const page = await app.firstWindow();
-    await waitReady(page);
-    await page.locator('.oi-activity-item-settings').click();
-
-    const section = page.locator('.oi-settings-section', { hasText: 'VJudge 远程评测' });
-    await expect(section).toBeVisible();
-    const toggle = section.locator('input[type=checkbox]');
-    // 默认开启
-    await expect(toggle).toBeChecked();
-    await toggle.click();
-    await expect(toggle).not.toBeChecked();
-
-    await page.reload();
-    await waitReady(page);
-    await page.locator('.oi-activity-item-settings').click();
-    await expect(
-      page
-        .locator('.oi-settings-section', { hasText: 'VJudge 远程评测' })
-        .locator('input[type=checkbox]'),
-    ).not.toBeChecked();
   } finally {
     await app.close();
   }

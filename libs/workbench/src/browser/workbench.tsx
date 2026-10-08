@@ -73,7 +73,6 @@ import { SettingsView } from './settingsView';
 import { ExplorerPanel } from './sidebar';
 import { WORKBENCH_STRINGS } from './strings';
 import { TabBar } from './tabBar';
-import { persistVjudgeSettings, readVjudgeSettings, type IVjudgeSettings } from './vjudgeSettings';
 import { VjudgePanel } from './vjudgePanel';
 import {
   BUILT_IN_TEMPLATE_IDS,
@@ -244,7 +243,6 @@ function Workbench({ environment, services, initialTheme, onDirtyStateChange }: 
   const [lastExpandedWidth, setLastExpandedWidth] = useState(() => readStoredLastExpandedWidth());
   const [templateStore, setTemplateStore] = useState<ITemplateStore>(() => loadTemplateStore());
   const [editorSettings, setEditorSettings] = useState(() => readEditorSettings());
-  const [vjudgeSettings, setVjudgeSettings] = useState<IVjudgeSettings>(() => readVjudgeSettings());
   const [split, setSplit] = useState(() => readStoredSplit());
   const [splitTabId, setSplitTabId] = useState<string | undefined>(undefined);
   const [focusedPane, setFocusedPane] = useState<'primary' | 'secondary'>('primary');
@@ -472,11 +470,6 @@ function Workbench({ environment, services, initialTheme, onDirtyStateChange }: 
     const normalized = normalizeEditorSettings(next);
     setEditorSettings(normalized);
     persistEditorSettings(normalized);
-  }, []);
-
-  const updateVjudgeSettings = useCallback((next: IVjudgeSettings): void => {
-    setVjudgeSettings(next);
-    persistVjudgeSettings(next);
   }, []);
 
   // Ctrl+滚轮：按增量调整字号并持久化
@@ -1451,9 +1444,7 @@ function Workbench({ environment, services, initialTheme, onDirtyStateChange }: 
               <VjudgePanel
                 hidden={activityView !== 'vjudge'}
                 appTheme={theme}
-                judgeService={services.judgeService}
                 resolveSource={resolveJudgeSource}
-                settings={vjudgeSettings}
                 vjudgeService={services.vjudgeService}
               />
               <SettingsView
@@ -1477,8 +1468,6 @@ function Workbench({ environment, services, initialTheme, onDirtyStateChange }: 
                 onTemplatesChange={updateTemplates}
                 onResetBuiltInTemplates={resetBuiltInTemplates}
                 onDefaultTemplateChange={changeDefaultTemplate}
-                vjudgeSettings={vjudgeSettings}
-                onVjudgeSettingsChange={updateVjudgeSettings}
               />
             </div>
           </div>
