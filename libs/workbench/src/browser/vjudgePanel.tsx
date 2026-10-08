@@ -28,6 +28,7 @@ import type {
 import {
   matchRemoteOjs,
   OI_CODE_BROWSER_PARTITION,
+  pickDefaultLanguage,
   problemKey,
   toVjudgeVerdict,
   VJUDGE_BASE_URL,
@@ -40,6 +41,8 @@ import { readVjudgeCases, saveVjudgeCases, type IVjudgeSettings } from './vjudge
 
 /** 登录态轮询间隔：登录页在 webview 中完成后尽快感知。 */
 const ACCOUNT_POLL_INTERVAL_MS = 2_000;
+/** 面板激活但未登录时的低频复查间隔，避免必须重启应用才识别登录。 */
+const ACCOUNT_IDLE_POLL_INTERVAL_MS = 15_000;
 
 /** 题目未给出限制时的本地预检默认值。 */
 const DEFAULT_PREFLIGHT_TIME_MS = 1_000;
@@ -201,16 +204,21 @@ export function VjudgePanel({
     return undefined;
   }, [account, vjudgeService]);
 
-  // 未登录且打开了登录窗口时轮询登录结果
+  // 登录态刷新：面板激活后持续检查（开着登录窗口时更快），
+  // 否则在别处（内置浏览器）登录后要重启应用才能识别
   useEffect(() => {
-    if (!loginOpen || account?.loggedIn === true) {
+    if (!activated) {
       return undefined;
     }
+    const interval =
+      loginOpen && account?.loggedIn !== true
+        ? ACCOUNT_POLL_INTERVAL_MS
+        : ACCOUNT_IDLE_POLL_INTERVAL_MS;
     const timer = window.setInterval(() => {
       void refreshAccount();
-    }, ACCOUNT_POLL_INTERVAL_MS);
+    }, interval);
     return () => window.clearInterval(timer);
-  }, [account?.loggedIn, loginOpen, refreshAccount]);
+  }, [account?.loggedIn, activated, loginOpen, refreshAccount]);
 
   // 登录 webview：与内置浏览器同分区，登录成功后 Cookie 即可被主进程复用
   useEffect(() => {
@@ -318,16 +326,17 @@ export function VjudgePanel({
         }
       }
       const options = oj.languages;
-      setLanguage(options.some((item) => item.id === language) ? language : (options[0]?.id ?? ''));
-      if (account?.loggedIn !== true) {
-        await refreshAccount();
-      }
+      // 默认语言按编辑器源语言择优：洛谷等站点列表第一项是 Pascal
+      setLanguage(pickDefaultLanguage(options, resolveSource()?.language));
+      await refreshAccount();
     } catch (error) {
       setMessage(error instanceof Error ? error.message : String(error));
+      // 失败常由登录态变化引起（刚登录/会话过期），顺手刷新账号显示
+      await refreshAccount();
     } finally {
       setBusy(undefined);
     }
-  }, [account?.loggedIn, language, probInput, refreshAccount, resolveOj, vjudgeService]);
+  }, [probInput, refreshAccount, resolveSource, resolveOj, vjudgeService]);
 
   const sendToVjudge = useCallback(
     async (source: IJudgeSource, target: IVjudgeProblem): Promise<void> => {
