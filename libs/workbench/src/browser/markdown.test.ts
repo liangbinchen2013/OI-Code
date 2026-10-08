@@ -130,6 +130,36 @@ describe('renderMarkdown', () => {
     expect(html).toBe('<p>花了 $5 和 $6 元</p>');
   });
 
+  it('连续两个美元金额不会被当成块级公式', () => {
+    const html = renderMarkdown('价格 $$100 和 $$200 元');
+
+    expect(html).not.toContain('katex');
+  });
+
+  it('\\(…\\) 与 \\[…\\] 定界符同样交给 KaTeX', () => {
+    const html = renderMarkdown('行内 \\(a+b\\) 与块级 \\[a+b\\]');
+
+    expect((html.match(/class="katex"/g) ?? []).length).toBe(2);
+    expect(html).toContain('katex-display');
+    expect(html).not.toContain('\\(');
+  });
+
+  it('矩阵里的 \\\\ 行分隔不被 Markdown 吃掉', () => {
+    const html = renderMarkdown('$$\\begin{pmatrix}1&2\\\\3&4\\end{pmatrix}$$');
+
+    expect(html).toContain('class="katex"');
+    expect(html).toContain('katex-display');
+    expect(html).toContain('<annotation encoding="application/x-tex">');
+  });
+
+  it('公式里的下标与星号不会被 Markdown 强调规则破坏', () => {
+    const html = renderMarkdown('$a_{1,2} + b_{i\\,j}$ 与 $a^* + b_*$');
+
+    expect((html.match(/class="katex"/g) ?? []).length).toBe(2);
+    expect(html).not.toContain('<em>');
+    expect(html).not.toContain('<strong>');
+  });
+
   it('公式与行内语法、表格、列表共存', () => {
     const html = renderMarkdown(
       '- 复杂度 $O(n\\log n)$\n\n| 项 | 值 |\n| --- | --- |\n| 上界 | $10^5$ |',

@@ -21,8 +21,14 @@ const ORDERED_ITEM = /^\s*(\d+)[.)]\s+(.+)$/;
 const FENCE = /^\s*```(.*)$/;
 const FENCE_CLOSE = /^\s*```\s*$/;
 const DISPLAY_MATH = /^\s*\$\$\s*$/;
-/** 行内代码优先于公式：`$x$` 写在代码里就不该被当成公式。 */
-const INLINE_TOKEN = /(`[^`]+`)|\$\$[\s\S]+?\$\$|\$(?![\s$])[^$\n]*?(?<=[^\s$])\$/g;
+/**
+ * 行内片段：代码优先于公式（`$x$` 写在代码里就不该被当成公式）。
+ * 公式定界符支持 `$…$`、`$$…$$`、`\(…\)`、`\[…\]`；`$` 系列要求两侧紧邻非空白，
+ * 这样 "每个 $5，共 $10" 与 "价格 $$100 和 $$200" 都不会被误判。
+ * 一律不跨行：跨行的 `$$…$$` 由 DISPLAY_MATH 按整行处理。
+ */
+const INLINE_TOKEN =
+  /(`[^`]+`)|\$\$[^$\n]*?(?<=[^\s$])\$\$|\$(?![\s$])[^$\n]*?(?<=[^\s$])\$|\\\(.+?\\\)|\\\[.+?\\\]/g;
 const SAFE_HREF = /^(https?:|#|\/|\.{1,2}\/)/i;
 /** 题面与笔记里的图片只允许 http(s)、站内路径与内联 data:image。 */
 const SAFE_IMG = /^(https?:|\/|\.{1,2}\/|data:image\/)/i;
@@ -30,8 +36,10 @@ const TABLE_SEPARATOR_CELL = /^:?-{2,}:?$/;
 
 /** 公式渲染：题面里的 LaTeX 常有笔误，出错时原样显示而不是打断整篇渲染。 */
 function renderMath(token: string): string {
-  const display = token.startsWith('$$');
-  return katex.renderToString(display ? token.slice(2, -2) : token.slice(1, -1), {
+  const display = token.startsWith('$$') || token.startsWith('\\[');
+  // 除单美元外，定界符都是首尾各两字符
+  const expression = token.startsWith('$') && !display ? token.slice(1, -1) : token.slice(2, -2);
+  return katex.renderToString(expression, {
     displayMode: display,
     // trust:false 拒绝 \href 等外链宏；strict:false 抑制 KaTeX 的 console 告警
     errorColor: '#c62828',
