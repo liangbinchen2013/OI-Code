@@ -242,6 +242,7 @@ export const WORKBENCH_STRINGS = {
   vjudgeSubmitting: '提交中…',
   vjudgeNeedSource: '请先在编辑器打开 C++ / Python 源文件',
   vjudgeNeedLanguage: '该题暂无可选语言，请先拉取题面',
+  vjudgeSubmitNoMethod: '该题在 VJudge 上没有开放的提交方式',
   vjudgeResults: '判题记录',
   vjudgeResultsEmpty: '暂无提交记录',
   vjudgeTimeLabel: '耗时',

@@ -5,6 +5,7 @@ import {
   parseMemoryLimitKb,
   parseTimeLimitMs,
   pickStatementVersion,
+  pickSubmitMethod,
   problemKey,
   toVjudgeVerdict,
   type IStatementVersion,
@@ -186,5 +187,21 @@ describe('限制解析', () => {
     expect(parseMemoryLimitKb('256 MB')).toBe(262144);
     expect(parseMemoryLimitKb('1,024 KB')).toBe(1024);
     expect(parseMemoryLimitKb(undefined)).toBeUndefined();
+  });
+});
+
+describe('pickSubmitMethod', () => {
+  it('取第一个允许的提交方式', () => {
+    expect(pickSubmitMethod([true, true, true])).toBe(0);
+    expect(pickSubmitMethod([false, true, true])).toBe(1);
+    expect(pickSubmitMethod([false, false, true])).toBe(2);
+  });
+
+  it('全部不允许时返回 undefined', () => {
+    expect(pickSubmitMethod([false, false, false])).toBeUndefined();
+  });
+
+  it('题面没给提交方式时按默认方式试', () => {
+    expect(pickSubmitMethod([])).toBe(0);
   });
 });

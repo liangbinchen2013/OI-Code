@@ -337,6 +337,20 @@ export function pickDefaultLanguage(
   return first.id;
 }
 
+/**
+ * 选题面允许的提交方式：`submitMethods[i]` 对应请求里的 `method=i`
+ * （0 = VJudge 服务账号代提交，1/2 = 用绑定的远端账号）。
+ * 洛谷等站点会关掉代提交，硬发 0 会被拒成 `submit_method_not_allowed`。
+ * @returns 第一个允许的方式；全部不允许返回 undefined；数组缺失时按 0 试
+ */
+export function pickSubmitMethod(methods: readonly boolean[]): number | undefined {
+  if (methods.length === 0) {
+    return 0;
+  }
+  const index = methods.findIndex((allowed) => allowed);
+  return index < 0 ? undefined : index;
+}
+
 function firstNumber(text: string): number | undefined {
   const match = /-?\d+(?:\.\d+)?/.exec(text.replace(/,/g, ''));
   if (match === null) {

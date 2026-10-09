@@ -25,6 +25,7 @@ import {
   matchRemoteOjs,
   OI_CODE_BROWSER_PARTITION,
   pickDefaultLanguage,
+  pickSubmitMethod,
   problemKey,
   toVjudgeVerdict,
   VJUDGE_BASE_URL,
@@ -300,8 +301,14 @@ export function VjudgePanel({ resolveSource, appTheme, hidden, vjudgeService }: 
 
   const sendToVjudge = useCallback(
     async (source: IJudgeSource, target: IVjudgeProblem): Promise<void> => {
+      // 提交方式由题面允许列表决定：洛谷等站点关闭代提交，硬发 0 会被拒
+      const method = pickSubmitMethod(target.submitMethods);
+      if (method === undefined) {
+        throw new Error(WORKBENCH_STRINGS.vjudgeSubmitNoMethod);
+      }
       const runId = await vjudgeService.submit({
         language,
+        method,
         oj: target.oj,
         probNum: target.probNum,
         source: source.content,

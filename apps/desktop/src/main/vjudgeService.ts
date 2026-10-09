@@ -56,6 +56,12 @@ const POLL_BUDGET_MS = 10 * 60_000;
 /** 登录失效时给用户的统一提示。 */
 export const VJUDGE_LOGIN_REQUIRED_MESSAGE = '请先在内置浏览器中登录 VJudge';
 
+/** 实测见过的 VJudge 提交错误 i18n 键 → 人话；其余键原样带出便于反馈。 */
+const SUBMIT_ERROR_MESSAGES: Readonly<Record<string, string>> = {
+  'submit.error.submit_method_not_allowed':
+    'VJudge 不允许用服务账号代提交该题，请在 VJudge 网页绑定该远端 OJ 的账号后重试',
+};
+
 interface IFetchResult {
   readonly status: number;
   readonly url: string;
@@ -246,6 +252,9 @@ export class VjudgeService implements IVjudgeService, IDisposable {
       const error = isRecord(parsed['error']) ? parsed['error'] : undefined;
       const i18nKey = error === undefined ? '' : readString(error, 'i18nKey');
       const errorCode = readString(parsed, 'errorCode');
+      this._logService.warn(
+        `VJudge 提交失败 ${key}：method=${String(request.method ?? 0)} http=${response.status} i18n=${i18nKey} code=${errorCode}`,
+      );
       throw new Error(this._describeSubmitFailure(key, i18nKey, errorCode));
     }
     await this.watch(runId);
@@ -353,13 +362,12 @@ export class VjudgeService implements IVjudgeService, IDisposable {
     if (errorCode.startsWith('bind_account') || i18nKey.includes('bind_account')) {
       return `提交 ${key} 需要先在 VJudge 绑定该远端 OJ 的账号`;
     }
-    return [
-      `提交失败：${key}`,
-      i18nKey.length > 0 ? i18nKey : '',
-      errorCode.length > 0 ? errorCode : '',
-    ]
-      .filter((part) => part.length > 0)
-      .join('（');
+    const known = SUBMIT_ERROR_MESSAGES[i18nKey];
+    if (known !== undefined) {
+      return `提交失败：${key}——${known}`;
+    }
+    const detail = i18nKey.length > 0 ? i18nKey : errorCode;
+    return detail.length === 0 ? `提交失败：${key}` : `提交失败：${key}（VJudge 提示：${detail}）`;
   }
 
   /**
