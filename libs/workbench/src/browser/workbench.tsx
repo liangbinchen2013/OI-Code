@@ -41,7 +41,11 @@ import {
   readEditorSettings,
   type IEditorSettings,
 } from './editorSettings';
-import { detectLanguageFromContent } from './languageDetection';
+import {
+  detectLanguageFromContent,
+  suggestFileName,
+  type DetectedLanguage,
+} from './languageDetection';
 import {
   downloadLinksOf,
   hasRunEnvironmentBootstrap,
@@ -146,6 +150,8 @@ interface ITabState {
 const STATUS_AUTO_HIDE_MS = 3000;
 /** 输入停止后多久触发实时语法检查。 */
 const LIVE_CHECK_DEBOUNCE_MS = 700;
+/** 无扩展名文档停止输入后多久重做一次语言识别（避免每次按键都全量扫正文）。 */
+const DETECT_DEBOUNCE_MS = 300;
 /** 静默自动保存触发间隔（毫秒）。 */
 const AUTOSAVE_INTERVAL_MS = 10_000;
 
@@ -278,6 +284,9 @@ function Workbench({ environment, services, initialTheme, onDirtyStateChange }: 
   const problemsRef = useRef(new Map<string, IProblemItem[]>());
   const checkTokensRef = useRef(new Map<string, number>());
   const checkTimersRef = useRef(new Map<string, IDisposable>());
+  /** 无扩展名文档的识别结论（按 URI 存，定型后保持，避免边写边跳）。 */
+  const detectedRef = useRef(new Map<string, DetectedLanguage>());
+  const detectTimersRef = useRef(new Map<string, IDisposable>());
   const openFileRef = useRef<() => Promise<void>>(async () => undefined);
   const openFolderRef = useRef<() => Promise<void>>(async () => undefined);
   const saveRef = useRef<() => Promise<void>>(async () => undefined);
@@ -563,15 +572,60 @@ function Workbench({ environment, services, initialTheme, onDirtyStateChange }: 
     }
   }, []);
 
-  /** 无扩展名文件：按内容识别语言后应用到编辑器高亮。 */
-  const applyDetectedLanguage = useCallback((uri: URI, name: string, text: string): void => {
-    if (getFileExtension(name) !== undefined) {
+  /**
+   * 无扩展名文档：按内容识别语言并应用到编辑器高亮。
+   * 置信度不足时保持上一次结论（可能仍是 plaintext），等用户继续写再判。
+   */
+  const detectLanguageFor = useCallback((tab: ITabState, text: string): void => {
+    if (getFileExtension(tab.name) !== undefined) {
       return;
     }
+    const key = tab.uri.toString();
     const detected = detectLanguageFromContent(text);
-    if (detected !== undefined) {
-      editorPaneRef.current?.setLanguage(uri, detected);
+    if (detected === undefined || detectedRef.current.get(key) === detected) {
+      return;
     }
+    detectedRef.current.set(key, detected);
+    editorPaneRef.current?.setLanguage(tab.uri, detected);
+  }, []);
+
+  const scheduleDetect = useCallback(
+    (tab: ITabState): void => {
+      if (getFileExtension(tab.name) !== undefined) {
+        return;
+      }
+      const key = tab.uri.toString();
+      const existing = detectTimersRef.current.get(key);
+      if (existing !== undefined) {
+        store.delete(existing);
+        existing.dispose();
+        detectTimersRef.current.delete(key);
+      }
+      const timer = window.setTimeout(() => {
+        const entry = detectTimersRef.current.get(key);
+        if (entry !== undefined) {
+          store.delete(entry);
+          entry.dispose();
+          detectTimersRef.current.delete(key);
+        }
+        const text = editorPaneRef.current?.getValue(tab.uri);
+        if (text !== undefined) {
+          detectLanguageFor(tab, text);
+        }
+      }, DETECT_DEBOUNCE_MS);
+      const handle = toDisposable(() => window.clearTimeout(timer));
+      store.add(handle);
+      detectTimersRef.current.set(key, handle);
+    },
+    [detectLanguageFor, store],
+  );
+
+  /** 保存无扩展名文档时按识别结果补上建议后缀，避免用户漏写。 */
+  const suggestedSaveName = useCallback((tab: ITabState): string => {
+    if (getFileExtension(tab.name) !== undefined) {
+      return tab.name;
+    }
+    return suggestFileName(tab.name, detectedRef.current.get(tab.uri.toString()));
   }, []);
 
   const openUri = useCallback(
@@ -596,12 +650,12 @@ function Workbench({ environment, services, initialTheme, onDirtyStateChange }: 
         if (toSecondary) {
           // 仅注册到主编辑器（共享模型），显示交给副编辑器
           editorPaneRef.current?.ensureDocument(uri, text);
-          applyDetectedLanguage(uri, tab.name, text);
+          detectLanguageFor(tab, text);
           setTabs((previous) => [...previous, tab]);
           setSplitTabId(tab.id);
         } else {
           editorPaneRef.current?.openDocument(uri, text);
-          applyDetectedLanguage(uri, tab.name, text);
+          detectLanguageFor(tab, text);
           setTabs((previous) => [...previous, tab]);
           setActiveTabId(tab.id);
         }
@@ -612,7 +666,7 @@ function Workbench({ environment, services, initialTheme, onDirtyStateChange }: 
         onUnexpectedError(error);
       }
     },
-    [activateTab, applyDetectedLanguage, services.fileService],
+    [activateTab, detectLanguageFor, services.fileService],
   );
 
   const openFile = useCallback(async (): Promise<void> => {
@@ -649,18 +703,18 @@ function Workbench({ environment, services, initialTheme, onDirtyStateChange }: 
       if (focusedPaneTarget() === 'secondary') {
         // 焦点在右屏：注册到主编辑器（共享模型），由副编辑器显示
         editorPaneRef.current?.ensureDocument(uri, template.content);
-        applyDetectedLanguage(uri, name, template.content);
+        detectLanguageFor(tab, template.content);
         setTabs((previous) => [...previous, tab]);
         setSplitTabId(tab.id);
       } else {
         editorPaneRef.current?.openDocument(uri, template.content);
-        applyDetectedLanguage(uri, name, template.content);
+        detectLanguageFor(tab, template.content);
         setTabs((previous) => [...previous, tab]);
         setActiveTabId(tab.id);
       }
       setNewMenuOpen(false);
     },
-    [applyDetectedLanguage, focusedPaneTarget],
+    [detectLanguageFor, focusedPaneTarget],
   );
 
   // + 菜单固定项：无后缀空文件
@@ -753,6 +807,13 @@ function Workbench({ environment, services, initialTheme, onDirtyStateChange }: 
       }
       // 令在途的实时检查结果失效
       checkTokensRef.current.set(tab.id, (checkTokensRef.current.get(tab.id) ?? 0) + 1);
+      const detectTimer = detectTimersRef.current.get(tab.uri.toString());
+      if (detectTimer !== undefined) {
+        store.delete(detectTimer);
+        detectTimer.dispose();
+        detectTimersRef.current.delete(tab.uri.toString());
+      }
+      detectedRef.current.delete(tab.uri.toString());
       const remaining = tabsRef.current.filter((candidate) => candidate.id !== id);
       setTabs(remaining);
       if (activeTabIdRef.current === id) {
@@ -765,18 +826,22 @@ function Workbench({ environment, services, initialTheme, onDirtyStateChange }: 
     [clearAutoSaveDraft, services.fileDialogService],
   );
 
-  const handleContentChange = useCallback((uri: URI): void => {
-    const key = uri.toString();
-    setTabs((previous) =>
-      previous.map((tab) => (tab.uri.toString() === key ? { ...tab, dirty: true } : tab)),
-    );
-    setContentVersion((version) => version + 1);
-    setStatus('idle');
-    const tab = tabsRef.current.find((candidate) => candidate.uri.toString() === key);
-    if (tab !== undefined) {
-      scheduleCheckRef.current(tab, LIVE_CHECK_DEBOUNCE_MS);
-    }
-  }, []);
+  const handleContentChange = useCallback(
+    (uri: URI): void => {
+      const key = uri.toString();
+      setTabs((previous) =>
+        previous.map((tab) => (tab.uri.toString() === key ? { ...tab, dirty: true } : tab)),
+      );
+      setContentVersion((version) => version + 1);
+      setStatus('idle');
+      const tab = tabsRef.current.find((candidate) => candidate.uri.toString() === key);
+      if (tab !== undefined) {
+        scheduleCheckRef.current(tab, LIVE_CHECK_DEBOUNCE_MS);
+        scheduleDetect(tab);
+      }
+    },
+    [scheduleDetect],
+  );
 
   const save = useCallback(
     async function saveLoop(): Promise<void> {
@@ -798,13 +863,15 @@ function Workbench({ environment, services, initialTheme, onDirtyStateChange }: 
         if (tab.untitled) {
           const target = await services.fileDialogService.showSaveFile({
             title: WORKBENCH_STRINGS.saveAs,
-            defaultPath: tab.name,
+            // 按内容识别结果建议后缀，用户只需确认文件名
+            defaultPath: suggestedSaveName(tab),
           });
           if (!target) {
             setStatus('idle');
             editor.focus();
             return;
           }
+          detectedRef.current.delete(tab.uri.toString());
           const text = editor.getValue(tab.uri);
           await services.fileService.writeFile(target, text);
           editor.replaceDocument(tab.uri, target, text);
@@ -851,7 +918,7 @@ function Workbench({ environment, services, initialTheme, onDirtyStateChange }: 
         }
       }
     },
-    [clearAutoSaveDraft, services.fileDialogService, services.fileService],
+    [clearAutoSaveDraft, services.fileDialogService, services.fileService, suggestedSaveName],
   );
 
   const groupProblems = useCallback(
@@ -909,9 +976,12 @@ function Workbench({ environment, services, initialTheme, onDirtyStateChange }: 
       if (languageId === 'cpp' || languageId === 'python') {
         return languageId;
       }
-      // 无扩展名时按内容特征识别，支持无后缀源文件的编译运行
+      // 无扩展名时按内容识别，已定型的结论优先；只有可运行语言才参与编译运行
       if (extension === undefined) {
-        return detectLanguageFromContent(editorPaneRef.current?.getValue(tab.uri) ?? '');
+        const detected =
+          detectedRef.current.get(tab.uri.toString()) ??
+          detectLanguageFromContent(editorPaneRef.current?.getValue(tab.uri) ?? '');
+        return detected === 'cpp' || detected === 'python' ? detected : undefined;
       }
       return undefined;
     },

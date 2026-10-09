@@ -193,6 +193,40 @@ test('标签页新建、另存为与关闭', async () => {
   }
 });
 
+test('无后缀文档按内容识别语言，保存时建议后缀', async () => {
+  test.setTimeout(120_000);
+  const directory = await mkdtemp(join(tmpdir(), 'oi-code-detect-'));
+  const app = await launchApp();
+  try {
+    const page = await app.firstWindow();
+    await expect(page.locator('html')).toHaveAttribute('data-oi-code-ready', 'true');
+
+    await page.locator('.oi-tab-new').click();
+    await page.locator('.oi-menu-plain-file').click();
+    await expect(page.locator('.oi-tab-active .oi-tab-name')).toHaveText('未命名-1');
+
+    // 证据不足时不乱猜：只写 `int x;` 过完识别去抖仍按纯文本渲染
+    await page.locator('.monaco-editor').click();
+    await page.keyboard.type('int x;');
+    await page.waitForTimeout(800);
+    await expect(page.locator('.oi-editor-host')).toHaveAttribute('data-mode-id', 'plaintext');
+
+    // 继续写出 C++ 特征后自动切到 cpp 高亮
+    await page.keyboard.type(
+      '\n#include <bits/stdc++.h>\nusing namespace std;\nint main() { cout << x; return 0; }',
+    );
+    await expect(page.locator('.oi-editor-host')).toHaveAttribute('data-mode-id', 'cpp');
+
+    await mockSaveFileDialog(app, join(directory, 'main.cpp'));
+    await page.keyboard.press('Control+s');
+    await expect(page.locator('.oi-tab-active .oi-tab-name')).toHaveText('main.cpp');
+    expect(await readFile(join(directory, 'main.cpp'), 'utf8')).toContain('#include');
+  } finally {
+    await app.close();
+    await rm(directory, { recursive: true, force: true });
+  }
+});
+
 /**
  * 以原生窗口路径发起关闭（等价用户点击关闭按钮）；
  * 渲染进程的 window.close() 会绕过可取消的 close 事件，不用于本用例。
