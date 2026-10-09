@@ -40,8 +40,11 @@ import {
   readString,
 } from './vjudgeParse';
 
-/** 站点在 Cloudflare 之后，过窄的 UA 容易被拦。 */
-const USER_AGENT =
+/**
+ * 兜底 UA：站点在 Cloudflare 之后，过窄的 UA 容易被拦。
+ * 正常情况下改用内置浏览器分区的 UA，见 `_userAgent()`。
+ */
+const FALLBACK_USER_AGENT =
   'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/126.0.0.0 Safari/537.36';
 
 const FETCH_TIMEOUT_MS = 20_000;
@@ -60,6 +63,7 @@ interface IFetchResult {
 }
 
 interface IRequestInit {
+  readonly ajax?: boolean;
   readonly body?: string;
   readonly method?: string;
 }
@@ -69,6 +73,12 @@ interface IWatcher {
   delay: number;
   deadline: number;
   timer: NodeJS.Timeout | undefined;
+}
+
+/** 只用到 Cookie 的名字与值，避免依赖 Electron 全局命名空间类型。 */
+interface IPartitionCookie {
+  readonly name: string;
+  readonly value: string;
 }
 
 /**
@@ -81,6 +91,7 @@ export class VjudgeService implements IVjudgeService, IDisposable {
   private readonly _watchers = new Map<number, IWatcher>();
   private _config: IVjudgeConfig | undefined;
   private _username: string | undefined;
+  private _cachedUserAgent = '';
 
   constructor(
     @ILogService private readonly _logService: ILogService,
@@ -115,11 +126,25 @@ export class VjudgeService implements IVjudgeService, IDisposable {
 
   async getAccount(): Promise<IVjudgeAccount> {
     // suggestions 是轻量且需登录的端点：401 即未登录
-    const response = await this._fetch('/problem/suggestions?q=a');
-    if (response.status === 401 || response.url.includes('login=1')) {
-      return { loggedIn: false };
+    let response = await this._fetch('/problem/suggestions?q=a', { ajax: true });
+    if (VjudgeService._isBlocked(response)) {
+      throw new Error(`VJudge 登录状态查询被拦截（HTTP ${response.status}）`);
     }
-    // Cloudflare 挑战页 / 网关故障等不能当作"已登录"，否则会把拦截误报成账号状态
+    if (VjudgeService._isLoggedOut(response)) {
+      // 会话 Cookie 轮换会让第一次探测撞上旧值，重读 Cookie 再确认一次
+      response = await this._fetch('/problem/suggestions?q=a', { ajax: true });
+      if (VjudgeService._isBlocked(response)) {
+        throw new Error(`VJudge 登录状态查询被拦截（HTTP ${response.status}）`);
+      }
+      if (VjudgeService._isLoggedOut(response)) {
+        const cookies = await this._partitionCookies();
+        this._logService.info(
+          `VJudge 登录探测判定未登录（HTTP ${response.status}，分区 Cookie ${cookies.length} 条）`,
+        );
+        return { loggedIn: false };
+      }
+    }
+    // 网关故障等不能当作"已登录"，否则会把拦截误报成账号状态
     if (response.status < 200 || response.status >= 300) {
       throw new Error(`VJudge 登录状态查询失败（HTTP ${response.status}）`);
     }
@@ -337,27 +362,54 @@ export class VjudgeService implements IVjudgeService, IDisposable {
       .join('（');
   }
 
-  private async _cookieHeader(): Promise<string> {
+  /**
+   * 与内置浏览器（登录发生的地方）用同一个 UA：
+   * Cloudflare 的 cf_clearance 与站点会话都跟 UA 绑定，UA 不一致会被判成另一个客户端，
+   * 表现为"网页里明明已登录，接口却时不时返回未登录"。
+   */
+  private _userAgent(): string {
+    if (this._cachedUserAgent.length === 0) {
+      try {
+        this._cachedUserAgent = session.fromPartition(OI_CODE_BROWSER_PARTITION).getUserAgent();
+      } catch (error) {
+        this._logService.warn(`读取内置浏览器 UA 失败，改用兜底 UA：${toError(error).message}`);
+        this._cachedUserAgent = FALLBACK_USER_AGENT;
+      }
+    }
+    return this._cachedUserAgent;
+  }
+
+  private async _partitionCookies(): Promise<readonly IPartitionCookie[]> {
     try {
-      const cookies = await session
+      return await session
         .fromPartition(OI_CODE_BROWSER_PARTITION)
         .cookies.get({ url: VJUDGE_BASE_URL });
-      return cookies.map((cookie) => `${cookie.name}=${cookie.value}`).join('; ');
     } catch (error) {
       this._logService.warn(`读取内置浏览器 Cookie 失败：${toError(error).message}`);
-      return '';
+      return [];
     }
   }
 
+  private async _cookieHeader(): Promise<string> {
+    return (await this._partitionCookies())
+      .map((cookie) => `${cookie.name}=${cookie.value}`)
+      .join('; ');
+  }
+
   private async _fetch(path: string, init?: IRequestInit): Promise<IFetchResult> {
+    const ajax = init?.ajax === true || init?.method === 'POST';
     const headers: Record<string, string> = {
-      'User-Agent': USER_AGENT,
+      'User-Agent': this._userAgent(),
       'Accept-Language': 'zh-CN,zh;q=0.9,en;q=0.8',
+      Referer: `${VJUDGE_BASE_URL}/`,
     };
     if (init?.method === 'POST') {
       headers['Content-Type'] = 'application/x-www-form-urlencoded; charset=UTF-8';
+    }
+    if (ajax) {
+      // 与站点自己的 jQuery 请求保持一致，避免被当成匿名爬取
       headers['X-Requested-With'] = 'XMLHttpRequest';
-      headers['Referer'] = `${VJUDGE_BASE_URL}/`;
+      headers['Accept'] = 'application/json, text/javascript, */*; q=0.01';
     }
     const cookie = await this._cookieHeader();
     if (cookie.length > 0) {
@@ -374,8 +426,22 @@ export class VjudgeService implements IVjudgeService, IDisposable {
     return { status: response.status, text, url: response.url };
   }
 
+  /** 被 CDN/防火墙拦下时不能把结果当成"未登录"。 */
+  private static _isBlocked(response: IFetchResult): boolean {
+    return (
+      response.status === 403 ||
+      response.status === 429 ||
+      response.status >= 500 ||
+      /just a moment|cf-chl|attention required/i.test(response.text.slice(0, 4000))
+    );
+  }
+
+  private static _isLoggedOut(response: IFetchResult): boolean {
+    return response.status === 401 || response.url.includes('login=1');
+  }
+
   private async _getJson(path: string): Promise<unknown> {
-    const response = await this._fetch(path);
+    const response = await this._fetch(path, { ajax: true });
     if (response.status !== 200) {
       throw new Error(`VJudge 请求失败（HTTP ${response.status}）：${path}`);
     }

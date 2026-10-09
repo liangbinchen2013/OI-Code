@@ -487,6 +487,9 @@ GET /user/solveDetail/{username}
   主进程经 `session.fromPartition(...).cookies.get()` 复用 Cookie，应用不存密码。
   登录态用 `GET /problem/suggestions` 探测（401 即未登录）；探测本身失败（离线、被 Cloudflare 拦截）时顶部给出
   "登录状态未知（网络不可达）"的确定状态，不会一直停在"正在检查登录态"。
+  **主进程请求必须复用内置浏览器分区的 UA**（`session.fromPartition(...).getUserAgent()`）：
+  站点会拒绝"同一 Cookie、不同 UA"的会话（实测网页里已登录而接口回 401），
+  401 判定前额外重试一次，403/429/5xx 与挑战页 HTML 一律算"未知"而不是"未登录"。
 - **取题**：`/problem/info`（匿名）取标题 → 题目页（需登录）解析 `dataJson`
   取 `descBriefs`/`properties`/`submitMethods`/`mySols` → `/problem/description/{key}`
   按 §4.2 归一化为 Markdown 后渲染（HTML 与 JSON 分节两种形态都支持；
