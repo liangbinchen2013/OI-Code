@@ -30,6 +30,8 @@ export interface ICppStyle {
   readonly attachPointerToType: boolean;
   /** `} else {` 写法；false 时 else 另起一行 */
   readonly elseSameLine: boolean;
+  /** 左花括号前留空格：`) {` / `){` */
+  readonly spaceBeforeBrace: boolean;
   /** 允许保留的最大连续空行数 */
   readonly maxBlankLines: number;
 }
@@ -46,6 +48,7 @@ export const DEFAULT_CPP_STYLE: ICppStyle = {
   spaceAfterControlKeyword: true,
   spaceAfterSemicolon: true,
   spaceAroundBinaryOperator: true,
+  spaceBeforeBrace: true,
   spaceInsideParens: false,
 };
 
@@ -167,9 +170,9 @@ function isDeclaratorAmpersand(tokens: readonly ICppToken[], index: number): boo
   );
 }
 
-/** 同一行上两个 token 之间的空白宽度；跨行返回 undefined。 */
-function gapBetween(a: ICppToken, b: ICppToken): number | undefined {
-  if (a.line !== b.line) {
+/** 同一行上两个 token 之间的空白宽度；跨行或缺失时返回 undefined。 */
+function gapBetween(a: ICppToken | undefined, b: ICppToken | undefined): number | undefined {
+  if (a === undefined || b === undefined || a.line !== b.line) {
     return undefined;
   }
   return b.column - (a.column + a.text.length);
@@ -310,7 +313,7 @@ function collectVotes(tokens: readonly ICppToken[]): Votes {
         }
         for (let inner2 = index + 2; inner2 < close; inner2 += 1) {
           if (tokens[inner2]?.text === ';') {
-            const after = gapBetween(tokens[inner2] as ICppToken, tokens[inner2 + 1] as ICppToken);
+            const after = gapBetween(tokens[inner2], tokens[inner2 + 1]);
             if (after !== undefined) {
               votes.record('spaceAfterSemicolon', after > 0);
             }
@@ -325,6 +328,12 @@ function collectVotes(tokens: readonly ICppToken[]): Votes {
     }
     if (token.text === '{' && previous !== undefined && previous.text !== '=') {
       votes.record('braceNextLine', token.line !== previous.line);
+      if (token.line === previous.line) {
+        const gap = gapBetween(previous, token);
+        if (gap !== undefined) {
+          votes.record('spaceBeforeBrace', gap > 0);
+        }
+      }
       continue;
     }
     if (token.text === '}' && next?.text === 'else') {
@@ -332,7 +341,7 @@ function collectVotes(tokens: readonly ICppToken[]): Votes {
       continue;
     }
     if (token.text === ',') {
-      const gap = gapBetween(token, next as ICppToken);
+      const gap = gapBetween(token, next);
       if (gap !== undefined) {
         votes.record('spaceAfterComma', gap > 0);
       } else if (next !== undefined) {
@@ -347,7 +356,7 @@ function collectVotes(tokens: readonly ICppToken[]): Votes {
       next !== undefined &&
       ![';', ')', ']', ',', '}', ''].includes(next.text)
     ) {
-      const before = gapBetween(previous as ICppToken, token);
+      const before = gapBetween(previous, token);
       if (before !== undefined) {
         votes.record('spaceAroundBinaryOperator', before > 0);
       }
@@ -358,8 +367,8 @@ function collectVotes(tokens: readonly ICppToken[]): Votes {
       continue;
     }
     if ((token.text === '*' || token.text === '&') && isDeclaratorAmpersand(tokens, index)) {
-      const before = gapBetween(previous as ICppToken, token);
-      const after = gapBetween(token, next as ICppToken);
+      const before = gapBetween(previous, token);
+      const after = gapBetween(token, next);
       if (before !== undefined && after !== undefined) {
         votes.record(
           'attachPointerToType',
@@ -404,6 +413,7 @@ export function analyzeCppStyle(source: string): IStyleAnalysis {
       'spaceAroundBinaryOperator',
       DEFAULT_CPP_STYLE.spaceAroundBinaryOperator,
     ),
+    spaceBeforeBrace: votes.decide('spaceBeforeBrace', DEFAULT_CPP_STYLE.spaceBeforeBrace),
     spaceInsideParens: votes.decide('spaceInsideParens', DEFAULT_CPP_STYLE.spaceInsideParens),
   };
   const evidence = votes.list();
