@@ -79,6 +79,22 @@ describe('htmlToMarkdown', () => {
     expect(md).toContain('| 4 3<br>2 2 | 8 5<br>351025663 |');
   });
 
+  it('表格单元格里的 <pre> 逐行保留，不并成 "1 2"', () => {
+    const md = htmlToMarkdown(
+      '<table class="test-example"><tr><th>input</th><th>output</th></tr>' +
+        '<tr><td><pre>1\n2</pre></td><td><pre>3</pre></td></tr></table>',
+    );
+
+    expect(md).toContain('| 1<br>2 | 3 |');
+    expect(md).not.toContain('| 1 2 |');
+  });
+
+  it('单元格里的 <pre> 套在 div 里也照样逐行保留', () => {
+    const md = htmlToMarkdown('<table><tr><td><div><pre>3 2\n1 5</pre></div></td></tr></table>');
+
+    expect(md).toContain('| 3 2<br>1 5 |');
+  });
+
   it('MathJax 定界符转为 $ 与 $$', () => {
     const md = htmlToMarkdown('<p>当 \\(n \\le 10^5\\) 时</p><p>\\[ x = 1 \\]</p>');
     expect(md).toContain('$n \\le 10^5$');

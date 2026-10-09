@@ -331,6 +331,29 @@ function renderPre(node: IElement): string {
   return `\n\n\`\`\`${language}\n${code}\n\`\`\`\n\n`;
 }
 
+/** 单元格里只作分层的容器标签：需要下钻，否则其中的 `<pre>` 会被并成一行。 */
+const CELL_CONTAINER_TAGS = /^(?:div|span|p|section|center|font|code|tt)$/;
+
+/**
+ * 表格单元格正文：Markdown 表格一行装不下换行，
+ * 所以把 `<pre>`（样例输入输出常用）里的换行转成硬换行标记，其余按行内规则并成一行。
+ */
+function renderCellText(nodes: readonly INode[]): string {
+  let out = '';
+  for (const node of nodes) {
+    if (node.kind === 'element' && node.tag === 'pre') {
+      out += collectText(node.children).replace(/\r\n?/g, '\n').trim().replace(/\n/g, '<br>');
+      continue;
+    }
+    if (node.kind === 'element' && CELL_CONTAINER_TAGS.test(node.tag)) {
+      out += renderCellText(node.children);
+      continue;
+    }
+    out += collapseInline(renderInline([node]));
+  }
+  return out.trim();
+}
+
 function renderTable(node: IElement): string {
   const rows: string[][] = [];
   const walk = (nodes: readonly INode[]): void => {
@@ -342,7 +365,7 @@ function renderTable(node: IElement): string {
         const cells: string[] = [];
         for (const cell of child.children) {
           if (cell.kind === 'element' && (cell.tag === 'td' || cell.tag === 'th')) {
-            cells.push(collapseInline(renderInline(cell.children)).trim().replace(/\|/g, '\\|'));
+            cells.push(renderCellText(cell.children).replace(/\|/g, '\\|'));
           }
         }
         if (cells.length > 0) {
