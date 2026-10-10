@@ -2,11 +2,20 @@
  * 按 {@link ICppStyle} 重排 C++ 代码。
  *
  * 设计取向：只做"安全且看得见"的排版——调整缩进、空白、花括号与单语句体的位置，
- * 绝不增删花括号、不合并或拆散语句、不动字符串/注释/预处理行的内容。
+ * 绝不增删花括号、不动字符串/注释/预处理行的内容。
+ * "一行几句 / 整块一行"按源文件的写法保留（由 allow* 两个开关控制），
+ * 因为把它们拆开同样是可见的风格改变。
  * 结构可疑（括号不配对）时整段原样返回，而不是输出坏代码。
  */
-import { CPP_CONTROL_KEYWORDS, tokenizeCpp, type ICppToken } from './cppLexer';
-import type { ICppStyle } from './cppStyle';
+import {
+  CPP_CONTROL_KEYWORDS,
+  endsWithValue,
+  isDeclaratorAt,
+  templateArgumentRanges,
+  tokenizeCpp,
+  type ICppToken,
+} from './cppLexer';
+import { operatorStyleGroup, type ICppStyle } from './cppStyle';
 
 export interface IFormatOutcome {
   readonly formatted: string;
@@ -28,50 +37,17 @@ interface ISpaceContext {
   readonly beforeUnary: boolean;
   readonly declarator: boolean;
   readonly inTemplate: boolean;
+  readonly inTernary: boolean;
+  /**
+   * 源文件本来就写成一行（一行多条语句、整块一行）时，
+   * 这两处沿用源空格：它们记录的是用户的紧凑习惯，不是排版错误。
+   */
+  readonly keepSourceGap: boolean;
+  readonly sourceGap: number;
 }
-
-/** 模板实参里允许出现的 token，用来区分 `vector<int>` 与 `a < b`。 */
-const TEMPLATE_ALLOWED = /^(?:[A-Za-z_]\w*|\d[\w'']*|::|,|\*|&|\[|\]|<|>|>>|<<|\.)$/;
-
-const TYPE_LIKE_BEFORE_ANGLE = /[A-Za-z_0-9>]$/;
-
-const BINARY_SYMBOLS: ReadonlySet<string> = new Set([
-  '+',
-  '-',
-  '*',
-  '/',
-  '%',
-  '=',
-  '==',
-  '!=',
-  '<',
-  '>',
-  '<=',
-  '>=',
-  '&&',
-  '||',
-  '&',
-  '|',
-  '^',
-  '<<',
-  '>>',
-  '+=',
-  '-=',
-  '*=',
-  '/=',
-  '%=',
-  '->',
-]);
 
 /** 既可一元也可二元的运算符，靠前一个 token 判方向。 */
 const UNARY_CAPABLE: ReadonlySet<string> = new Set(['*', '&', '+', '-', '!', '~']);
-
-const VALUE_ENDING_KINDS: ReadonlySet<string> = new Set([
-  'identifier',
-  'number',
-  'string',
-  'character',
-]);
 
 function isControlKeyword(token: ICppToken | undefined): boolean {
   return token !== undefined && token.kind === 'keyword' && CPP_CONTROL_KEYWORDS.has(token.text);
@@ -79,78 +55,12 @@ function isControlKeyword(token: ICppToken | undefined): boolean {
 
 /** 与 `closeIndex` 处右括号配对的左括号前面是不是控制关键字。 */
 function isControlHeader(tokens: readonly ICppToken[], closeIndex: number): boolean {
-  let depth = 1;
-  for (let index = closeIndex - 1; index >= 0; index -= 1) {
-    const text = tokens[index]?.text;
-    if (text === ')') {
-      depth += 1;
-    } else if (text === '(') {
-      depth -= 1;
-      if (depth === 0) {
-        return isControlKeyword(tokens[index - 1]);
-      }
-    }
-  }
-  return false;
+  const open = matchingOpen(tokens, closeIndex, '(', ')');
+  return open > 0 && isControlKeyword(tokens[open - 1]);
 }
 
-/** 从 `<` 起找配对的 `>`；不像模板实参时返回 -1。 */
-function templateSpanEnd(tokens: readonly ICppToken[], start: number): number {
-  let depth = 0;
-  for (let index = start; index < tokens.length; index += 1) {
-    const token = tokens[index] as ICppToken;
-    if (token.text === '<') {
-      depth += 1;
-    } else if (token.text === '<<') {
-      depth += 2;
-    } else if (token.text === '>') {
-      depth -= 1;
-    } else if (token.text === '>>') {
-      depth -= 2;
-    } else if (!TEMPLATE_ALLOWED.test(token.text)) {
-      return -1;
-    }
-    if (depth <= 0) {
-      return index === start ? -1 : index;
-    }
-  }
-  return -1;
-}
-
-/** 标出所有模板实参区间的 token 下标，排版时 `<`/`>` 两侧不留空格。 */
-function templateRanges(tokens: readonly ICppToken[]): Set<number> {
-  const marks = new Set<number>();
-  for (let index = 0; index < tokens.length; index += 1) {
-    if (tokens[index]?.text !== '<' || marks.has(index)) {
-      continue;
-    }
-    const previous = tokens[index - 1];
-    if (previous === undefined || !TYPE_LIKE_BEFORE_ANGLE.test(previous.text)) {
-      continue;
-    }
-    const end = templateSpanEnd(tokens, index);
-    if (end < 0) {
-      continue;
-    }
-    for (let inner = index; inner <= end; inner += 1) {
-      marks.add(inner);
-    }
-    index = end;
-  }
-  return marks;
-}
-
-function endsWithValue(token: ICppToken | undefined): boolean {
-  if (token === undefined) {
-    return false;
-  }
-  if (VALUE_ENDING_KINDS.has(token.kind)) {
-    return true;
-  }
-  if (token.kind === 'keyword') {
-    return ['nullptr', 'this', 'true', 'false'].includes(token.text);
-  }
-  return [')', ']', '++', '--'].includes(token.text);
+function isIncrement(token: ICppToken | undefined): boolean {
+  return token !== undefined && (token.text === '++' || token.text === '--');
 }
 
 /** 预计算哪些位置上的运算符是一元的（`-x`、`*p`、`!flag`）。 */
@@ -169,43 +79,47 @@ function unaryIndices(tokens: readonly ICppToken[]): Set<number> {
   return marks;
 }
 
-/** 语句或声明的起始位置：`Node& x` 的类型名前面就是这些。 */
-function isStatementBoundary(token: ICppToken | undefined): boolean {
-  if (token === undefined) {
-    return true;
+/** 圆括号 / 方括号深度：`for(int i=0;i<n;i++)` 里的分号不该断行。 */
+function bracketDepths(tokens: readonly ICppToken[]): number[] {
+  const depths: number[] = new Array<number>(tokens.length).fill(0);
+  let depth = 0;
+  for (let index = 0; index < tokens.length; index += 1) {
+    const text = tokens[index]?.text;
+    if (text === '(' || text === '[') {
+      depth += 1;
+      depths[index] = depth - 1;
+    } else if (text === ')' || text === ']') {
+      depths[index] = depth;
+      depth = Math.max(0, depth - 1);
+    } else {
+      depths[index] = depth;
+    }
   }
-  if (
-    token.kind === 'preprocessor' ||
-    token.kind === 'lineComment' ||
-    token.kind === 'blockComment'
-  ) {
-    return true;
-  }
-  return [';', '{', '}', '(', ',', '=', ':', 'return', 'case'].includes(token.text);
+  return depths;
 }
 
-/** 下标处的 `*` / `&` 是声明符（`int *p`）还是运算符（`a * b`）。 */
-function isDeclaratorAt(tokens: readonly ICppToken[], index: number): boolean {
-  const token = tokens[index];
-  if (token === undefined || !['*', '&'].includes(token.text)) {
-    return false;
+/** 标出三目运算符的 `?` 与配对的 `:`，两侧的空格由 spaceAroundConditional 决定。 */
+function ternaryIndices(tokens: readonly ICppToken[]): Set<number> {
+  const marks = new Set<number>();
+  const stack: number[] = [];
+  let depth = 0;
+  for (let index = 0; index < tokens.length; index += 1) {
+    const token = tokens[index] as ICppToken;
+    if (token.text === '(' || token.text === '[' || token.text === '{') {
+      depth += 1;
+    } else if (token.text === ')' || token.text === ']' || token.text === '}') {
+      depth = Math.max(0, depth - 1);
+      continue;
+    }
+    if (token.text === '?') {
+      stack.push(depth);
+      marks.add(index);
+    } else if (token.text === ':' && stack.length > 0 && stack[stack.length - 1] === depth) {
+      stack.pop();
+      marks.add(index);
+    }
   }
-  const previous = tokens[index - 1];
-  const next = tokens[index + 1];
-  if (previous === undefined || next === undefined) {
-    return false;
-  }
-  if (next.kind !== 'identifier' && !['(', '['].includes(next.text)) {
-    return false;
-  }
-  if (previous.kind === 'keyword' || ['>', '*', '&', ','].includes(previous.text)) {
-    return true;
-  }
-  if (previous.kind !== 'identifier') {
-    return false;
-  }
-  // `Node& x` 出现在语句开头；`a * b` 的 `a` 前面已经在表达式里
-  return isStatementBoundary(tokens[index - 2]) || tokens[index - 2]?.kind === 'keyword';
+  return marks;
 }
 
 /** 同一行上相邻两个 token 之间要不要空格。 */
@@ -215,48 +129,89 @@ function needsSpace(
   style: ICppStyle,
   context: ISpaceContext,
 ): boolean {
-  const text = after.text;
-  if ([',', ';', ')', ']', '.', '->', ':'].includes(text)) {
+  if (context.keepSourceGap) {
+    return context.sourceGap > 0;
+  }
+  if (context.inTernary) {
+    return style.spaceAroundConditional;
+  }
+  if (isIncrement(after) && endsWithValue(before)) {
+    // 后缀自增自减紧贴操作数：`i++`
+    return false;
+  }
+  if (isIncrement(before) && endsWithValue(after)) {
+    // 前缀：`--j`
+    return false;
+  }
+  if ([',', ';', ')', ']', '.', '->', ':', '::'].includes(after.text)) {
     return false;
   }
   if (['(', '[', '.', '->', '::', ':'].includes(before.text)) {
     return false;
   }
-  if (text === '{') {
+  if (after.text === '[' && endsWithValue(before)) {
+    // 下标紧贴：`a[i]`、`g[u].push_back(v)`
+    return false;
+  }
+  if (after.text === '{') {
     return style.spaceBeforeBrace;
   }
-  if (text === '(' && isControlKeyword(before)) {
+  if (after.text === '(' && isControlKeyword(before)) {
     return style.spaceAfterControlKeyword;
   }
-  if (text === '(') {
-    return !(
+  if (after.text === '(') {
+    if (context.beforeUnary) {
+      // 一元运算符后面的分组括号紧贴：`-(a+b)`、`!(x||y)`
+      return false;
+    }
+    if (
       before.kind === 'identifier' ||
       [')', ']'].includes(before.text) ||
       before.kind === 'string' ||
       before.kind === 'character'
-    );
+    ) {
+      return false;
+    }
+    // `mid=(l+r)/2` 这类运算符后面的括号跟该运算符的空格习惯一致
+    const beforeGroup = operatorStyleGroup(before.text);
+    return beforeGroup === undefined ? true : style[beforeGroup];
+  }
+  if (after.text === 'else' && before.text === '}') {
+    return style.spaceBeforeElse;
   }
   if (context.inTemplate) {
     if (before.text === ',') {
       return style.spaceAfterComma;
     }
-    if (['<', '<<'].includes(text) || ['<', '<<', '::'].includes(before.text)) {
+    if (['<', '<<'].includes(after.text) || ['<', '<<', '::'].includes(before.text)) {
       return false;
     }
-    return !['>', '>>'].includes(text);
+    return !['>', '>>'].includes(after.text);
   }
   if (context.declarator) {
-    return text === '*' || text === '&' ? !style.attachPointerToType : style.attachPointerToType;
+    return after.text === '*' || after.text === '&'
+      ? !style.attachPointerToType
+      : style.attachPointerToType;
   }
   if (context.beforeUnary) {
     // 前缀运算符紧贴操作数：`-x`、`*p`、`&v`
     return false;
   }
-  if (BINARY_SYMBOLS.has(text) || BINARY_SYMBOLS.has(before.text)) {
-    if (context.afterUnary) {
-      return BINARY_SYMBOLS.has(before.text) ? style.spaceAroundBinaryOperator : true;
+  if (context.afterUnary) {
+    // `&n`、`*p`、`-x` 是一元用法：它自己不计入二元运算符的空格习惯，
+    // 只跟着前一个 token 的习惯走。
+    if (before.text === ',') {
+      return style.spaceAfterComma;
     }
-    return style.spaceAroundBinaryOperator;
+    if (before.text === ';') {
+      return style.spaceAfterSemicolon;
+    }
+    const beforeGroup = operatorStyleGroup(before.text);
+    return beforeGroup === undefined ? true : style[beforeGroup];
+  }
+  const group = operatorStyleGroup(after.text) ?? operatorStyleGroup(before.text);
+  if (group !== undefined) {
+    return style[group];
   }
   if (before.text === ',') {
     return style.spaceAfterComma;
@@ -312,8 +267,8 @@ function matchingOpen(
   return -1;
 }
 
-/** 该 `{` 是否属于"不断行"区域（初始化列表、lambda 体、聚合赋值等）。 */
-function isInlineBrace(tokens: readonly ICppToken[], index: number): boolean {
+/** 该 `{` 结构上属于"不断行"区域（初始化列表、lambda 体、聚合赋值等）。 */
+function isStructuralInlineBrace(tokens: readonly ICppToken[], index: number): boolean {
   const previous = tokens[index - 1];
   if (previous === undefined) {
     return true;
@@ -329,6 +284,9 @@ function isInlineBrace(tokens: readonly ICppToken[], index: number): boolean {
   return false;
 }
 
+/** 语句块的种类：switch 体要处理 case，do 体的 `} while` 跟着本行。 */
+type BlockKind = 'switch' | 'do' | 'plain';
+
 /** 该花括号是不是 switch 语句的块（决定 case 是否少缩进一层）。 */
 function isSwitchBlockBrace(tokens: readonly ICppToken[], index: number): boolean {
   const previous = tokens[index - 1];
@@ -339,29 +297,100 @@ function isSwitchBlockBrace(tokens: readonly ICppToken[], index: number): boolea
   return open > 0 && tokens[open - 1]?.text === 'switch';
 }
 
+/** 该花括号是不是 do-while 的循环体（`do { ... } while (x);`）。 */
+function isDoBlockBrace(tokens: readonly ICppToken[], index: number): boolean {
+  return tokens[index - 1]?.text === 'do';
+}
+
+/**
+ * 给每个花括号定性与配对关系：`inline` 表示整块留在源行上，不断行；
+ * `block` 表示语句块，进出各占一行。`kept` 记录"因为源文件就写成一行而保留"的块。
+ */
+function classifyBraces(
+  tokens: readonly ICppToken[],
+  style: ICppStyle,
+): {
+  readonly kinds: Map<number, 'inline' | 'block'>;
+  readonly openOfClose: Map<number, number>;
+  readonly kept: ReadonlySet<number>;
+} {
+  const kinds = new Map<number, 'inline' | 'block'>();
+  const openOfClose = new Map<number, number>();
+  const kept = new Set<number>();
+  const stack: number[] = [];
+  for (let index = 0; index < tokens.length; index += 1) {
+    const token = tokens[index] as ICppToken;
+    if (token.kind !== 'punct') {
+      continue;
+    }
+    if (token.text === '{') {
+      let kind: 'inline' | 'block' = isStructuralInlineBrace(tokens, index) ? 'inline' : 'block';
+      if (kind === 'block' && style.allowShortBlocksOnOneLine) {
+        const close = matchingCloseOfBrace(tokens, index);
+        if (close !== undefined && tokens[close]?.line === token.line) {
+          kind = 'inline';
+          kept.add(index);
+        }
+      }
+      kinds.set(index, kind);
+      stack.push(index);
+    } else if (token.text === '}') {
+      const open = stack.pop();
+      if (open !== undefined) {
+        openOfClose.set(index, open);
+      }
+    }
+  }
+  return { kept, kinds, openOfClose };
+}
+
+/** 与 `openIndex` 处 `{` 配对的 `}` 下标；不配对时返回 undefined。 */
+function matchingCloseOfBrace(tokens: readonly ICppToken[], openIndex: number): number | undefined {
+  let depth = 0;
+  for (let index = openIndex; index < tokens.length; index += 1) {
+    const text = tokens[index]?.text;
+    if (text === '{') {
+      depth += 1;
+    } else if (text === '}') {
+      depth -= 1;
+      if (depth === 0) {
+        return index;
+      }
+    }
+  }
+  return undefined;
+}
+
 /**
  * 按风格重排 C++ 源码。
  * @param source 原始代码
  * @param style 目标风格（通常来自 {@link analyzeCppStyle}）
  */
 export function formatCpp(source: string, style: ICppStyle): IFormatOutcome {
-  const tokens = tokenizeCpp(source);
+  const bom = source.startsWith('\uFEFF') ? '\uFEFF' : '';
+  const body = bom === '' ? source : source.slice(1);
+  const tokens = tokenizeCpp(body);
   if (tokens.length === 0) {
     return { changed: false, formatted: source, skipped: false };
   }
   if (!isBalanced(tokens)) {
     return { changed: false, formatted: source, reason: '括号不配对，已保持原样', skipped: true };
   }
-  const template = templateRanges(tokens);
+  const template = templateArgumentRanges(tokens);
+  const ternary = ternaryIndices(tokens);
   const unary = unaryIndices(tokens);
+  const depths = bracketDepths(tokens);
+  const braces = classifyBraces(tokens, style);
   const lines: IOutLine[] = [];
-  /** 已打开的块是否为 switch 体 */
-  const blocks: boolean[] = [];
+  /** 已打开的块类型：switch 体要处理 case，do 体的 `} while` 不断行 */
+  const blocks: BlockKind[] = [];
   let level = 0;
   let inlineDepth = 0;
   let singleBodyExtra = 0;
   let caseBodyExtra = 0;
   let breakNext = false;
+  /** 本轮刚关闭的语句块类型，用于 `} while` 不断行 */
+  let closingKind: BlockKind | undefined;
   let current: number[] = [];
   let currentLevel = 0;
   let pendingBlanks = 0;
@@ -376,10 +405,14 @@ export function formatCpp(source: string, style: ICppStyle): IFormatOutcome {
     pendingBlanks = Math.max(0, blanks);
   };
   const isCaseLabel = (token: ICppToken): boolean =>
-    (token.text === 'case' || token.text === 'default') && blocks[blocks.length - 1] === true;
-  /** case 标签本身与 switch 体同层，标签下的语句多缩进一层。 */
+    (token.text === 'case' || token.text === 'default') && blocks[blocks.length - 1] === 'switch';
+  /** case 标签的缩进层：可开关控制它是否与块内语句同层。 */
   const levelFor = (token: ICppToken): number =>
-    isCaseLabel(token) ? level : level + singleBodyExtra + caseBodyExtra;
+    isCaseLabel(token)
+      ? style.indentCaseLabels
+        ? level
+        : level - 1
+      : level + singleBodyExtra + caseBodyExtra;
 
   for (let index = 0; index < tokens.length; index += 1) {
     const token = tokens[index] as ICppToken;
@@ -392,8 +425,12 @@ export function formatCpp(source: string, style: ICppStyle): IFormatOutcome {
     const keepInline = inlineDepth > 0;
     const isComment = token.kind === 'lineComment' || token.kind === 'blockComment';
     const atLineStart = current.length === 0;
-    const blockClose = token.text === '}' && !keepInline;
-    const blockOpen = token.text === '{' && !isInlineBrace(tokens, index);
+    const openForThisClose = token.text === '}' ? braces.openOfClose.get(index) : undefined;
+    const closesInline =
+      openForThisClose !== undefined && braces.kinds.get(openForThisClose) === 'inline';
+    const blockClose = token.text === '}' && !closesInline;
+    const blockOpen = token.text === '{' && braces.kinds.get(index) === 'block';
+    closingKind = undefined;
 
     const startNewLine =
       token.kind === 'preprocessor' ||
@@ -407,7 +444,7 @@ export function formatCpp(source: string, style: ICppStyle): IFormatOutcome {
 
     if (blockClose) {
       level = Math.max(0, level - 1);
-      blocks.pop();
+      closingKind = blocks.pop();
       singleBodyExtra = 0;
     }
     if (startNewLine) {
@@ -422,22 +459,49 @@ export function formatCpp(source: string, style: ICppStyle): IFormatOutcome {
       breakNext = true;
     } else if (isCaseLabel(token) && current.length === 1) {
       caseBodyExtra = 0;
-    } else if (token.text === ':' && blocks[blocks.length - 1] === true && !keepInline) {
-      // case/default 标签：冒号结束标签行，其下语句多缩进一层
-      caseBodyExtra = 1;
+    } else if (token.text === ':' && blocks[blocks.length - 1] === 'switch' && !keepInline) {
+      // case/default 标签：冒号结束标签行，其下语句按开关决定是否多缩进一层
+      caseBodyExtra = style.indentCaseLabels ? 1 : 0;
       breakNext = true;
     } else if (token.text === '{') {
-      if (isInlineBrace(tokens, index)) {
+      if (braces.kinds.get(index) === 'inline') {
         inlineDepth += 1;
       } else {
         level += 1;
-        blocks.push(isSwitchBlockBrace(tokens, index));
+        blocks.push(
+          isSwitchBlockBrace(tokens, index)
+            ? 'switch'
+            : isDoBlockBrace(tokens, index)
+              ? 'do'
+              : 'plain',
+        );
         caseBodyExtra = 0;
         flush(level, 0);
       }
+    } else if (token.text === '}') {
+      if (closesInline) {
+        if (inlineDepth > 0) {
+          inlineDepth -= 1;
+        }
+        // 整块留在一行时，源文件里另起一行的下一条语句仍然换行
+        breakNext = next !== undefined && next.line > tokenEndLine(token) && next.text !== 'else';
+      } else {
+        // 语句块结束后下一条语句另起一行；`} else` 与 do-while 的 `} while` 跟着本行
+        const keepsLine =
+          next !== undefined &&
+          ((next.text === 'else' && style.elseSameLine) ||
+            (closingKind === 'do' && next.text === 'while'));
+        breakNext = !keepsLine;
+      }
     } else if (token.text === ';' && !keepInline) {
       singleBodyExtra = 0;
-      breakNext = true;
+      // 括号里的分号（for 头、数组下标）永远不断行；行内多语句按源写法保留
+      const sameLineStatement =
+        style.allowMultipleStatementsPerLine &&
+        next !== undefined &&
+        next.line === tokenEndLine(token) &&
+        next.kind !== 'lineComment';
+      breakNext = (depths[index] ?? 0) === 0 && !sameLineStatement;
     } else if (token.kind === 'lineComment') {
       breakNext = true;
     } else if (
@@ -486,6 +550,11 @@ export function formatCpp(source: string, style: ICppStyle): IFormatOutcome {
       const beforeIndex = line.tokens[offset - 1] as number;
       const before = tokens[beforeIndex] as ICppToken;
       const comment = token.kind === 'lineComment' || token.kind === 'blockComment';
+      const sameSourceLine = token.line === tokenEndLine(before);
+      const keepSourceGap =
+        sameSourceLine &&
+        ((before.text === ';' && (depths[beforeIndex] ?? 0) === 0) ||
+          (before.text === '{' && braces.kept.has(beforeIndex)));
       const space = comment
         ? true
         : needsSpace(before, token, style, {
@@ -493,11 +562,15 @@ export function formatCpp(source: string, style: ICppStyle): IFormatOutcome {
             beforeUnary: unary.has(beforeIndex),
             declarator: isDeclaratorAt(tokens, tokenIndex) || isDeclaratorAt(tokens, beforeIndex),
             inTemplate: template.has(tokenIndex) || template.has(beforeIndex),
+            inTernary: ternary.has(tokenIndex) || ternary.has(beforeIndex),
+            keepSourceGap,
+            sourceGap: sameSourceLine ? token.column - (before.column + before.text.length) : 1,
           });
       text += `${space ? ' ' : ''}${token.text}`;
     }
     assembled.push(text.trimEnd());
   }
-  const formatted = `${assembled.join('\n')}${source.endsWith('\n') ? '\n' : ''}`;
+  const eol = body.includes('\r\n') ? '\r\n' : '\n';
+  const formatted = `${bom}${assembled.join(eol)}${body.endsWith('\n') ? eol : ''}`;
   return { changed: formatted !== source, formatted, skipped: false };
 }

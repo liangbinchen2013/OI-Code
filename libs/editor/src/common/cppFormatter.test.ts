@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import { tokenizeCpp } from './cppLexer';
-import { DEFAULT_CPP_STYLE, type ICppStyle } from './cppStyle';
+import { analyzeCppStyle, DEFAULT_CPP_STYLE, type ICppStyle } from './cppStyle';
 import { formatCpp } from './cppFormatter';
 
 const COMPACT: ICppStyle = {
@@ -11,9 +11,34 @@ const COMPACT: ICppStyle = {
   spaceAfterComma: false,
   spaceAfterControlKeyword: false,
   spaceAfterSemicolon: false,
-  spaceAroundBinaryOperator: false,
+  spaceAroundArithmetic: false,
+  spaceAroundAssignment: false,
+  spaceAroundBitwise: false,
+  spaceAroundComparison: false,
+  spaceAroundConditional: false,
+  spaceAroundLogical: false,
+  spaceAroundLeftShift: false,
+  spaceAroundRightShift: false,
   spaceBeforeBrace: false,
 };
+
+/** 真实 OIer 写法：格式化后应当原样不动。 */
+const USER_SAMPLE = `#include <bits/stdc++.h>
+using namespace std;
+int n,m,a[100005];
+vector<int> g[200005];
+int main(){
+  int t; cin >> t;
+  while(t--){
+    cin >> n >> m;
+    vector<int> a(n+1);
+    for(int i=1;i<=n;i++) cin >> a[i];
+    for(int i=0;i<m;i++){int u,v;cin>>u>>v;g[u].push_back(v);}
+    scanf("%d %d",&n,&m);
+    for(int i=0;i<n;i++) for(int j=0;j<m;j++) cin >> b[i][j];
+  }
+}
+`;
 
 /** token 序列一致 = 没有增删或改写任何代码内容。 */
 function fingerprint(source: string): string {
@@ -163,5 +188,61 @@ describe('formatCpp', () => {
     const output = show('int a;\n\n\n\nint b;\n', { ...DEFAULT_CPP_STYLE, maxBlankLines: 1 });
 
     expect(output).toBe('int a;\n\nint b;\n');
+  });
+
+  it('用户的真实写法保持行结构，只补齐少数空格', () => {
+    const style = analyzeCppStyle(USER_SAMPLE).style;
+    const output = show(USER_SAMPLE, style);
+
+    // 行数一致 = 没有把一行多语句或整块一行拆开
+    expect(output.split('\n').length).toBe(USER_SAMPLE.split('\n').length);
+    expect(output).toContain('int n,m,a[100005];');
+    expect(output).toContain('  int t; cin >> t;');
+    expect(output).toContain('    vector<int> a(n+1);');
+    expect(output).toContain('    for(int i=1;i<=n;i++) cin >> a[i];');
+    expect(output).toContain('    for(int i=0;i<m;i++){int u,v;cin >> u >> v;g[u].push_back(v);}');
+    expect(output).toContain('    scanf("%d %d",&n,&m);');
+    expect(output).toContain('    for(int i=0;i<n;i++) for(int j=0;j<m;j++) cin >> b[i][j];');
+    expect(show(output, style)).toBe(output);
+  });
+
+  it('紧凑习惯关掉时把一行多语句与整块一行拆开', () => {
+    const style: ICppStyle = {
+      ...analyzeCppStyle(USER_SAMPLE).style,
+      allowMultipleStatementsPerLine: false,
+      allowShortBlocksOnOneLine: false,
+    };
+    const output = show(USER_SAMPLE, style);
+
+    expect(output).toContain('  int t;\n  cin >> t;');
+    expect(output).not.toContain('{int u,v;');
+    expect(output.split('\n')).toContain('      int u,v;');
+  });
+
+  it('for 头里的分号不会把语句拆成多行', () => {
+    expect(show('int main(){for(int i=0;i<n;i++) f(i);}\n', COMPACT)).toContain(
+      'for(int i=0;i<n;i++) f(i);',
+    );
+  });
+
+  it('三目运算符按风格摆放', () => {
+    expect(show('int main(){y=a?b:c;return 0;}\n', DEFAULT_CPP_STYLE)).toContain('y = a ? b : c;');
+    expect(show('int main(){y=a?b:c;return 0;}\n', COMPACT)).toContain('y=a?b:c;');
+  });
+
+  it('case 标签缩进跟随风格', () => {
+    const dedented = { ...DEFAULT_CPP_STYLE, indentCaseLabels: false };
+    const output = show('int main(){switch(x){case 1:f();break;}}\n', dedented);
+
+    expect(output).toContain('    switch (x) {');
+    expect(output).toContain('    case 1:');
+    expect(output).toContain('        f();');
+  });
+
+  it('保留 BOM 与 CRLF', () => {
+    const output = show('\uFEFFint main(){int x;}\r\n', COMPACT);
+
+    expect(output.startsWith('\uFEFF')).toBe(true);
+    expect(output).toContain('\r\n');
   });
 });

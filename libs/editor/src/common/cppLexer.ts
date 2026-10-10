@@ -183,13 +183,15 @@ function atLineStart(source: string, index: number): boolean {
 }
 
 function isSpace(char: string): boolean {
+  // \uFEFF 是 Windows 编辑器留下的 BOM：按空白跳过，否则 `#include` 会被当成普通符号
   return (
     char === ' ' ||
     char === '\t' ||
     char === '\r' ||
     char === '\n' ||
     char === '\f' ||
-    char === '\v'
+    char === '\v' ||
+    char === '\uFEFF'
   );
 }
 
@@ -388,4 +390,176 @@ export function tokenizeCpp(source: string): ICppToken[] {
     index += 1;
   }
   return tokens;
+}
+
+/** 模板实参里允许出现的 token，用来区分 `vector<int>` 与 `a < b`。 */
+const TEMPLATE_ALLOWED = /^(?:[A-Za-z_]\w*|\d[\w'']*|::|,|\*|&|\[|\]|<|>|>>|<<|\.)$/;
+
+const TYPE_LIKE_BEFORE_ANGLE = /[A-Za-z_0-9>]$/;
+
+/** 从 `<` 起找配对的 `>`；不像模板实参时返回 -1。 */
+function templateSpanEnd(tokens: readonly ICppToken[], start: number): number {
+  let depth = 0;
+  for (let index = start; index < tokens.length; index += 1) {
+    const token = tokens[index] as ICppToken;
+    if (token.text === '<') {
+      depth += 1;
+    } else if (token.text === '<<') {
+      depth += 2;
+    } else if (token.text === '>') {
+      depth -= 1;
+    } else if (token.text === '>>') {
+      depth -= 2;
+    } else if (!TEMPLATE_ALLOWED.test(token.text)) {
+      return -1;
+    }
+    if (depth <= 0) {
+      return index === start ? -1 : index;
+    }
+  }
+  return -1;
+}
+
+/**
+ * 标出所有模板实参区间的 token 下标。
+ * 风格分析与格式化都要靠它把 `vector<int>` 的尖括号与 `a < b` 的比较运算符区分开。
+ */
+export function templateArgumentRanges(tokens: readonly ICppToken[]): Set<number> {
+  const marks = new Set<number>();
+  for (let index = 0; index < tokens.length; index += 1) {
+    if (tokens[index]?.text !== '<' || marks.has(index)) {
+      continue;
+    }
+    const previous = tokens[index - 1];
+    if (previous === undefined || !TYPE_LIKE_BEFORE_ANGLE.test(previous.text)) {
+      continue;
+    }
+    const end = templateSpanEnd(tokens, index);
+    if (end < 0) {
+      continue;
+    }
+    for (let inner = index; inner <= end; inner += 1) {
+      marks.add(inner);
+    }
+    index = end;
+  }
+  return marks;
+}
+
+const VALUE_ENDING_KINDS: ReadonlySet<string> = new Set([
+  'identifier',
+  'number',
+  'string',
+  'character',
+]);
+
+/** token 是否是"值结尾"（数字、变量、字符串、`)`、`]`、后缀 `++`）——运算符方向判断的基础。 */
+export function endsWithValue(token: ICppToken | undefined): boolean {
+  if (token === undefined) {
+    return false;
+  }
+  if (VALUE_ENDING_KINDS.has(token.kind)) {
+    return true;
+  }
+  if (token.kind === 'keyword') {
+    return ['nullptr', 'this', 'true', 'false'].includes(token.text);
+  }
+  return [')', ']', '++', '--'].includes(token.text);
+}
+
+/** 声明的起始关键字：用来区分 `int *p, *q;` 与 `scanf("%d",&n)`。 */
+const DECLARATION_STARTERS: ReadonlySet<string> = new Set([
+  'auto',
+  'bool',
+  'char',
+  'class',
+  'const',
+  'double',
+  'float',
+  'int',
+  'long',
+  'register',
+  'short',
+  'signed',
+  'static',
+  'struct',
+  'typename',
+  'typedef',
+  'union',
+  'unsigned',
+  'void',
+  'volatile',
+]);
+
+function isDeclarationHead(first: ICppToken | undefined, second: ICppToken | undefined): boolean {
+  if (first === undefined) {
+    return false;
+  }
+  if (first.kind === 'keyword') {
+    return DECLARATION_STARTERS.has(first.text);
+  }
+  // `vector<int> a, *p;` 这类模板类型打头的声明
+  return first.kind === 'identifier' && second?.text === '<';
+}
+
+/** 所在语句是否以类型开头的声明（往回走到 `;`、`{`、`}` 或预处理行即可判断）。 */
+function startsDeclaration(tokens: readonly ICppToken[], index: number): boolean {
+  for (let cursor = index - 1; cursor >= 0; cursor -= 1) {
+    const token = tokens[cursor] as ICppToken;
+    if (token.kind === 'preprocessor' || [';', '{', '}'].includes(token.text)) {
+      return isDeclarationHead(tokens[cursor + 1], tokens[cursor + 2]);
+    }
+  }
+  return isDeclarationHead(tokens[0], tokens[1]);
+}
+
+/**
+ * 下标处的 `*` / `&` 是声明符（`int *p`、`Node& x`）还是运算符（`a * b`、`&n`）。
+ * 风格分析与格式化都要靠它决定星号/和号贴谁。
+ */
+export function isDeclaratorAt(tokens: readonly ICppToken[], index: number): boolean {
+  const token = tokens[index];
+  if (token === undefined || !['*', '&'].includes(token.text)) {
+    return false;
+  }
+  const previous = tokens[index - 1];
+  const next = tokens[index + 1];
+  if (previous === undefined || next === undefined) {
+    return false;
+  }
+  if (next.kind !== 'identifier' && !['(', '['].includes(next.text)) {
+    return false;
+  }
+  if (previous.kind === 'keyword' || ['>', '*', '&'].includes(previous.text)) {
+    return true;
+  }
+  if (previous.text === ',') {
+    // `int *p, *q;` 是声明，`scanf("%d",&n)` 里的 `&n` 是取地址
+    return startsDeclaration(tokens, index);
+  }
+  if (previous.kind !== 'identifier') {
+    return false;
+  }
+  // `Node& x` 出现在语句开头；`a * b` 的 `a` 前面已经在表达式里
+  return (
+    tokens[index - 2] === undefined ||
+    previous === undefined ||
+    isStatementBoundary(tokens[index - 2]) ||
+    tokens[index - 2]?.kind === 'keyword'
+  );
+}
+
+/** 语句或声明的起始位置。 */
+function isStatementBoundary(token: ICppToken | undefined): boolean {
+  if (token === undefined) {
+    return true;
+  }
+  if (
+    token.kind === 'preprocessor' ||
+    token.kind === 'lineComment' ||
+    token.kind === 'blockComment'
+  ) {
+    return true;
+  }
+  return [';', '{', '}', '(', ',', '=', ':', 'return', 'case'].includes(token.text);
 }

@@ -47,6 +47,24 @@ const ALLMAN = `int f(int a)
 }
 `;
 
+/** 真实 OIer 写法：两空格、括号紧贴、一行塞几句、整块留一行。 */
+const USER_SAMPLE = `#include <bits/stdc++.h>
+using namespace std;
+int n,m,a[100005];
+vector<int> g[200005];
+int main(){
+  int t; cin >> t;
+  while(t--){
+    cin >> n >> m;
+    vector<int> a(n+1);
+    for(int i=1;i<=n;i++) cin >> a[i];
+    for(int i=0;i<m;i++){int u,v;cin>>u>>v;g[u].push_back(v);}
+    scanf("%d %d",&n,&m);
+    for(int i=0;i<n;i++) for(int j=0;j<m;j++) cin >> b[i][j];
+  }
+}
+`;
+
 describe('analyzeCppStyle', () => {
   it('识别常见的 OI 风格', () => {
     const { style } = analyzeCppStyle(TYPICAL);
@@ -56,11 +74,14 @@ describe('analyzeCppStyle', () => {
     expect(style.braceNextLine).toBe(false);
     expect(style.spaceAfterControlKeyword).toBe(true);
     expect(style.spaceInsideParens).toBe(false);
-    expect(style.spaceAroundBinaryOperator).toBe(true);
+    expect(style.spaceAroundComparison).toBe(true);
+    expect(style.spaceAroundRightShift).toBe(true);
     expect(style.spaceAfterComma).toBe(true);
     expect(style.spaceAfterSemicolon).toBe(true);
     expect(style.elseSameLine).toBe(true);
     expect(style.singleStatementOnSameLine).toBe(false);
+    expect(style.allowMultipleStatementsPerLine).toBe(false);
+    expect(style.allowShortBlocksOnOneLine).toBe(false);
   });
 
   it('识别紧凑 + Tab 缩进风格', () => {
@@ -68,7 +89,10 @@ describe('analyzeCppStyle', () => {
 
     expect(style.indentWithTabs).toBe(true);
     expect(style.spaceAfterControlKeyword).toBe(false);
-    expect(style.spaceAroundBinaryOperator).toBe(false);
+    expect(style.spaceAroundComparison).toBe(false);
+    expect(style.spaceAroundAssignment).toBe(false);
+    expect(style.spaceAroundArithmetic).toBe(false);
+    expect(style.spaceAroundRightShift).toBe(false);
     expect(style.spaceAfterComma).toBe(false);
     expect(style.spaceAfterSemicolon).toBe(false);
     expect(style.braceNextLine).toBe(false);
@@ -76,6 +100,43 @@ describe('analyzeCppStyle', () => {
     expect(style.singleStatementOnSameLine).toBe(true);
     // 样本里没有 `}` 后接 else 的写法，保持默认而不是瞎猜
     expect(style.elseSameLine).toBe(DEFAULT_CPP_STYLE.elseSameLine);
+  });
+
+  it('按运算符分组判断空格，一行多语句与整块一行照实保留', () => {
+    const { style } = analyzeCppStyle(USER_SAMPLE);
+
+    expect(style.indentWidth).toBe(2);
+    expect(style.spaceAfterControlKeyword).toBe(false);
+    expect(style.spaceInsideParens).toBe(false);
+    expect(style.spaceBeforeBrace).toBe(false);
+    expect(style.spaceAroundComparison).toBe(false);
+    expect(style.spaceAroundAssignment).toBe(false);
+    expect(style.spaceAroundArithmetic).toBe(false);
+    expect(style.spaceAfterComma).toBe(false);
+    expect(style.spaceAfterSemicolon).toBe(false);
+    // `cin >> t` 带空格、`cin>>u` 只是偶发，多数派说了算
+    expect(style.spaceAroundRightShift).toBe(true);
+    expect(style.allowMultipleStatementsPerLine).toBe(true);
+    expect(style.allowShortBlocksOnOneLine).toBe(true);
+    expect(style.singleStatementOnSameLine).toBe(true);
+  });
+
+  it('识别 case 标签是否跟着 switch 体缩进', () => {
+    expect(
+      analyzeCppStyle('int main() {\n    switch (x) {\n        case 1:\n            f();\n    }\n}')
+        .style.indentCaseLabels,
+    ).toBe(true);
+    expect(
+      analyzeCppStyle('int main() {\n    switch (x) {\ncase 1:\n    f();\n    }\n}').style
+        .indentCaseLabels,
+    ).toBe(false);
+  });
+
+  it('三目运算符的空格习惯单独统计', () => {
+    expect(
+      analyzeCppStyle('int main() {\n    y = a ? b : c;\n}').style.spaceAroundConditional,
+    ).toBe(true);
+    expect(analyzeCppStyle('int main(){\n  y=a?b:c;\n}').style.spaceAroundConditional).toBe(false);
   });
 
   it('识别 Allman 花括号', () => {
