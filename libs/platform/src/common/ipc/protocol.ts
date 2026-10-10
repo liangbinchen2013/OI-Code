@@ -43,6 +43,11 @@ export const DIALOG_RPC_METHODS = {
  */
 export const WINDOW_RPC_NOTIFICATIONS = {
   setDirtyState: 'window.setDirtyState',
+  /**
+   * 授权拖放进窗口的文件。路径只可能来自 preload 的 `webUtils.getPathForFile`，
+   * 即真实用户拖放，故与系统对话框选文件同等可信。
+   */
+  grantDroppedPaths: 'window.grantDroppedPaths',
 } as const;
 
 /**

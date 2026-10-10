@@ -13,6 +13,13 @@ export interface IPreloadEnvironment {
 }
 
 /**
+ * 拖放进页面的文件。渲染进程只用到结构最小集，真实对象是 DOM 的 `File`。
+ */
+export interface IPreloadDroppedFile {
+  readonly name: string;
+}
+
+/**
  * preload 经 contextBridge 暴露给渲染进程的最小 IPC 面：
  * 渲染进程只接触消息收发，不接触任何 Node.js API。
  */
@@ -22,4 +29,11 @@ export interface IPreloadIpcApi {
     onMessage(listener: (message: unknown) => void): () => void;
   };
   readonly environment: IPreloadEnvironment;
+  /**
+   * 取拖放文件的绝对路径。Electron 32 起 `File.path` 已移除，
+   * 只有 preload 里的 `webUtils.getPathForFile` 能拿到，故必须经此桥。
+   */
+  readonly files: {
+    getPathForFile(file: IPreloadDroppedFile): string;
+  };
 }

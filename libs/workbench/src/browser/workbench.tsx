@@ -32,10 +32,11 @@ import type {
   IVjudgeServiceClient,
 } from '@oi/platform';
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
-import type { PointerEvent as ReactPointerEvent } from 'react';
+import type { DragEvent as ReactDragEvent, PointerEvent as ReactPointerEvent } from 'react';
 import { createRoot } from 'react-dom/client';
 import { ActivityBar, type ActivityView } from './activityBar';
 import { EditorPane, type IEditorPaneHandle } from './editorPane';
+import { carriesFiles, droppedPaths } from './droppedFiles';
 import {
   normalizeEditorSettings,
   persistEditorSettings,
@@ -123,6 +124,8 @@ export interface IWorkbenchOptions {
   readonly services: IWorkbenchServices;
   /** 脏状态上报（主进程据此拦截关闭），由 Code 层提供。 */
   readonly onDirtyStateChange?: (dirty: boolean) => void;
+  /** 拖放文件的绝对路径解析（须经 preload 的 webUtils）。 */
+  readonly resolveDroppedPath?: (file: File) => string;
 }
 
 type WorkbenchStatus =
@@ -131,6 +134,7 @@ type WorkbenchStatus =
   | 'saved'
   | 'saveFailed'
   | 'openFailed'
+  | 'dropFailed'
   | 'compiling'
   | 'compileOk'
   | 'compileFailed'
@@ -174,6 +178,7 @@ const STATUS_PRESENTATION: Record<
   saved: { icon: faCircleCheck, text: WORKBENCH_STRINGS.saved },
   saveFailed: { icon: faCircleXmark, text: WORKBENCH_STRINGS.saveFailed },
   openFailed: { icon: faCircleXmark, text: WORKBENCH_STRINGS.openFailed },
+  dropFailed: { icon: faCircleXmark, text: WORKBENCH_STRINGS.dropFailed },
   compiling: { icon: faSpinner, text: WORKBENCH_STRINGS.compiling },
   compileOk: { icon: faCircleCheck, text: WORKBENCH_STRINGS.compileOk },
   compileFailed: { icon: faCircleXmark, text: WORKBENCH_STRINGS.compileFailed },
@@ -245,9 +250,17 @@ interface IWorkbenchProps {
   readonly services: IWorkbenchServices;
   readonly initialTheme: ThemeKind;
   readonly onDirtyStateChange?: (dirty: boolean) => void;
+  /** 拖放文件的绝对路径解析，由 Code 层经 preload 提供。 */
+  readonly resolveDroppedPath?: (file: File) => string;
 }
 
-function Workbench({ environment, services, initialTheme, onDirtyStateChange }: IWorkbenchProps) {
+function Workbench({
+  environment,
+  services,
+  initialTheme,
+  onDirtyStateChange,
+  resolveDroppedPath,
+}: IWorkbenchProps) {
   const [store] = useState(() => new DisposableStore());
   const [tabs, setTabs] = useState<ITabState[]>([]);
   const [activeTabId, setActiveTabId] = useState<string | undefined>(undefined);
@@ -277,6 +290,8 @@ function Workbench({ environment, services, initialTheme, onDirtyStateChange }: 
   const lastExpandedWidthRef = useRef(lastExpandedWidth);
   const [theme, setTheme] = useState<ThemeKind>(initialTheme);
   const [status, setStatus] = useState<WorkbenchStatus>('idle');
+  /** 文件正被拖到编辑区上方 */
+  const [dropActive, setDropActive] = useState(false);
   const [statusDetail, setStatusDetail] = useState<string | undefined>(undefined);
   const [busy, setBusy] = useState<BusyAction>(undefined);
   const [problems, setProblems] = useState<IProblemItem[]>([]);
@@ -709,6 +724,46 @@ function Workbench({ environment, services, initialTheme, onDirtyStateChange }: 
       setTreeVersion((version) => version + 1);
     }
   }, [services.fileDialogService]);
+
+  useEffect(() => {
+    // 拖到编辑区之外时 Electron 会把文件当导航打开，整窗白屏，因此全局拦掉默认行为
+    const blockNavigation = (event: DragEvent): void => {
+      if (carriesFiles(event.dataTransfer)) {
+        event.preventDefault();
+      }
+    };
+    window.addEventListener('dragover', blockNavigation);
+    window.addEventListener('drop', blockNavigation);
+    return () => {
+      window.removeEventListener('dragover', blockNavigation);
+      window.removeEventListener('drop', blockNavigation);
+    };
+  }, []);
+
+  /** 路径只能在 drop 事件里同步取，取完再异步打开。 */
+  const handleDropFiles = useCallback(
+    (event: ReactDragEvent<HTMLElement>): void => {
+      if (!carriesFiles(event.dataTransfer)) {
+        return;
+      }
+      event.preventDefault();
+      setDropActive(false);
+      if (resolveDroppedPath === undefined) {
+        setStatus('dropFailed');
+        return;
+      }
+      const paths = droppedPaths(Array.from(event.dataTransfer.files), resolveDroppedPath);
+      if (paths.length === 0) {
+        setStatus('dropFailed');
+        return;
+      }
+      for (const path of paths) {
+        void openUri(URI.file(path));
+      }
+      editorPaneRef.current?.focus();
+    },
+    [openUri, resolveDroppedPath],
+  );
 
   const createFromTemplate = useCallback(
     (template: IFileTemplate): void => {
@@ -1635,7 +1690,30 @@ function Workbench({ environment, services, initialTheme, onDirtyStateChange }: 
             onDoubleClick={restoreSidebarWidth}
           />
         </div>
-        <main className="oi-main">
+        <main
+          className="oi-main"
+          onDragOver={(event) => {
+            if (!carriesFiles(event.dataTransfer)) {
+              return;
+            }
+            event.preventDefault();
+            event.dataTransfer.dropEffect = 'copy';
+            setDropActive(true);
+          }}
+          onDragLeave={(event) => {
+            // 掠过子元素不算离开编辑区
+            if (!event.currentTarget.contains(event.relatedTarget as Node | null)) {
+              setDropActive(false);
+            }
+          }}
+          onDrop={handleDropFiles}
+        >
+          {dropActive ? (
+            <div className="oi-drop-hint" role="status">
+              <FontAwesomeIcon icon={faFileLines} aria-hidden="true" />
+              <span>{WORKBENCH_STRINGS.dropToOpen}</span>
+            </div>
+          ) : null}
           <div
             ref={splitContainerRef}
             className={`oi-split${
@@ -1895,6 +1973,7 @@ export function renderWorkbench(options: IWorkbenchOptions): { dispose(): void }
       services={options.services}
       initialTheme={initialTheme}
       onDirtyStateChange={options.onDirtyStateChange}
+      resolveDroppedPath={options.resolveDroppedPath}
     />,
   );
   return toDisposable(() => root.unmount());

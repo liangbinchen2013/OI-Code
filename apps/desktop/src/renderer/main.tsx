@@ -70,6 +70,7 @@ async function bootstrap(): Promise<void> {
   const workbench = renderWorkbench({
     container,
     environment: preload.environment,
+    resolveDroppedPath: (file) => preload.files.getPathForFile(file),
     services: {
       fileService: new FileServiceClient(channel),
       fileDialogService: new FileDialogServiceClient(channel),

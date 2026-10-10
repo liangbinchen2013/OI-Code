@@ -530,6 +530,24 @@ body {
   min-height: 0;
 }
 
+/* 拖放文件悬停在编辑区上方时的提示层 */
+.oi-drop-hint {
+  position: absolute;
+  inset: 8px;
+  z-index: 30;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 8px;
+  border: 2px dashed var(--link);
+  border-radius: var(--radius-card);
+  background: color-mix(in srgb, var(--bg) 92%, transparent);
+  color: var(--link);
+  font-size: 14px;
+  font-weight: 700;
+  pointer-events: none;
+}
+
 .oi-editor-host {
   position: absolute;
   inset: 0;
@@ -1524,8 +1542,8 @@ body {
   width: 100%;
   min-width: 0;
   overflow: hidden;
-  border: 1px solid var(--input-border, var(--card-border));
-  border-radius: var(--radius-control, 6px);
+  border: 1px solid var(--border);
+  border-radius: 6px;
   background: var(--bg);
 }
 

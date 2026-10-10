@@ -121,6 +121,23 @@ function parseFileNameParam(params: unknown): string | undefined {
   return typeof fileName === 'string' ? fileName : undefined;
 }
 
+const MAX_DROPPED_PATHS = 32;
+
+/** 解析拖放授权通知：只接受非空字符串数组，超限直接忽略。 */
+function parseDroppedPaths(params: unknown): readonly string[] | undefined {
+  if (typeof params !== 'object' || params === null || !('paths' in params)) {
+    return undefined;
+  }
+  const { paths } = params as { paths: unknown };
+  if (!Array.isArray(paths) || paths.length > MAX_DROPPED_PATHS) {
+    return undefined;
+  }
+  const accepted = paths.filter(
+    (entry): entry is string => typeof entry === 'string' && entry.trim().length > 0,
+  );
+  return accepted.length === paths.length ? accepted : undefined;
+}
+
 function parseDirtyParam(params: unknown): boolean | undefined {
   if (typeof params !== 'object' || params === null || !('dirty' in params)) {
     return undefined;
@@ -592,6 +609,18 @@ export class MainProcess implements IDisposable {
     channel.registerMethod(AUTOSAVE_RPC_METHODS.scanDrafts, () =>
       this._autoSaveService.scanDrafts(),
     );
+
+    channel.listen(WINDOW_RPC_NOTIFICATIONS.grantDroppedPaths, (params) => {
+      const paths = parseDroppedPaths(params);
+      if (paths === undefined) {
+        this._logService.warn('已忽略格式错误的拖放授权通知');
+        return;
+      }
+      // 路径由 preload 从真实 File 解析，等同用户主动拖入，故纳入白名单
+      for (const path of paths) {
+        this._fileAccess.allowPath(path);
+      }
+    });
 
     channel.listen(WINDOW_RPC_NOTIFICATIONS.setDirtyState, (params) => {
       const dirty = parseDirtyParam(params);

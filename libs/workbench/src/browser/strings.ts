@@ -24,6 +24,8 @@ export const WORKBENCH_STRINGS = {
   saved: '已保存',
   saveFailed: '保存失败',
   openFailed: '打开失败',
+  dropToOpen: '松开以打开文件',
+  dropFailed: '无法取得拖放文件的路径',
   settings: '设置',
   explorer: '资源管理器',
   untitledPrefix: '未命名',
