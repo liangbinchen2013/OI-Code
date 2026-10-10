@@ -1,4 +1,6 @@
 import {
+  faChevronDown,
+  faChevronUp,
   faFileImport,
   faFloppyDisk,
   faPlus,
@@ -13,7 +15,9 @@ import {
   type ICppStyle,
   type IStyleAnalysis,
 } from '@oi/editor';
+import type { ILanguageService } from '@oi/editor';
 import { useCallback, useMemo, useState } from 'react';
+import { CodeField } from './codeField';
 import type { IJudgeSource } from './judgeTool';
 import { WORKBENCH_STRINGS } from './strings';
 import {
@@ -25,20 +29,58 @@ import {
   type IFormatProfileStore,
 } from './formatProfiles';
 
-/** 可勾选的风格开关；缩进宽度与空行上限单独给控件。 */
-const STYLE_TOGGLES: ReadonlyArray<readonly [BooleanStyleKey, string]> = [
-  ['indentWithTabs', WORKBENCH_STRINGS.formatTabIndent],
-  ['braceNextLine', WORKBENCH_STRINGS.formatBraceNextLine],
-  ['singleStatementOnSameLine', WORKBENCH_STRINGS.formatSameLineBody],
-  ['spaceAfterControlKeyword', WORKBENCH_STRINGS.formatSpaceAfterKeyword],
-  ['spaceInsideParens', WORKBENCH_STRINGS.formatSpaceInsideParens],
-  ['spaceAroundBinaryOperator', WORKBENCH_STRINGS.formatSpaceAroundOperator],
-  ['spaceAfterComma', WORKBENCH_STRINGS.formatSpaceAfterComma],
-  ['spaceAfterSemicolon', WORKBENCH_STRINGS.formatSpaceAfterSemicolon],
-  ['attachPointerToType', WORKBENCH_STRINGS.formatPointerToType],
-  ['elseSameLine', WORKBENCH_STRINGS.formatElseSameLine],
-  ['spaceBeforeBrace', WORKBENCH_STRINGS.formatSpaceBeforeBrace],
+/** 风格开关按"用户看得见的差别"分组，勾选项默认折叠。 */
+const TOGGLE_GROUPS: ReadonlyArray<{
+  readonly title: string;
+  readonly items: ReadonlyArray<readonly [BooleanStyleKey, string]>;
+}> = [
+  {
+    items: [
+      ['indentWithTabs', WORKBENCH_STRINGS.formatTabIndent],
+      ['braceNextLine', WORKBENCH_STRINGS.formatBraceNextLine],
+      ['spaceBeforeBrace', WORKBENCH_STRINGS.formatSpaceBeforeBrace],
+    ],
+    title: '缩进与花括号',
+  },
+  {
+    items: [
+      ['singleStatementOnSameLine', WORKBENCH_STRINGS.formatSameLineBody],
+      ['elseSameLine', WORKBENCH_STRINGS.formatElseSameLine],
+      ['spaceBeforeElse', WORKBENCH_STRINGS.formatSpaceBeforeElse],
+      ['indentCaseLabels', WORKBENCH_STRINGS.formatCaseIndent],
+      ['allowMultipleStatementsPerLine', WORKBENCH_STRINGS.formatKeepStatements],
+      ['allowShortBlocksOnOneLine', WORKBENCH_STRINGS.formatKeepShortBlocks],
+    ],
+    title: '换行与行结构',
+  },
+  {
+    items: [
+      ['spaceAfterControlKeyword', WORKBENCH_STRINGS.formatSpaceAfterKeyword],
+      ['spaceInsideParens', WORKBENCH_STRINGS.formatSpaceInsideParens],
+      ['spaceAfterComma', WORKBENCH_STRINGS.formatSpaceAfterComma],
+      ['spaceAfterSemicolon', WORKBENCH_STRINGS.formatSpaceAfterSemicolon],
+      ['attachPointerToType', WORKBENCH_STRINGS.formatPointerToType],
+    ],
+    title: '括号与分隔符',
+  },
+  {
+    items: [
+      ['spaceAroundAssignment', WORKBENCH_STRINGS.formatSpaceAroundAssignment],
+      ['spaceAroundComparison', WORKBENCH_STRINGS.formatSpaceAroundComparison],
+      ['spaceAroundArithmetic', WORKBENCH_STRINGS.formatSpaceAroundArithmetic],
+      ['spaceAroundBitwise', WORKBENCH_STRINGS.formatSpaceAroundBitwise],
+      ['spaceAroundLogical', WORKBENCH_STRINGS.formatSpaceAroundLogical],
+      ['spaceAroundLeftShift', WORKBENCH_STRINGS.formatSpaceAroundLeftShift],
+      ['spaceAroundRightShift', WORKBENCH_STRINGS.formatSpaceAroundRightShift],
+      ['spaceAroundConditional', WORKBENCH_STRINGS.formatSpaceAroundConditional],
+    ],
+    title: '运算符两侧空格',
+  },
 ];
+
+const TOGGLE_LABELS = new Map<BooleanStyleKey, string>(
+  TOGGLE_GROUPS.flatMap((group) => [...group.items]),
+);
 
 const INDENT_WIDTHS: readonly number[] = [2, 3, 4, 8];
 
@@ -52,6 +94,9 @@ export interface IFormatToolProps {
   readonly resolveSource: () => IJudgeSource | undefined;
   /** 把结果写回编辑器（保留撤销栈）。 */
   readonly applyToEditor: (text: string) => void;
+  readonly languageService: ILanguageService;
+  readonly fontSize?: number;
+  readonly tabSize?: number;
 }
 
 /**
@@ -63,13 +108,18 @@ export function FormatTool({
   onProfilesChange,
   resolveSource,
   applyToEditor,
+  languageService,
+  fontSize,
+  tabSize,
 }: IFormatToolProps) {
   const [sample, setSample] = useState('');
   const [analysis, setAnalysis] = useState<IStyleAnalysis | undefined>(undefined);
   const [input, setInput] = useState('');
   const [output, setOutput] = useState('');
   const [notice, setNotice] = useState<string | undefined>(undefined);
+  const [togglesOpen, setTogglesOpen] = useState(false);
   const style = useMemo(() => activeStyle(profiles), [profiles]);
+  const activeName = profiles.profiles.find((profile) => profile.id === profiles.activeId)?.name;
 
   const patchStyle = useCallback(
     (patch: Partial<ICppStyle>): void => {
@@ -114,9 +164,9 @@ export function FormatTool({
 
   return (
     <div className="oi-format">
-      <div className="oi-format-row">
-        <label className="oi-format-field">
-          <span className="oi-settings-label">{WORKBENCH_STRINGS.formatProfile}</span>
+      <section className="oi-format-section">
+        <h3 className="oi-format-section-title">{WORKBENCH_STRINGS.formatProfile}</h3>
+        <div className="oi-format-row">
           <select
             className="oi-select"
             value={profiles.activeId}
@@ -129,10 +179,33 @@ export function FormatTool({
               </option>
             ))}
           </select>
-        </label>
+          <button
+            type="button"
+            className="oi-btn oi-btn-icon oi-btn-secondary"
+            title={WORKBENCH_STRINGS.formatAddProfile}
+            aria-label={WORKBENCH_STRINGS.formatAddProfile}
+            onClick={() =>
+              onProfilesChange(
+                addProfile(profiles, WORKBENCH_STRINGS.formatNewProfile, { ...style }),
+              )
+            }
+          >
+            <FontAwesomeIcon icon={faPlus} aria-hidden="true" />
+          </button>
+          <button
+            type="button"
+            className="oi-btn oi-btn-icon oi-btn-secondary"
+            title={WORKBENCH_STRINGS.formatRemoveProfile}
+            aria-label={WORKBENCH_STRINGS.formatRemoveProfile}
+            disabled={profiles.profiles.length <= 1}
+            onClick={() => onProfilesChange(removeProfile(profiles, profiles.activeId))}
+          >
+            <FontAwesomeIcon icon={faTrashCan} aria-hidden="true" />
+          </button>
+        </div>
         <input
           className="oi-input oi-format-name"
-          value={profiles.profiles.find((profile) => profile.id === profiles.activeId)?.name ?? ''}
+          value={activeName ?? ''}
           aria-label={WORKBENCH_STRINGS.formatProfileName}
           onChange={(event) =>
             onProfilesChange(
@@ -140,49 +213,49 @@ export function FormatTool({
             )
           }
         />
-        <button
-          type="button"
-          className="oi-btn oi-btn-icon oi-btn-secondary oi-format-add"
-          title={WORKBENCH_STRINGS.formatAddProfile}
-          aria-label={WORKBENCH_STRINGS.formatAddProfile}
-          onClick={() =>
-            onProfilesChange(addProfile(profiles, WORKBENCH_STRINGS.formatNewProfile, { ...style }))
-          }
-        >
-          <FontAwesomeIcon icon={faPlus} aria-hidden="true" />
-        </button>
-        <button
-          type="button"
-          className="oi-btn oi-btn-icon oi-btn-secondary oi-format-remove"
-          title={WORKBENCH_STRINGS.formatRemoveProfile}
-          aria-label={WORKBENCH_STRINGS.formatRemoveProfile}
-          disabled={profiles.profiles.length <= 1}
-          onClick={() => onProfilesChange(removeProfile(profiles, profiles.activeId))}
-        >
-          <FontAwesomeIcon icon={faTrashCan} aria-hidden="true" />
-        </button>
-      </div>
+      </section>
 
       <section className="oi-format-section">
         <h3 className="oi-format-section-title">{WORKBENCH_STRINGS.formatSampleTitle}</h3>
         <p className="oi-format-hint">{WORKBENCH_STRINGS.formatSampleHint}</p>
-        <textarea
-          className="oi-input oi-format-textarea oi-format-sample"
-          rows={6}
-          spellCheck={false}
+        <CodeField
+          languageService={languageService}
+          ariaLabel={WORKBENCH_STRINGS.formatSampleTitle}
+          heightPx={150}
+          testId="sample"
           value={sample}
-          aria-label={WORKBENCH_STRINGS.formatSampleTitle}
-          placeholder={'#include <bits/stdc++.h>\nusing namespace std;\nint main(){...}'}
-          onChange={(event) => setSample(event.target.value)}
+          fontSize={fontSize}
+          tabSize={tabSize}
+          onChange={setSample}
         />
-        <button
-          type="button"
-          className="oi-btn oi-btn-secondary oi-format-analyze"
-          onClick={() => void runAnalysis()}
-        >
-          <FontAwesomeIcon icon={faWandMagicSparkles} aria-hidden="true" />
-          <span>{WORKBENCH_STRINGS.formatAnalyze}</span>
-        </button>
+        <div className="oi-format-actions">
+          <button
+            type="button"
+            className="oi-btn oi-btn-secondary oi-btn-sm"
+            data-oi-role="analyze"
+            onClick={() => void runAnalysis()}
+          >
+            <FontAwesomeIcon icon={faWandMagicSparkles} aria-hidden="true" />
+            <span>{WORKBENCH_STRINGS.formatAnalyze}</span>
+          </button>
+          <label
+            className={analysis === undefined ? 'oi-format-inline' : 'oi-format-inline is-wide'}
+          >
+            <span className="oi-settings-label">{WORKBENCH_STRINGS.formatIndentWidth}</span>
+            <select
+              className="oi-select"
+              value={String(style.indentWidth)}
+              aria-label={WORKBENCH_STRINGS.formatIndentWidth}
+              onChange={(event) => patchStyle({ indentWidth: Number(event.target.value) })}
+            >
+              {INDENT_WIDTHS.map((width) => (
+                <option key={width} value={String(width)}>
+                  {width}
+                </option>
+              ))}
+            </select>
+          </label>
+        </div>
         {analysis !== undefined ? (
           <p className="oi-format-confidence" role="status">
             {WORKBENCH_STRINGS.formatConfidence.replace(
@@ -192,7 +265,10 @@ export function FormatTool({
             {' · '}
             {analysis.evidence
               .slice(0, 4)
-              .map((entry) => `${entry.key} ${entry.yes}/${entry.yes + entry.no}`)
+              .map((entry) => {
+                const label = TOGGLE_LABELS.get(entry.key) ?? entry.key;
+                return `${label} ${entry.yes}/${entry.yes + entry.no}`;
+              })
               .join(' · ')}
           </p>
         ) : null}
@@ -200,49 +276,64 @@ export function FormatTool({
 
       <section className="oi-format-section">
         <h3 className="oi-format-section-title">{WORKBENCH_STRINGS.formatStyleTitle}</h3>
-        <div className="oi-format-toggles">
-          {STYLE_TOGGLES.map(([key, label]) => (
-            <label key={key} className="oi-checkbox-row oi-format-toggle">
-              <input
-                type="checkbox"
-                checked={style[key]}
-                onChange={(event) => patchStyle({ [key]: event.target.checked })}
-              />
-              <span>{label}</span>
-            </label>
-          ))}
-        </div>
-        <label className="oi-format-field">
-          <span className="oi-settings-label">{WORKBENCH_STRINGS.formatIndentWidth}</span>
-          <select
-            className="oi-select"
-            value={String(style.indentWidth)}
-            aria-label={WORKBENCH_STRINGS.formatIndentWidth}
-            onChange={(event) => patchStyle({ indentWidth: Number(event.target.value) })}
-          >
-            {INDENT_WIDTHS.map((width) => (
-              <option key={width} value={String(width)}>
-                {width}
-              </option>
+        <button
+          type="button"
+          className="oi-btn oi-format-disclosure"
+          data-oi-role="style-disclosure"
+          aria-expanded={togglesOpen}
+          onClick={() => setTogglesOpen((open) => !open)}
+        >
+          <FontAwesomeIcon
+            icon={togglesOpen ? faChevronUp : faChevronDown}
+            aria-hidden="true"
+            className="oi-format-disclosure-icon"
+          />
+          <span>
+            {togglesOpen
+              ? WORKBENCH_STRINGS.formatStyleCollapse
+              : WORKBENCH_STRINGS.formatStyleExpand.replace('{count}', String(TOGGLE_LABELS.size))}
+          </span>
+        </button>
+        {togglesOpen ? (
+          <>
+            {TOGGLE_GROUPS.map((group) => (
+              <div key={group.title} className="oi-format-group">
+                <h4 className="oi-format-group-title">{group.title}</h4>
+                <div className="oi-format-toggles">
+                  {group.items.map(([key, label]) => (
+                    <label key={key} className="oi-checkbox-row oi-format-toggle">
+                      <input
+                        type="checkbox"
+                        checked={style[key]}
+                        onChange={(event) => patchStyle({ [key]: event.target.checked })}
+                      />
+                      <span>{label}</span>
+                    </label>
+                  ))}
+                </div>
+              </div>
             ))}
-          </select>
-        </label>
+            <p className="oi-format-hint">{WORKBENCH_STRINGS.formatStyleHint}</p>
+          </>
+        ) : null}
       </section>
 
       <section className="oi-format-section">
         <h3 className="oi-format-section-title">{WORKBENCH_STRINGS.formatRunTitle}</h3>
-        <textarea
-          className="oi-input oi-format-textarea oi-format-input"
-          rows={8}
-          spellCheck={false}
+        <CodeField
+          languageService={languageService}
+          ariaLabel={WORKBENCH_STRINGS.formatInput}
+          heightPx={180}
+          testId="input"
           value={input}
-          aria-label={WORKBENCH_STRINGS.formatInput}
-          onChange={(event) => setInput(event.target.value)}
+          fontSize={fontSize}
+          tabSize={tabSize}
+          onChange={setInput}
         />
         <div className="oi-format-actions">
           <button
             type="button"
-            className="oi-btn oi-btn-secondary oi-btn-sm oi-format-load"
+            className="oi-btn oi-btn-secondary oi-btn-sm"
             onClick={() => {
               const source = resolveSource();
               if (source === undefined) {
@@ -258,7 +349,8 @@ export function FormatTool({
           </button>
           <button
             type="button"
-            className="oi-btn oi-btn-primary oi-format-run"
+            className="oi-btn oi-btn-primary"
+            data-oi-role="run"
             onClick={() => void runFormat()}
           >
             <FontAwesomeIcon icon={faWandMagicSparkles} aria-hidden="true" />
@@ -266,7 +358,7 @@ export function FormatTool({
           </button>
           <button
             type="button"
-            className="oi-btn oi-btn-secondary oi-format-apply"
+            className="oi-btn oi-btn-secondary"
             disabled={output.length === 0}
             onClick={() => {
               applyToEditor(output);
@@ -277,14 +369,15 @@ export function FormatTool({
             <span>{WORKBENCH_STRINGS.formatApplyToEditor}</span>
           </button>
         </div>
-        <textarea
-          className="oi-input oi-format-textarea oi-format-output"
-          rows={8}
-          spellCheck={false}
+        <CodeField
+          languageService={languageService}
+          ariaLabel={WORKBENCH_STRINGS.formatOutput}
+          heightPx={180}
           readOnly
+          testId="output"
           value={output}
-          aria-label={WORKBENCH_STRINGS.formatOutput}
-          placeholder={WORKBENCH_STRINGS.formatOutputEmpty}
+          fontSize={fontSize}
+          tabSize={tabSize}
         />
         {notice !== undefined ? (
           <p className="oi-format-notice" role="status">

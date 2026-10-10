@@ -1,4 +1,5 @@
 import type { IFileDialogService, IJudgeServiceClient } from '@oi/platform';
+import type { ILanguageService } from '@oi/editor';
 import type { ThemeKind } from '@oi/editor/browser';
 import { FontAwesomeIcon } from '@fortawesome/react-fontawesome';
 import {
@@ -213,6 +214,10 @@ export interface IToolboxPanelProps {
   readonly onFormatProfilesChange: (next: IFormatProfileStore) => void;
   /** 把格式化结果写回当前焦点编辑器。 */
   readonly applyFormatToEditor: (text: string) => void;
+  /** 格式化工具里的代码框用主编辑器同款 Monaco。 */
+  readonly languageService: ILanguageService;
+  readonly editorFontSize: number;
+  readonly editorTabSize: number;
 }
 
 /**
@@ -228,6 +233,9 @@ export function ToolboxPanel({
   formatProfiles,
   onFormatProfilesChange,
   applyFormatToEditor,
+  languageService,
+  editorFontSize,
+  editorTabSize,
 }: IToolboxPanelProps) {
   const [tool, setTool] = useState<ToolboxTool>('list');
   // 浏览器一经打开保持挂载：切换工具/视图不丢页面状态，登录态由持久化分区保存
@@ -319,6 +327,9 @@ export function ToolboxPanel({
             onProfilesChange={onFormatProfilesChange}
             resolveSource={resolveJudgeSource}
             applyToEditor={applyFormatToEditor}
+            languageService={languageService}
+            fontSize={editorFontSize}
+            tabSize={editorTabSize}
           />
         ) : null}
         {tool === 'timer' ? <TimerTool /> : null}

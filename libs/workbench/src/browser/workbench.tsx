@@ -1591,6 +1591,9 @@ function Workbench({ environment, services, initialTheme, onDirtyStateChange }: 
                 formatProfiles={formatProfiles}
                 onFormatProfilesChange={updateFormatProfiles}
                 applyFormatToEditor={applyFormatToEditor}
+                languageService={services.languageService}
+                editorFontSize={editorSettings.fontSize}
+                editorTabSize={editorSettings.tabSize}
               />
               <VjudgePanel
                 hidden={activityView !== 'vjudge'}

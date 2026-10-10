@@ -5,7 +5,7 @@
  * 坏数据回落默认档案而不是抛异常。
  */
 import { onUnexpectedError } from '@oi/base';
-import { DEFAULT_CPP_STYLE, type ICppStyle } from '@oi/editor';
+import { DEFAULT_CPP_STYLE, type BooleanStyleKey, type ICppStyle } from '@oi/editor';
 
 const FORMAT_PROFILES_KEY = 'oi-code.format-profiles';
 
@@ -37,47 +37,25 @@ export function normalizeStyle(value: unknown): ICppStyle {
     return DEFAULT_CPP_STYLE;
   }
   const source = value as Record<string, unknown>;
+  // 开关字段按默认值枚举，新增风格维度不必再改这里
+  const booleanKeys = (Object.keys(DEFAULT_CPP_STYLE) as Array<keyof ICppStyle>).filter(
+    (key): key is BooleanStyleKey => typeof DEFAULT_CPP_STYLE[key] === 'boolean',
+  );
+  const style: { -readonly [K in keyof ICppStyle]: ICppStyle[K] } = { ...DEFAULT_CPP_STYLE };
+  for (const key of booleanKeys) {
+    style[key] = readBoolean(source[key], DEFAULT_CPP_STYLE[key]);
+  }
   const indentWidth = source['indentWidth'];
+  style.indentWidth =
+    typeof indentWidth === 'number' && [2, 3, 4, 8].includes(indentWidth)
+      ? indentWidth
+      : DEFAULT_CPP_STYLE.indentWidth;
   const maxBlankLines = source['maxBlankLines'];
-  return {
-    attachPointerToType: readBoolean(
-      source['attachPointerToType'],
-      DEFAULT_CPP_STYLE.attachPointerToType,
-    ),
-    braceNextLine: readBoolean(source['braceNextLine'], DEFAULT_CPP_STYLE.braceNextLine),
-    elseSameLine: readBoolean(source['elseSameLine'], DEFAULT_CPP_STYLE.elseSameLine),
-    indentWidth:
-      typeof indentWidth === 'number' && [2, 3, 4, 8].includes(indentWidth)
-        ? indentWidth
-        : DEFAULT_CPP_STYLE.indentWidth,
-    indentWithTabs: readBoolean(source['indentWithTabs'], DEFAULT_CPP_STYLE.indentWithTabs),
-    maxBlankLines:
-      typeof maxBlankLines === 'number' && Number.isFinite(maxBlankLines)
-        ? Math.min(4, Math.max(0, Math.round(maxBlankLines)))
-        : DEFAULT_CPP_STYLE.maxBlankLines,
-    singleStatementOnSameLine: readBoolean(
-      source['singleStatementOnSameLine'],
-      DEFAULT_CPP_STYLE.singleStatementOnSameLine,
-    ),
-    spaceAfterComma: readBoolean(source['spaceAfterComma'], DEFAULT_CPP_STYLE.spaceAfterComma),
-    spaceAfterControlKeyword: readBoolean(
-      source['spaceAfterControlKeyword'],
-      DEFAULT_CPP_STYLE.spaceAfterControlKeyword,
-    ),
-    spaceAfterSemicolon: readBoolean(
-      source['spaceAfterSemicolon'],
-      DEFAULT_CPP_STYLE.spaceAfterSemicolon,
-    ),
-    spaceAroundBinaryOperator: readBoolean(
-      source['spaceAroundBinaryOperator'],
-      DEFAULT_CPP_STYLE.spaceAroundBinaryOperator,
-    ),
-    spaceBeforeBrace: readBoolean(source['spaceBeforeBrace'], DEFAULT_CPP_STYLE.spaceBeforeBrace),
-    spaceInsideParens: readBoolean(
-      source['spaceInsideParens'],
-      DEFAULT_CPP_STYLE.spaceInsideParens,
-    ),
-  };
+  style.maxBlankLines =
+    typeof maxBlankLines === 'number' && Number.isFinite(maxBlankLines)
+      ? Math.min(4, Math.max(0, Math.round(maxBlankLines)))
+      : DEFAULT_CPP_STYLE.maxBlankLines;
+  return style;
 }
 
 export function normalizeFormatProfiles(value: unknown): IFormatProfileStore {

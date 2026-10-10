@@ -1459,43 +1459,17 @@ body {
   font-size: 12px;
 }
 
-/* 代码格式化工具：档案 → 样本 → 风格开关 → 格式化，三段纵向堆叠 */
+/* 代码格式化工具：档案 → 样本 → 风格开关 → 格式化，四段卡片纵向堆叠 */
 .oi-format {
   display: flex;
   flex-direction: column;
   gap: 12px;
 }
 
-.oi-format-row {
-  display: flex;
-  align-items: center;
-  gap: 6px;
-}
-
-.oi-format-field {
-  display: flex;
-  flex: 1;
-  flex-direction: column;
-  gap: 4px;
-  min-width: 0;
-}
-
-.oi-format-field .oi-select {
-  box-sizing: border-box;
-  width: 100%;
-  min-width: 0;
-}
-
-.oi-format-name {
-  box-sizing: border-box;
-  flex: 1;
-  min-width: 0;
-}
-
 .oi-format-section {
   display: flex;
   flex-direction: column;
-  gap: 6px;
+  gap: 8px;
   padding: 10px 12px;
   border: 1px solid var(--card-border);
   border-radius: var(--radius-card);
@@ -1509,6 +1483,25 @@ body {
   font-weight: 700;
 }
 
+.oi-format-row {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+}
+
+.oi-format-row .oi-select,
+.oi-format-row .oi-input {
+  box-sizing: border-box;
+  flex: 1;
+  min-width: 0;
+}
+
+.oi-format-name {
+  box-sizing: border-box;
+  width: 100%;
+  min-width: 0;
+}
+
 .oi-format-hint,
 .oi-format-notice,
 .oi-format-confidence {
@@ -1518,20 +1511,71 @@ body {
   line-height: 1.5;
 }
 
-.oi-format-textarea {
+.oi-format-actions {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: flex-end;
+  gap: 6px;
+}
+
+/* 工具面板里的 Monaco 宿主：圆角与描边跟卡片一致 */
+.oi-code-field {
   box-sizing: border-box;
   width: 100%;
   min-width: 0;
-  height: auto;
-  padding: 8px 10px;
-  font-family: var(--font-mono);
-  font-size: 13px;
-  line-height: 1.5;
-  resize: vertical;
+  overflow: hidden;
+  border: 1px solid var(--input-border, var(--card-border));
+  border-radius: var(--radius-control, 6px);
+  background: var(--bg);
 }
 
-.oi-format-output {
-  background: var(--bg);
+.oi-format-inline {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  color: var(--muted);
+  font-size: 12px;
+}
+
+.oi-format-inline.is-wide {
+  flex: 1;
+}
+
+.oi-format-inline .oi-select {
+  box-sizing: border-box;
+  min-width: 0;
+}
+
+.oi-format-disclosure {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  align-self: flex-start;
+  padding: 0;
+  border: none;
+  background: none;
+  color: var(--card-head);
+  font-size: 13px;
+  font-weight: 700;
+  cursor: pointer;
+}
+
+.oi-format-disclosure-icon {
+  color: var(--muted);
+  font-size: 11px;
+}
+
+.oi-format-group {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+
+.oi-format-group-title {
+  margin: 0;
+  color: var(--muted);
+  font-size: 12px;
+  font-weight: 700;
 }
 
 .oi-format-toggles {
@@ -1542,12 +1586,6 @@ body {
 
 .oi-format-toggle {
   font-size: 13px;
-}
-
-.oi-format-actions {
-  display: flex;
-  flex-wrap: wrap;
-  gap: 6px;
 }
 
 .oi-timer {

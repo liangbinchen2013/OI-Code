@@ -1,7 +1,7 @@
 import { mkdtemp, rm, writeFile } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
-import { expect, test, type Page } from '@playwright/test';
+import { expect, test, type Locator, type Page } from '@playwright/test';
 import { launchApp, mockCloseDialog, mockOpenFileDialog } from './helpers';
 
 async function waitReady(page: Page): Promise<void> {
@@ -14,7 +14,24 @@ async function openFormatTool(page: Page): Promise<void> {
   await expect(page.locator('.oi-format')).toBeVisible();
 }
 
-function toggle(page: Page, label: string): Page['locator'] {
+function field(page: Page, name: string): Locator {
+  return page.locator(`.oi-code-field[data-oi-field="${name}"]`);
+}
+
+/** Monaco 不吃 fill()：先清空再整段插入，末尾 Esc 关掉弹出补全。 */
+async function typeIntoField(page: Page, name: string, text: string): Promise<void> {
+  await field(page, name).click();
+  await page.keyboard.press('Control+a');
+  await page.keyboard.press('Delete');
+  await page.keyboard.insertText(text);
+  await page.keyboard.press('Escape');
+}
+
+async function fieldLines(page: Page, name: string): Promise<Locator> {
+  return field(page, name).locator('.view-lines');
+}
+
+function toggle(page: Page, label: string): Locator {
   return page.locator('.oi-format-toggle', { hasText: label }).locator('input');
 }
 
@@ -26,33 +43,35 @@ test('代码格式化工具：按样本反推风格并格式化代码', async ()
     await waitReady(page);
     await openFormatTool(page);
 
-    // 贴一段紧凑 + Tab 缩进的样本，分析后开关应跟着变
-    await page
-      .locator('.oi-format-sample')
-      .fill('int main(){\n\tint n;\n\tif(n>0) cout<<n;\n\treturn 0;\n}\n');
-    await page.locator('.oi-format-analyze').click();
+    // 风格开关默认折叠，展开后才可见
+    await expect(page.locator('.oi-format-toggles')).toHaveCount(0);
+    await page.locator('[data-oi-role="style-disclosure"]').click();
+    await expect(toggle(page, '缩进用 Tab')).toBeVisible();
 
-    await expect(toggle(page, '缩进用 Tab')).toBeChecked();
+    // 贴一段紧凑样本，分析后对应开关应跟着变
+    await typeIntoField(page, 'sample', 'int main(){if(x>0) cout<<y;}');
+    await page.locator('[data-oi-role="analyze"]').click();
+
+    await expect(toggle(page, '缩进用 Tab')).not.toBeChecked();
     await expect(toggle(page, '关键字后空格')).not.toBeChecked();
-    await expect(toggle(page, '运算符两侧空格')).not.toBeChecked();
+    await expect(toggle(page, '比较两侧空格')).not.toBeChecked();
+    await expect(toggle(page, '花括号前空格')).not.toBeChecked();
+    await expect(toggle(page, '单语句体与 if 同行')).toBeChecked();
     await expect(page.locator('.oi-format-confidence')).toBeVisible();
 
     // 用刚学到的风格格式化另一段代码
-    await page.locator('.oi-format-input').fill('int main(){int a;a=1+2;return a;}');
-    await page.locator('.oi-format-run').click();
+    await typeIntoField(page, 'input', 'if(a>=1) f(b,c);');
+    await page.locator('[data-oi-role="run"]').click();
 
-    const output = await page.locator('.oi-format-output').inputValue();
-    expect(output).toContain('int a;');
-    expect(output).toContain('a=1+2;');
-    expect(output).toContain('\t');
-    expect(output).not.toContain('if (');
+    const output = await fieldLines(page, 'output');
+    await expect(output).toContainText('if(a>=1)');
+    await expect(output).not.toContainText('if (');
     await expect(page.locator('.oi-format-notice')).toBeVisible();
 
     // 手动勾回"关键字后空格"，结果应随之变化
     await toggle(page, '关键字后空格').check();
-    await page.locator('.oi-format-input').fill('int main(){ if(n>0) f(); }');
-    await page.locator('.oi-format-run').click();
-    expect(await page.locator('.oi-format-output').inputValue()).toContain('if (n>0)');
+    await page.locator('[data-oi-role="run"]').click();
+    await expect(output).toContainText('if (a>=1)');
   } finally {
     await app.close();
   }

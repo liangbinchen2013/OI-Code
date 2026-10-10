@@ -80,6 +80,8 @@ export interface ICreateCodeEditorOptions {
   readonly languageService: ILanguageService;
   readonly fontSize?: number;
   readonly tabSize?: number;
+  /** 只读展示（工具面板的结果区用）。 */
+  readonly readOnly?: boolean;
 }
 
 /** 运行时可调整的编辑器显示选项。 */
@@ -107,6 +109,8 @@ export interface ICodeEditorHost extends IDisposable {
   replaceDocument(previousUri: URI, nextUri: URI, text: string): void;
   /** 切换当前文档；undefined 表示清空。 */
   setActiveDocument(uri: URI | undefined): void;
+  /** 显示已注册的文档但不抢焦点（工具面板内嵌代码框用）。 */
+  showDocument(uri: URI): void;
   getValue(uri: URI): string;
   /** 原地替换文档内容：保留 Monaco 撤销栈与脏标记（格式化、批量改写用）。 */
   setValue(uri: URI, text: string): void;
@@ -161,6 +165,7 @@ class CodeEditorHost implements ICodeEditorHost {
       fontSize: options.fontSize ?? EDITOR_FONT_SIZE,
       fontFamily: EDITOR_FONT_FAMILY,
       tabSize: options.tabSize ?? EDITOR_TAB_SIZE,
+      readOnly: options.readOnly ?? false,
       scrollBeyondLastLine: false,
       renderWhitespace: 'selection',
       // 括号按嵌套层级着色并显示配对连接线
@@ -270,6 +275,13 @@ class CodeEditorHost implements ICodeEditorHost {
     }
     this._editor.setModel(document.model);
     this._editor.focus();
+  }
+
+  showDocument(uri: URI): void {
+    const document = this._documents.get(uri.toString());
+    if (document !== undefined) {
+      this._editor.setModel(document.model);
+    }
   }
 
   getValue(uri: URI): string {
