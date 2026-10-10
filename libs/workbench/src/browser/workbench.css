@@ -1459,6 +1459,97 @@ body {
   font-size: 12px;
 }
 
+/* 代码格式化工具：档案 → 样本 → 风格开关 → 格式化，三段纵向堆叠 */
+.oi-format {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+}
+
+.oi-format-row {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+}
+
+.oi-format-field {
+  display: flex;
+  flex: 1;
+  flex-direction: column;
+  gap: 4px;
+  min-width: 0;
+}
+
+.oi-format-field .oi-select {
+  box-sizing: border-box;
+  width: 100%;
+  min-width: 0;
+}
+
+.oi-format-name {
+  box-sizing: border-box;
+  flex: 1;
+  min-width: 0;
+}
+
+.oi-format-section {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  padding: 10px 12px;
+  border: 1px solid var(--card-border);
+  border-radius: var(--radius-card);
+  background: var(--card-bg);
+}
+
+.oi-format-section-title {
+  margin: 0;
+  color: var(--card-head);
+  font-size: 13px;
+  font-weight: 700;
+}
+
+.oi-format-hint,
+.oi-format-notice,
+.oi-format-confidence {
+  margin: 0;
+  color: var(--muted);
+  font-size: 12px;
+  line-height: 1.5;
+}
+
+.oi-format-textarea {
+  box-sizing: border-box;
+  width: 100%;
+  min-width: 0;
+  height: auto;
+  padding: 8px 10px;
+  font-family: var(--font-mono);
+  font-size: 13px;
+  line-height: 1.5;
+  resize: vertical;
+}
+
+.oi-format-output {
+  background: var(--bg);
+}
+
+.oi-format-toggles {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+}
+
+.oi-format-toggle {
+  font-size: 13px;
+}
+
+.oi-format-actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+}
+
 .oi-timer {
   display: flex;
   flex-direction: column;

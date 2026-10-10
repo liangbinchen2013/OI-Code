@@ -11,14 +11,17 @@ import {
   faRotateLeft,
   faScaleBalanced,
   faStopwatch,
+  faWandMagicSparkles,
 } from '@fortawesome/free-solid-svg-icons';
 import { useCallback, useEffect, useRef, useState } from 'react';
 import { BrowserTool } from './browserTool';
+import { FormatTool } from './formatTool';
+import type { IFormatProfileStore } from './formatProfiles';
 import { JudgeTool, type IJudgeSource } from './judgeTool';
 import { StressTool } from './stressTool';
 import { WORKBENCH_STRINGS } from './strings';
 
-type ToolboxTool = 'list' | 'judge' | 'stress' | 'timer' | 'browser';
+type ToolboxTool = 'list' | 'judge' | 'stress' | 'format' | 'timer' | 'browser';
 type TimerMode = 'stopwatch' | 'countdown';
 
 const TICK_INTERVAL_MS = 50;
@@ -205,6 +208,11 @@ export interface IToolboxPanelProps {
   readonly fileDialogService: IFileDialogService;
   /** 取当前焦点编辑器的可评测源。 */
   readonly resolveJudgeSource: () => IJudgeSource | undefined;
+  /** 代码格式化风格档案。 */
+  readonly formatProfiles: IFormatProfileStore;
+  readonly onFormatProfilesChange: (next: IFormatProfileStore) => void;
+  /** 把格式化结果写回当前焦点编辑器。 */
+  readonly applyFormatToEditor: (text: string) => void;
 }
 
 /**
@@ -217,6 +225,9 @@ export function ToolboxPanel({
   judgeService,
   fileDialogService,
   resolveJudgeSource,
+  formatProfiles,
+  onFormatProfilesChange,
+  applyFormatToEditor,
 }: IToolboxPanelProps) {
   const [tool, setTool] = useState<ToolboxTool>('list');
   // 浏览器一经打开保持挂载：切换工具/视图不丢页面状态，登录态由持久化分区保存
@@ -274,6 +285,15 @@ export function ToolboxPanel({
             </button>
             <button
               type="button"
+              className="oi-tool-row oi-tool-format"
+              onClick={() => setTool('format')}
+            >
+              <FontAwesomeIcon icon={faWandMagicSparkles} aria-hidden="true" />
+              <span className="oi-tool-name">{WORKBENCH_STRINGS.toolFormat}</span>
+              <span className="oi-tool-hint">{WORKBENCH_STRINGS.toolFormatHint}</span>
+            </button>
+            <button
+              type="button"
               className="oi-tool-row oi-tool-timer"
               onClick={() => setTool('timer')}
             >
@@ -292,6 +312,14 @@ export function ToolboxPanel({
         ) : null}
         {tool === 'stress' ? (
           <StressTool judgeService={judgeService} fileDialogService={fileDialogService} />
+        ) : null}
+        {tool === 'format' ? (
+          <FormatTool
+            profiles={formatProfiles}
+            onProfilesChange={onFormatProfilesChange}
+            resolveSource={resolveJudgeSource}
+            applyToEditor={applyFormatToEditor}
+          />
         ) : null}
         {tool === 'timer' ? <TimerTool /> : null}
       </div>

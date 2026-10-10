@@ -1,7 +1,7 @@
 import { DisposableStore, onUnexpectedError, toDisposable, type IDisposable } from '@oi/base';
 import { URI } from '@oi/base';
 import type { ILanguageService } from '@oi/editor';
-import { getFileExtension } from '@oi/editor';
+import { formatCpp, getFileExtension } from '@oi/editor';
 import type { IEditorMarker, ThemeKind } from '@oi/editor/browser';
 import { FontAwesomeIcon } from '@fortawesome/react-fontawesome';
 import {
@@ -15,6 +15,7 @@ import {
   faPlay,
   faRotateLeft,
   faSpinner,
+  faWandMagicSparkles,
 } from '@fortawesome/free-solid-svg-icons';
 import type { IconDefinition } from '@fortawesome/fontawesome-svg-core';
 import type {
@@ -70,6 +71,12 @@ import {
   type SplitDirection,
 } from './layout';
 import type { IJudgeSource } from './judgeTool';
+import {
+  activeStyle as activeFormatStyle,
+  persistFormatProfiles,
+  readFormatProfiles,
+  type IFormatProfileStore,
+} from './formatProfiles';
 import { ToolboxPanel } from './oiToolbox';
 import { isPreviewableName, PreviewPanel } from './previewPanel';
 import { ProblemsPanel, type IProblemItem } from './problemsPanel';
@@ -131,6 +138,7 @@ type WorkbenchStatus =
   | 'checkFailed'
   | 'runLaunched'
   | 'runFailed'
+  | 'formatted'
   | 'unsupported'
   | 'needSave'
   | 'envReady'
@@ -173,6 +181,7 @@ const STATUS_PRESENTATION: Record<
   checkFailed: { icon: faCircleXmark, text: WORKBENCH_STRINGS.checkFailed },
   runLaunched: { icon: faPlay, text: WORKBENCH_STRINGS.runLaunched },
   runFailed: { icon: faCircleXmark, text: WORKBENCH_STRINGS.runFailed },
+  formatted: { icon: faWandMagicSparkles, text: WORKBENCH_STRINGS.formatted },
   unsupported: { icon: faCircleInfo, text: WORKBENCH_STRINGS.unsupported },
   needSave: { icon: faCircleInfo, text: WORKBENCH_STRINGS.needSave },
   envReady: { icon: faCircleCheck, text: WORKBENCH_STRINGS.envStatusReady },
@@ -249,6 +258,9 @@ function Workbench({ environment, services, initialTheme, onDirtyStateChange }: 
   const [lastExpandedWidth, setLastExpandedWidth] = useState(() => readStoredLastExpandedWidth());
   const [templateStore, setTemplateStore] = useState<ITemplateStore>(() => loadTemplateStore());
   const [editorSettings, setEditorSettings] = useState(() => readEditorSettings());
+  const [formatProfiles, setFormatProfiles] = useState<IFormatProfileStore>(() =>
+    readFormatProfiles(),
+  );
   const [split, setSplit] = useState(() => readStoredSplit());
   const [splitTabId, setSplitTabId] = useState<string | undefined>(undefined);
   const [focusedPane, setFocusedPane] = useState<'primary' | 'secondary'>('primary');
@@ -293,6 +305,7 @@ function Workbench({ environment, services, initialTheme, onDirtyStateChange }: 
   const compileRef = useRef<() => Promise<void>>(async () => undefined);
   const compileRunRef = useRef<() => Promise<void>>(async () => undefined);
   const runRef = useRef<() => Promise<void>>(async () => undefined);
+  const formatRef = useRef<() => void>(() => undefined);
   const scheduleCheckRef = useRef<(tab: ITabState, delayMs: number) => void>(() => undefined);
 
   useEffect(() => {
@@ -479,6 +492,11 @@ function Workbench({ environment, services, initialTheme, onDirtyStateChange }: 
     const normalized = normalizeEditorSettings(next);
     setEditorSettings(normalized);
     persistEditorSettings(normalized);
+  }, []);
+
+  const updateFormatProfiles = useCallback((next: IFormatProfileStore): void => {
+    setFormatProfiles(next);
+    persistFormatProfiles(next);
   }, []);
 
   // Ctrl+滚轮：按增量调整字号并持久化
@@ -1181,6 +1199,57 @@ function Workbench({ environment, services, initialTheme, onDirtyStateChange }: 
     [performCheck, store],
   );
 
+  /** 焦点侧编辑器与它当前的文档。 */
+  const focusedDocument = useCallback(():
+    { readonly handle: IEditorPaneHandle; readonly tab: ITabState } | undefined => {
+    const tab = editingTabRef.current;
+    const handle =
+      focusedPaneTarget() === 'secondary' ? splitEditorPaneRef.current : editorPaneRef.current;
+    return tab === undefined || handle === null ? undefined : { handle, tab };
+  }, [focusedPaneTarget]);
+
+  /** 把文本写回焦点编辑器；Monaco 撤销栈保留，写回后文档变脏待保存。 */
+  const applyFormatToEditor = useCallback(
+    (text: string): void => {
+      const target = focusedDocument();
+      if (target === undefined) {
+        setStatus('unsupported');
+        setStatusDetail(WORKBENCH_STRINGS.formatNoEditorSource);
+        return;
+      }
+      target.handle.setValue(target.tab.uri, text);
+      setStatus('formatted');
+      setStatusDetail(WORKBENCH_STRINGS.formatDoneDetail);
+    },
+    [focusedDocument],
+  );
+
+  /** 按当前风格档案原地格式化焦点文档（Shift+Alt+F）。 */
+  const formatActiveDocument = useCallback((): void => {
+    const target = focusedDocument();
+    if (target === undefined) {
+      return;
+    }
+    const { handle, tab } = target;
+    if (languageOf(tab) !== 'cpp') {
+      setStatus('unsupported');
+      setStatusDetail(WORKBENCH_STRINGS.formatNotCpp);
+      return;
+    }
+    const outcome = formatCpp(handle.getValue(tab.uri), activeFormatStyle(formatProfiles));
+    if (outcome.skipped) {
+      setStatus('formatted');
+      setStatusDetail(outcome.reason ?? WORKBENCH_STRINGS.formatSkippedDetail);
+      return;
+    }
+    if (!outcome.changed) {
+      setStatus('formatted');
+      setStatusDetail(WORKBENCH_STRINGS.formatCleanDetail);
+      return;
+    }
+    applyFormatToEditor(outcome.formatted);
+  }, [applyFormatToEditor, formatProfiles, focusedDocument, languageOf]);
+
   const runActive = useCallback(async (): Promise<void> => {
     const tab = editingTabRef.current;
     if (!tab || busyRef.current) {
@@ -1247,6 +1316,10 @@ function Workbench({ environment, services, initialTheme, onDirtyStateChange }: 
   }, [runActive]);
 
   useEffect(() => {
+    formatRef.current = formatActiveDocument;
+  }, [formatActiveDocument]);
+
+  useEffect(() => {
     scheduleCheckRef.current = scheduleCheck;
   }, [scheduleCheck]);
 
@@ -1265,6 +1338,11 @@ function Workbench({ environment, services, initialTheme, onDirtyStateChange }: 
       if (event.key === 'F12') {
         event.preventDefault();
         void compileRef.current();
+        return;
+      }
+      if (event.shiftKey && event.altKey && event.key.toLowerCase() === 'f') {
+        event.preventDefault();
+        formatRef.current();
         return;
       }
       if (!(event.ctrlKey || event.metaKey) || event.altKey) {
@@ -1510,6 +1588,9 @@ function Workbench({ environment, services, initialTheme, onDirtyStateChange }: 
                 judgeService={services.judgeService}
                 fileDialogService={services.fileDialogService}
                 resolveJudgeSource={resolveJudgeSource}
+                formatProfiles={formatProfiles}
+                onFormatProfilesChange={updateFormatProfiles}
+                applyFormatToEditor={applyFormatToEditor}
               />
               <VjudgePanel
                 hidden={activityView !== 'vjudge'}

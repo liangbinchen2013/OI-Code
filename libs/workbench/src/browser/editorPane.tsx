@@ -19,6 +19,8 @@ export interface IEditorPaneHandle {
   replaceDocument(previousUri: URI, nextUri: URI, text: string): void;
   setActiveDocument(uri: URI | undefined): void;
   getValue(uri: URI): string;
+  /** 原地替换内容，保留撤销栈与脏标记。 */
+  setValue(uri: URI, text: string): void;
   hasDocument(uri: URI): boolean;
   getDirtyDocuments(): readonly IDirtyDocument[];
   markSaved(uri: URI): void;
@@ -173,6 +175,9 @@ export function EditorPane({
         editor?.setActiveDocument(uri);
       },
       getValue: (uri: URI): string => editor?.getValue(uri) ?? '',
+      setValue: (uri: URI, text: string): void => {
+        editor?.setValue(uri, text);
+      },
       hasDocument: (uri: URI): boolean => editor?.hasDocument(uri) ?? false,
       getDirtyDocuments: (): readonly IDirtyDocument[] => editor?.getDirtyDocuments() ?? [],
       markSaved: (uri: URI): void => {

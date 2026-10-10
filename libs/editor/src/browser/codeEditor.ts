@@ -108,6 +108,8 @@ export interface ICodeEditorHost extends IDisposable {
   /** 切换当前文档；undefined 表示清空。 */
   setActiveDocument(uri: URI | undefined): void;
   getValue(uri: URI): string;
+  /** 原地替换文档内容：保留 Monaco 撤销栈与脏标记（格式化、批量改写用）。 */
+  setValue(uri: URI, text: string): void;
   hasDocument(uri: URI): boolean;
   /** 有未保存修改的全部文档（按最近变更为序）。 */
   getDirtyDocuments(): readonly IDirtyDocument[];
@@ -272,6 +274,17 @@ class CodeEditorHost implements ICodeEditorHost {
 
   getValue(uri: URI): string {
     return this._documents.get(uri.toString())?.model.getValue() ?? '';
+  }
+
+  setValue(uri: URI, text: string): void {
+    const document = this._documents.get(uri.toString());
+    if (document === undefined) {
+      return;
+    }
+    const model = document.model;
+    // 用整篇替换的编辑操作而不是 model.setValue()：后者会清空撤销栈，
+    // 格式化后 Ctrl+Z 就回不去了
+    model.pushEditOperations([], [{ range: model.getFullModelRange(), text }], () => null);
   }
 
   hasDocument(uri: URI): boolean {
