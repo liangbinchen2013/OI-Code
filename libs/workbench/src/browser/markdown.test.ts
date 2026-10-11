@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { escapeHtml, renderMarkdown } from './markdown';
+import { escapeHtml, renderInlineMarkdown, renderMarkdown } from './markdown';
 
 describe('escapeHtml', () => {
   it('转义全部 HTML 敏感字符', () => {
@@ -230,5 +230,27 @@ describe('renderMarkdown', () => {
     expect(html).toContain('<a href="https://x.test/p"');
     // 不应残留未消费的 Markdown 感叹号
     expect(html).not.toContain('!<');
+  });
+});
+
+describe('renderInlineMarkdown', () => {
+  it('只出行内代码，不包段落', () => {
+    const html = renderInlineMarkdown('单语句体与 if 同行：`if (x) continue;`');
+
+    expect(html).toBe('单语句体与 if 同行：<code>if (x) continue;</code>');
+  });
+
+  it('示例里的尖括号与符号都按文本转义', () => {
+    const html = renderInlineMarkdown('比较两侧空格：`i < n` 与 `a && b`');
+
+    expect(html).toContain('<code>i &lt; n</code>');
+    expect(html).toContain('<code>a &amp;&amp; b</code>');
+    expect(html).not.toContain('<script');
+  });
+
+  it('注入内容只会作为文本出现', () => {
+    expect(renderInlineMarkdown('`<img src=x onerror=alert(1)>`')).toBe(
+      '<code>&lt;img src=x onerror=alert(1)&gt;</code>',
+    );
   });
 });

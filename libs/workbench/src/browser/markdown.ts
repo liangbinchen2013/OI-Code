@@ -107,6 +107,14 @@ function renderInline(raw: string): string {
   return out + renderText(escapeHtml(raw.slice(cursor)));
 }
 
+/**
+ * 只渲染行内元素（`代码`、公式、粗体、链接），不产生段落标签。
+ * 用于开关、提示这类需要一行显示的文案。
+ */
+export function renderInlineMarkdown(source: string): string {
+  return renderInline(source);
+}
+
 export function renderMarkdown(source: string): string {
   const html: string[] = [];
   let paragraph: string[] = [];

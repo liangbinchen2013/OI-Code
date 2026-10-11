@@ -742,12 +742,18 @@ body {
   font-weight: 600;
 }
 
-.oi-preview-markdown code {
+.oi-preview-markdown code,
+.oi-format-toggle code {
   padding: 1px 5px;
   border-radius: 6px;
   background: var(--btn-bg);
   font-family: var(--font-mono);
   font-size: 0.9em;
+}
+
+/* 开关文案里的示例整块换行，不在代码中间断开 */
+.oi-format-toggle code {
+  white-space: nowrap;
 }
 
 .oi-preview-markdown .oi-md-code {

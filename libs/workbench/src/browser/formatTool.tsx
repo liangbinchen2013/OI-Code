@@ -17,6 +17,7 @@ import {
 } from '@oi/editor';
 import type { ILanguageService } from '@oi/editor';
 import { useCallback, useMemo, useState } from 'react';
+import { renderInlineMarkdown } from './markdown';
 import { CodeField } from './codeField';
 import type { IJudgeSource } from './judgeTool';
 import { WORKBENCH_STRINGS } from './strings';
@@ -266,7 +267,7 @@ export function FormatTool({
             {analysis.evidence
               .slice(0, 4)
               .map((entry) => {
-                const label = TOGGLE_LABELS.get(entry.key) ?? entry.key;
+                const label = (TOGGLE_LABELS.get(entry.key) ?? entry.key).replace(/`/g, '');
                 return `${label} ${entry.yes}/${entry.yes + entry.no}`;
               })
               .join(' · ')}
@@ -307,7 +308,8 @@ export function FormatTool({
                         checked={style[key]}
                         onChange={(event) => patchStyle({ [key]: event.target.checked })}
                       />
-                      <span>{label}</span>
+                      {/* 文案里的 `代码` 用行内 Markdown 渲染，示例才不会挤成一坨 */}
+                      <span dangerouslySetInnerHTML={{ __html: renderInlineMarkdown(label) }} />
                     </label>
                   ))}
                 </div>
