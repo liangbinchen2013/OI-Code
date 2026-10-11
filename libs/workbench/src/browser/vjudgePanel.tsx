@@ -3,6 +3,7 @@ import { colorizeCode, type ThemeKind } from '@oi/editor/browser';
 import { FontAwesomeIcon } from '@fortawesome/react-fontawesome';
 import {
   faArrowRightToBracket,
+  faArrowUpRightFromSquare,
   faCloudArrowUp,
   faExpand,
   faMinimize,
@@ -27,6 +28,8 @@ import {
   pickDefaultLanguage,
   pickSubmitMethod,
   problemKey,
+  remoteAccountsUrl,
+  requiresRemoteBinding,
   toVjudgeVerdict,
   VJUDGE_BASE_URL,
 } from '@oi/platform';
@@ -304,7 +307,11 @@ export function VjudgePanel({ resolveSource, appTheme, hidden, vjudgeService }: 
       // 提交方式由题面允许列表决定：洛谷等站点关闭代提交，硬发 0 会被拒
       const method = pickSubmitMethod(target.submitMethods);
       if (method === undefined) {
-        throw new Error(WORKBENCH_STRINGS.vjudgeSubmitNoMethod);
+        throw new Error(
+          requiresRemoteBinding(target.submitMethods)
+            ? WORKBENCH_STRINGS.vjudgeNeedBinding
+            : WORKBENCH_STRINGS.vjudgeSubmitNoMethod,
+        );
       }
       const runId = await vjudgeService.submit({
         language,
@@ -356,6 +363,22 @@ export function VjudgePanel({ resolveSource, appTheme, hidden, vjudgeService }: 
 
   const languageOptions = resolveOj()?.languages ?? [];
   const loggedIn = account?.loggedIn === true;
+  /** 该题只允许用绑定的远端账号提交：本工具不代管绑定，只能把用户送到站点完成。 */
+  const needsBinding = problem !== undefined && requiresRemoteBinding(problem.submitMethods);
+  const bindingNotice = needsBinding ? (
+    <p className="oi-vjudge-message oi-vjudge-binding" role="status">
+      <span>{WORKBENCH_STRINGS.vjudgeNeedBinding}</span>
+      <a
+        className="oi-btn oi-btn-secondary oi-btn-sm oi-vjudge-bind"
+        href={remoteAccountsUrl(problem?.oj ?? ojInput)}
+        target="_blank"
+        rel="noreferrer"
+      >
+        <FontAwesomeIcon icon={faArrowUpRightFromSquare} aria-hidden="true" />
+        <span>{WORKBENCH_STRINGS.vjudgeBindAccounts}</span>
+      </a>
+    </p>
+  ) : null;
 
   const titleLine =
     problem === undefined ? null : (
@@ -391,7 +414,8 @@ export function VjudgePanel({ resolveSource, appTheme, hidden, vjudgeService }: 
       type="button"
       className="oi-btn oi-btn-primary oi-vjudge-submit"
       onClick={() => void submit()}
-      disabled={busy !== undefined || problem === undefined}
+      disabled={busy !== undefined || problem === undefined || needsBinding}
+      title={needsBinding ? WORKBENCH_STRINGS.vjudgeNeedBinding : undefined}
     >
       <FontAwesomeIcon
         icon={busy === 'submit' ? faSpinner : faCloudArrowUp}
@@ -428,6 +452,7 @@ export function VjudgePanel({ resolveSource, appTheme, hidden, vjudgeService }: 
             <FontAwesomeIcon icon={faMinimize} aria-hidden="true" />
           </button>
         </header>
+        {bindingNotice}
         <article
           ref={markdownRef}
           className="oi-vjudge-statement oi-vjudge-statement-expanded"
@@ -594,6 +619,8 @@ export function VjudgePanel({ resolveSource, appTheme, hidden, vjudgeService }: 
         </button>
         {submitButton}
       </form>
+
+      {bindingNotice}
 
       {candidates.length > 0 ? (
         <div

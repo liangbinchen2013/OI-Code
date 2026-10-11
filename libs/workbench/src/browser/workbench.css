@@ -2391,6 +2391,19 @@ body {
   font-size: 13px;
 }
 
+/* 需要绑定远端账号是引导，不是错误，用中性色并把入口按钮摆在同一行 */
+.oi-vjudge-binding {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 8px;
+  color: var(--muted);
+}
+
+.oi-vjudge-bind {
+  text-decoration: none;
+}
+
 .oi-vjudge-content {
   display: flex;
   flex: 1;

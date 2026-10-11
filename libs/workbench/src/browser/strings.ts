@@ -304,6 +304,8 @@ export const WORKBENCH_STRINGS = {
   vjudgeNeedSource: '请先在编辑器打开 C++ / Python 源文件',
   vjudgeNeedLanguage: '该题暂无可选语言，请先拉取题面',
   vjudgeSubmitNoMethod: '该题在 VJudge 上没有开放的提交方式',
+  vjudgeNeedBinding: '该题只能通过你在 VJudge 绑定的远端 OJ 账号提交，请先在 VJudge 完成绑定',
+  vjudgeBindAccounts: '去 VJudge 绑定账号',
   vjudgeResults: '判题记录',
   vjudgeResultsEmpty: '暂无提交记录',
   vjudgeTimeLabel: '耗时',

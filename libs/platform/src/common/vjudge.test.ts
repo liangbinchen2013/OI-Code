@@ -7,6 +7,8 @@ import {
   pickStatementVersion,
   pickSubmitMethod,
   problemKey,
+  remoteAccountsUrl,
+  requiresRemoteBinding,
   toVjudgeVerdict,
   type IStatementVersion,
   type IVjudgeConfig,
@@ -191,10 +193,14 @@ describe('限制解析', () => {
 });
 
 describe('pickSubmitMethod', () => {
-  it('取第一个允许的提交方式', () => {
+  it('代提交开着就用代提交', () => {
     expect(pickSubmitMethod([true, true, true])).toBe(0);
-    expect(pickSubmitMethod([false, true, true])).toBe(1);
-    expect(pickSubmitMethod([false, false, true])).toBe(2);
+    expect(pickSubmitMethod([true, false, false])).toBe(0);
+  });
+
+  it('只允许绑定账号提交时不由我们发请求', () => {
+    expect(pickSubmitMethod([false, true, true])).toBeUndefined();
+    expect(pickSubmitMethod([false, false, true])).toBeUndefined();
   });
 
   it('全部不允许时返回 undefined', () => {
@@ -203,5 +209,28 @@ describe('pickSubmitMethod', () => {
 
   it('题面没给提交方式时按默认方式试', () => {
     expect(pickSubmitMethod([])).toBe(0);
+  });
+});
+
+describe('requiresRemoteBinding', () => {
+  it('区分"要绑定账号"与"根本没有提交方式"', () => {
+    expect(requiresRemoteBinding([false, true, false])).toBe(true);
+    expect(requiresRemoteBinding([false, false, true])).toBe(true);
+    expect(requiresRemoteBinding([true, true, true])).toBe(false);
+    expect(requiresRemoteBinding([false, false, false])).toBe(false);
+    expect(requiresRemoteBinding([])).toBe(false);
+  });
+});
+
+describe('remoteAccountsUrl', () => {
+  it('按 OJ 生成绑定页地址并编码中文名', () => {
+    expect(remoteAccountsUrl('洛谷')).toBe(
+      'https://vjudge.net/user/remoteAccounts?oj=%E6%B4%9B%E8%B0%B7',
+    );
+    expect(remoteAccountsUrl(' POJ ')).toBe('https://vjudge.net/user/remoteAccounts?oj=POJ');
+  });
+
+  it('没有 OJ 时给总入口，不带空参数', () => {
+    expect(remoteAccountsUrl('  ')).toBe('https://vjudge.net/user/remoteAccounts');
   });
 });

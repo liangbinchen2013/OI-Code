@@ -87,11 +87,10 @@ export interface IVjudgeSubmitRequest {
   /** 语言 id，取自 {@link IVjudgeRemoteOj.languages}。 */
   readonly language: string;
   readonly source: string;
-  /** 0 = VJudge 服务账号；1/2 = 使用绑定的远端账号。 */
+  /** 提交方式：本工具只用 0（VJudge 服务账号代提交）。 */
   readonly method?: number;
   /** 记录可见性，缺省沿用站点默认。 */
   readonly open?: number;
-  readonly bindingId?: number;
 }
 
 /** 一次提交的判题结果快照。 */
@@ -339,16 +338,34 @@ export function pickDefaultLanguage(
 
 /**
  * 选题面允许的提交方式：`submitMethods[i]` 对应请求里的 `method=i`
- * （0 = VJudge 服务账号代提交，1/2 = 用绑定的远端账号）。
- * 洛谷等站点会关掉代提交，硬发 0 会被拒成 `submit_method_not_allowed`。
- * @returns 第一个允许的方式；全部不允许返回 undefined；数组缺失时按 0 试
+ * （0 = VJudge 服务账号代提交，1/2 = 用用户在 VJudge 绑定的远端账号）。
+ * 本工具不管理远端账号绑定，因此只有代提交可用；
+ * 需要绑定账号的题（如洛谷）交给 {@link requiresRemoteBinding} 引导用户去站点绑定，
+ * 而不是发一个注定被拒成 `submit_method_not_allowed` 的请求。
+ * @returns 可用的代提交方式；题面没给允许列表时按 0 试；否则 undefined
  */
 export function pickSubmitMethod(methods: readonly boolean[]): number | undefined {
-  if (methods.length === 0) {
+  if (methods.length === 0 || methods[0] === true) {
     return 0;
   }
-  const index = methods.findIndex((allowed) => allowed);
-  return index < 0 ? undefined : index;
+  return undefined;
+}
+
+/** 该题是否只能用绑定的远端账号提交（`method` 1/2 开着、代提交关着）。 */
+export function requiresRemoteBinding(methods: readonly boolean[]): boolean {
+  return methods.length > 0 && methods[0] !== true && methods.some((allowed) => allowed);
+}
+
+/**
+ * VJudge 的远端账号绑定页：绑定动作只能在站点上完成（含人机验证），
+ * 我们只负责把用户送到这里，绝不代填任何账号密码。
+ */
+export function remoteAccountsUrl(oj: string): string {
+  const trimmed = oj.trim();
+  if (trimmed.length === 0) {
+    return `${VJUDGE_BASE_URL}/user/remoteAccounts`;
+  }
+  return `${VJUDGE_BASE_URL}/user/remoteAccounts?oj=${encodeURIComponent(trimmed)}`;
 }
 
 function firstNumber(text: string): number | undefined {

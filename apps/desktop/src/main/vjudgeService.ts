@@ -59,7 +59,7 @@ export const VJUDGE_LOGIN_REQUIRED_MESSAGE = '请先在内置浏览器中登录 
 /** 实测见过的 VJudge 提交错误 i18n 键 → 人话；其余键原样带出便于反馈。 */
 const SUBMIT_ERROR_MESSAGES: Readonly<Record<string, string>> = {
   'submit.error.submit_method_not_allowed':
-    'VJudge 不允许用服务账号代提交该题，请在 VJudge 网页绑定该远端 OJ 的账号后重试',
+    'VJudge 不允许用服务账号代提交该题，请先在 VJudge 绑定该远端 OJ 的账号',
 };
 
 interface IFetchResult {
@@ -231,9 +231,6 @@ export class VjudgeService implements IVjudgeService, IDisposable {
       open: String(request.open ?? 1),
       source: request.source,
     });
-    if (request.bindingId !== undefined) {
-      params.set('bindingId', String(request.bindingId));
-    }
     const response = await this._fetch(`/problem/submit/${encodeURIComponent(key)}`, {
       body: params.toString(),
       method: 'POST',

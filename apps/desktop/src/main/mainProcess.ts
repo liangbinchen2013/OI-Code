@@ -749,9 +749,6 @@ export class MainProcess implements IDisposable {
     );
     channel.registerMethod(VJUDGE_RPC_METHODS.submit, (params): Promise<number> => {
       const request: IVjudgeSubmitRequest = {
-        ...(readOptionalNumber(params, 'bindingId') === undefined
-          ? {}
-          : { bindingId: readOptionalNumber(params, 'bindingId') }),
         language: readRequiredString(params, 'language'),
         ...(readOptionalNumber(params, 'method') === undefined
           ? {}

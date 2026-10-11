@@ -306,9 +306,13 @@ method=0&language=0&open=1&source=<源码原文，URL 编码>
 
 > **`method=0` 并非普遍可用** `[实测]`：对 `洛谷-B3827` 发 `method=0` 返回
 > `{"error":{"i18nKey":"submit.error.submit_method_not_allowed"}}`——洛谷关闭了 VJudge 服务账号代提交，
-> 必须走 `method=1/2` + 用户绑定的远端账号。因此提交前必须按题面 `submitMethods` 选第一个允许的方式，
-> 全为 `false` 时直接提示"该题没有开放的提交方式"而不是硬发。
-> 本工具尚未实现"选择绑定账号"（`bindingId` 需要登录态下的 `/user/remoteAccounts/list` 真实响应结构，见 §9）。
+> 必须走 `method=1/2` + 用户绑定的远端账号。因此提交前按题面 `submitMethods` 判定，不硬发。
+>
+> **本工具不做远端账号绑定管理**（决定，不再追）：绑定含人机验证与站点表单，凭据也不该经我们流转。
+> 只允许 `method=1/2` 的题（`requiresRemoteBinding`）会**禁用提交**并给出"去 VJudge 绑定账号"外链，
+> 用系统浏览器打开 `{basePath}/user/remoteAccounts?oj={OJ}`（OJ 名需 URL 编码，如 `%E6%B4%9B%E8%B0%B7`）；
+> 用户在站点绑定后，仍需回到本工具用代提交方式（洛谷这类题因此实际不可提交）。
+> `bindingId` 契约已删除；`/user/remoteAccounts/list` 的 `groups` 结构无需再取证。
 
 失败响应带 `errorCode`，前端据此分支 `[bundle]`：
 
@@ -502,6 +506,7 @@ GET /user/solveDetail/{username}
   正文里夹带的 HTML 标签只改标签、不动 Markdown 结构）。
 - **提交**：`/problem/submit/{OJ}-{id}`，语言表来自 `/util/cfg.remoteOjs[OJ].languages`，
   代码取编辑器当前文件。（曾实现"提交前用本地测试点预检"，因挤占侧栏阅读空间且拦截价值有限，已下线。）
+  只支持 VJudge 代提交（`method=0`）；题面关闭代提交时禁用提交按钮并给出去站点绑定账号的外链。
 - **回爬**：提交后主进程按 1s→5s 退火轮询 `/solution/data/{runId}`，
   经 `vjudge.submissionUpdate` 通知实时回写视图，终态或 10 分钟预算后停止。
 - **记录**：`/user/solveDetail/{username}` 的 AC 题号渲染为顶部可点击胶囊。
@@ -544,7 +549,7 @@ GET /user/solveDetail/{username}
 
 - [ ] **发起新 AI 翻译**的端点（目标语言无译本时点 `a.gpt_translate` 才会触发）。
 - [ ] `statusCanonical` / `statusType` 完整枚举（WA/TLE/MLE/RE/CE/PE/SE）——对同一题分别抓一次错解、超时、越界内存、运行时错误、编译错误。
-- [ ] `method=1/2` 与 `open` 其他取值的准确行为（需先绑定远端账号）；登录态下 `/user/remoteAccounts/list` 的 `groups` 结构与 `bindingId` 取值。
+- [x] ~~`method=1/2` 与 `bindingId` 的行为、`/user/remoteAccounts/list` 的 `groups` 结构~~ —— 已决定不做绑定管理，改为外链引导（见 §6.1），无需再取证。`open` 其他取值仍未验证。
 - [ ] `/problem/suggestions` 的参数与响应结构。
 - [ ] 提交失败错误信封样例（远端 OJ 不可用、账号未绑定、题面未抓取）。
 - [ ] `/problem/description/{descKey}` 是否对完全匿名也放行（本轮实测未带 Cookie 返回 200，建议再验证跨账号/未登录浏览器）。
