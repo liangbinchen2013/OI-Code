@@ -339,16 +339,16 @@ export function pickDefaultLanguage(
 /**
  * 选题面允许的提交方式：`submitMethods[i]` 对应请求里的 `method=i`
  * （0 = VJudge 服务账号代提交，1/2 = 用用户在 VJudge 绑定的远端账号）。
- * 本工具不管理远端账号绑定，因此只有代提交可用；
- * 需要绑定账号的题（如洛谷）交给 {@link requiresRemoteBinding} 引导用户去站点绑定，
- * 而不是发一个注定被拒成 `submit_method_not_allowed` 的请求。
- * @returns 可用的代提交方式；题面没给允许列表时按 0 试；否则 undefined
+ * 洛谷等站点会关掉代提交，硬发 0 会被拒成 `submit_method_not_allowed`，
+ * 因此按列表取第一个允许的方式；1/2 依赖用户已在站点绑定账号。
+ * @returns 第一个允许的方式；全部不允许返回 undefined；数组缺失时按 0 试
  */
 export function pickSubmitMethod(methods: readonly boolean[]): number | undefined {
-  if (methods.length === 0 || methods[0] === true) {
+  if (methods.length === 0) {
     return 0;
   }
-  return undefined;
+  const index = methods.findIndex((allowed) => allowed);
+  return index < 0 ? undefined : index;
 }
 
 /** 该题是否只能用绑定的远端账号提交（`method` 1/2 开着、代提交关着）。 */

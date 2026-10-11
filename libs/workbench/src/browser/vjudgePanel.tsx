@@ -363,7 +363,7 @@ export function VjudgePanel({ resolveSource, appTheme, hidden, vjudgeService }: 
 
   const languageOptions = resolveOj()?.languages ?? [];
   const loggedIn = account?.loggedIn === true;
-  /** 该题只允许用绑定的远端账号提交：本工具不代管绑定，只能把用户送到站点完成。 */
+  /** 该题只能走用户在 VJudge 绑定的远端账号：照常提交，但给出绑定入口。 */
   const needsBinding = problem !== undefined && requiresRemoteBinding(problem.submitMethods);
   const bindingNotice = needsBinding ? (
     <p className="oi-vjudge-message oi-vjudge-binding" role="status">
@@ -414,8 +414,7 @@ export function VjudgePanel({ resolveSource, appTheme, hidden, vjudgeService }: 
       type="button"
       className="oi-btn oi-btn-primary oi-vjudge-submit"
       onClick={() => void submit()}
-      disabled={busy !== undefined || problem === undefined || needsBinding}
-      title={needsBinding ? WORKBENCH_STRINGS.vjudgeNeedBinding : undefined}
+      disabled={busy !== undefined || problem === undefined}
     >
       <FontAwesomeIcon
         icon={busy === 'submit' ? faSpinner : faCloudArrowUp}

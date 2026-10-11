@@ -193,14 +193,12 @@ describe('限制解析', () => {
 });
 
 describe('pickSubmitMethod', () => {
-  it('代提交开着就用代提交', () => {
+  it('取第一个允许的提交方式', () => {
     expect(pickSubmitMethod([true, true, true])).toBe(0);
     expect(pickSubmitMethod([true, false, false])).toBe(0);
-  });
-
-  it('只允许绑定账号提交时不由我们发请求', () => {
-    expect(pickSubmitMethod([false, true, true])).toBeUndefined();
-    expect(pickSubmitMethod([false, false, true])).toBeUndefined();
+    // 洛谷关掉代提交：只能用用户已绑定的远端账号
+    expect(pickSubmitMethod([false, true, true])).toBe(1);
+    expect(pickSubmitMethod([false, false, true])).toBe(2);
   });
 
   it('全部不允许时返回 undefined', () => {
