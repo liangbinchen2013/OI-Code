@@ -740,9 +740,9 @@ function Workbench({
     };
   }, []);
 
-  /** 路径只能在 drop 事件里同步取，取完再异步打开。 */
+  /** 路径只能在 drop 事件里同步取，取完再按拖放顺序逐个打开（并发读会让标签顺序随机）。 */
   const handleDropFiles = useCallback(
-    (event: ReactDragEvent<HTMLElement>): void => {
+    async (event: ReactDragEvent<HTMLElement>): Promise<void> => {
       if (!carriesFiles(event.dataTransfer)) {
         return;
       }
@@ -758,7 +758,7 @@ function Workbench({
         return;
       }
       for (const path of paths) {
-        void openUri(URI.file(path));
+        await openUri(URI.file(path));
       }
       editorPaneRef.current?.focus();
     },
