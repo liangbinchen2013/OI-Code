@@ -27,7 +27,31 @@ import { RunnerService } from './runnerService';
 import { ToolchainService } from './toolchainService';
 import { VjudgeService } from './vjudgeService';
 
+/**
+ * Windows 的“输入时隐藏指针”会让保存/确认对话框打开期间光标一直不可见：
+ * Chromium 在按键时隐藏光标，而模态对话框禁用了父窗口，父窗口收不到恢复光标的鼠标事件。
+ * 见 electron/electron#54630。
+ */
+function disableHideCursorWhileTyping(): void {
+  if (process.platform !== 'win32') {
+    return;
+  }
+  const features = app.commandLine
+    .getSwitchValue('disable-features')
+    .split(',')
+    .map((feature) => feature.trim())
+    .filter((feature) => feature.length > 0);
+  if (features.includes('HideCursorWhileTyping')) {
+    return;
+  }
+  app.commandLine.appendSwitch(
+    'disable-features',
+    [...features, 'HideCursorWhileTyping'].join(','),
+  );
+}
+
 function main(): void {
+  disableHideCursorWhileTyping();
   const userDataPath = process.env['OI_CODE_USER_DATA'];
   if (userDataPath) {
     app.setPath('userData', userDataPath);
